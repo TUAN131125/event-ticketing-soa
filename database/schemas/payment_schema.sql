@@ -1,0 +1,1 @@
+-- Placeholder: database/schemas/payment_schema.sql. Chưa có câu lệnh SQL.

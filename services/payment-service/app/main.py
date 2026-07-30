@@ -1,0 +1,1 @@
+"""Placeholder: services/payment-service/app/main.py. Chưa có mã nguồn triển khai."""

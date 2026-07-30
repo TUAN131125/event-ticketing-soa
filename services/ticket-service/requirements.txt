@@ -1,0 +1,1 @@
+Placeholder: services/ticket-service/requirements.txt

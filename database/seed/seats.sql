@@ -1,0 +1,1 @@
+-- Placeholder: database/seed/seats.sql. Chưa có câu lệnh SQL.

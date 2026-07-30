@@ -1,0 +1,27 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true,
+      "**/.mypy_cache": true,
+      "**/node_modules": true
+    },
+    "python.testing.pytestEnabled": true
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "ms-azuretools.vscode-docker",
+      "redhat.vscode-yaml",
+      "mtxr.sqltools",
+      "ms-vscode-remote.remote-containers",
+      "eamodio.gitlens"
+    ]
+  }
+}

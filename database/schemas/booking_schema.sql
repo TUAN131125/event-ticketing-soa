@@ -1,0 +1,1 @@
+-- Placeholder: database/schemas/booking_schema.sql. Chưa có câu lệnh SQL.
