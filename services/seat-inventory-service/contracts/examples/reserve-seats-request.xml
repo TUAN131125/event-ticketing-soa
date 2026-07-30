@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat-inventory:v1">
+  <soap:Body>
+    <seat:ReserveSeatsRequest>
+      <seat:context>
+        <seat:correlationId>COR-RESERVE-1</seat:correlationId>
+        <seat:idempotencyKey>IDEM-RESERVE-1</seat:idempotencyKey>
+        <seat:callerService>booking-orchestrator</seat:callerService>
+        <seat:schemaVersion>1.0</seat:schemaVersion>
+      </seat:context>
+      <seat:bookingId>BKG-DEMO-1</seat:bookingId>
+      <seat:eventId>EVT-DEMO</seat:eventId>
+      <seat:seatIds>
+        <seat:seatId>A-01</seat:seatId>
+        <seat:seatId>A-02</seat:seatId>
+      </seat:seatIds>
+      <seat:holdSeconds>600</seat:holdSeconds>
+    </seat:ReserveSeatsRequest>
+  </soap:Body>
+</soap:Envelope>

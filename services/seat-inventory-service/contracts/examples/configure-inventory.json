@@ -1,0 +1,30 @@
+{
+  "eventId": "EVT-DEMO",
+  "inventoryVersion": 1,
+  "seats": [
+    {
+      "seatId": "A-01",
+      "section": "A",
+      "rowLabel": "A",
+      "seatNumber": "01",
+      "ticketType": "STANDARD",
+      "status": "AVAILABLE"
+    },
+    {
+      "seatId": "A-02",
+      "section": "A",
+      "rowLabel": "A",
+      "seatNumber": "02",
+      "ticketType": "STANDARD",
+      "status": "AVAILABLE"
+    },
+    {
+      "seatId": "A-03",
+      "section": "A",
+      "rowLabel": "A",
+      "seatNumber": "03",
+      "ticketType": "STANDARD",
+      "status": "AVAILABLE"
+    }
+  ]
+}

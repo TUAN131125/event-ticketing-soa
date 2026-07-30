@@ -1,1 +1,3 @@
-"""Placeholder: services/seat-inventory-service/app/__init__.py. Chưa có mã nguồn triển khai."""
+"""Seat Inventory Service package."""
+
+__version__ = "1.0.0"

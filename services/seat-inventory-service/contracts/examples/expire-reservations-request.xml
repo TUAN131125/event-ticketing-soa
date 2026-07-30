@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat-inventory:v1">
+  <soap:Body>
+    <seat:ExpireReservationsRequest>
+      <seat:context>
+        <seat:correlationId>COR-EXPIRE-1</seat:correlationId>
+        <seat:callerService>seat-expiry-worker</seat:callerService>
+        <seat:schemaVersion>1.0</seat:schemaVersion>
+      </seat:context>
+      <seat:batchSize>100</seat:batchSize>
+    </seat:ExpireReservationsRequest>
+  </soap:Body>
+</soap:Envelope>
