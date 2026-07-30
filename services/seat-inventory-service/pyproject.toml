@@ -1,1 +1,56 @@
-# Placeholder: services/seat-inventory-service/pyproject.toml
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "event-ticketing-seat-inventory"
+version = "1.0.0"
+description = "Transaction-safe SOAP Seat Inventory Service"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic==1.16.5",
+  "fastapi==0.116.1",
+  "lxml==6.0.1",
+  "prometheus-client==0.22.1",
+  "psycopg[binary]==3.2.9",
+  "pydantic==2.11.7",
+  "SQLAlchemy==2.0.43",
+  "uvicorn[standard]==0.35.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/versions/*.py" = ["E501"]
+"tests/**/*.py" = ["B017"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "integration: requires a real PostgreSQL database",
+  "concurrency: exercises PostgreSQL row locks with multiple threads",
+  "security: validates SOAP/XML hardening",
+]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["prometheus_client.*", "zeep.*"]
+ignore_missing_imports = true

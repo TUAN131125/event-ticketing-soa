@@ -1,1 +1,9 @@
-"""Placeholder: services/seat-inventory-service/app/soap/namespaces.py. Chưa có mã nguồn triển khai."""
+"""SOAP and Seat Inventory XML namespaces."""
+
+SOAP_ENV = "http://schemas.xmlsoap.org/soap/envelope/"
+TNS = "urn:event-ticketing:seat-inventory:v1"
+NSMAP = {"soap": SOAP_ENV, "seat": TNS}
+
+
+def qname(local_name: str) -> str:
+    return f"{{{TNS}}}{local_name}"

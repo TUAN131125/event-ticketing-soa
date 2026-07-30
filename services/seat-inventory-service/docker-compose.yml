@@ -1,0 +1,38 @@
+name: seat-inventory
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: seat_inventory
+      POSTGRES_USER: seat_inventory
+      POSTGRES_PASSWORD: seat_inventory
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seat_inventory -d seat_inventory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - seat-postgres-data:/var/lib/postgresql/data
+
+  seat-inventory:
+    build:
+      context: .
+    environment:
+      SEAT_APP_ENV: local
+      SEAT_DATABASE_URL: postgresql+psycopg://seat_inventory:seat_inventory@postgres:5432/seat_inventory
+      SEAT_SERVICE_TOKEN: local-development-token
+      SEAT_SOAP_PUBLIC_URL: http://localhost:8003/soap
+      SEAT_EXPIRY_WORKER_ENABLED: "true"
+      SEAT_WEB_WORKERS: "1"
+    ports:
+      - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  seat-postgres-data:

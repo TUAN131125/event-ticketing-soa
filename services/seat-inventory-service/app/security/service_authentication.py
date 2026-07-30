@@ -1,1 +1,12 @@
-"""Placeholder: services/seat-inventory-service/app/security/service_authentication.py. Chưa có mã nguồn triển khai."""
+"""Constant-time service-to-service token validation."""
+
+from __future__ import annotations
+
+import hmac
+
+from app.domain.exceptions import AuthenticationFailed
+
+
+def authenticate_service(provided: str | None, expected: str) -> None:
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise AuthenticationFailed()

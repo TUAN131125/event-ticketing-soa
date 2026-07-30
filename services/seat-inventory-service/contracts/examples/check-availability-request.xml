@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat-inventory:v1">
+  <soap:Body>
+    <seat:CheckAvailabilityRequest>
+      <seat:context>
+        <seat:correlationId>COR-CHECK-1</seat:correlationId>
+        <seat:callerService>booking-orchestrator</seat:callerService>
+        <seat:schemaVersion>1.0</seat:schemaVersion>
+      </seat:context>
+      <seat:eventId>EVT-DEMO</seat:eventId>
+      <seat:seatIds>
+        <seat:seatId>A-01</seat:seatId>
+        <seat:seatId>A-02</seat:seatId>
+      </seat:seatIds>
+    </seat:CheckAvailabilityRequest>
+  </soap:Body>
+</soap:Envelope>
