@@ -1,1 +1,24 @@
-"""Placeholder: services/identity-service/app/observability/metrics.py. Chưa có mã nguồn triển khai."""
+"""Prometheus metrics with bounded labels."""
+
+from prometheus_client import Counter, Gauge, Histogram
+
+REQUESTS = Counter(
+    "identity_http_requests_total",
+    "Identity HTTP requests",
+    ("operation", "status"),
+)
+REQUEST_DURATION = Histogram(
+    "identity_http_request_duration_seconds",
+    "Identity HTTP request latency",
+    ("operation",),
+)
+AUTH_EVENTS = Counter(
+    "identity_auth_events_total",
+    "Authentication and authorization events",
+    ("event", "result"),
+)
+ACTIVE_REFRESH_SESSIONS = Gauge(
+    "identity_active_refresh_sessions",
+    "Active, unexpired refresh sessions",
+)
+READINESS = Gauge("identity_readiness", "Identity readiness state")

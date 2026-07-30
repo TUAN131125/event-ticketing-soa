@@ -1,0 +1,36 @@
+services:
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: identity
+    ports:
+      - "5434:5432"
+    volumes:
+      - identity-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity -d identity"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  identity-service:
+    build: .
+    environment:
+      IDENTITY_APP_ENV: local
+      IDENTITY_DATABASE_URL: postgresql+psycopg://identity:identity@identity-db:5432/identity
+      IDENTITY_ISSUER: http://localhost:8009
+      IDENTITY_AUDIENCE: event-ticketing-api
+      IDENTITY_KEY_ID: identity-local-1
+      IDENTITY_COOKIE_SECURE: "false"
+      IDENTITY_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      IDENTITY_DOCS_ENABLED: "true"
+    ports:
+      - "8009:8000"
+    depends_on:
+      identity-db:
+        condition: service_healthy
+
+volumes:
+  identity-postgres-data:
