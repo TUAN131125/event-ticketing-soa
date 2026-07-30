@@ -1,1 +1,10 @@
-Placeholder: services/identity-service/requirements-dev.txt
+-r requirements.txt
+bandit==1.8.6
+httpx==0.28.1
+mypy==1.17.1
+pip-audit==2.9.0
+pytest==8.4.1
+pytest-cov==6.2.1
+PyYAML==6.0.2
+ruff==0.12.11
+types-PyYAML==6.0.12.20250822

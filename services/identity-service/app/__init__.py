@@ -1,1 +1,3 @@
-"""Placeholder: services/identity-service/app/__init__.py. Chưa có mã nguồn triển khai."""
+"""Identity and Access Service."""
+
+__version__ = "1.0.0"

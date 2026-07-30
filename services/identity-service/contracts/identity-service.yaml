@@ -1,0 +1,431 @@
+openapi: 3.1.0
+info:
+  title: Identity and Access Service
+  version: 1.0.0
+  description: Security-critical account, role and session service.
+servers:
+  - url: http://localhost:8009
+tags:
+  - name: authentication
+  - name: administration
+  - name: health
+paths:
+  /auth/register:
+    post:
+      operationId: register
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered customer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/EmailAlreadyExists'
+  /auth/login:
+    post:
+      operationId: login
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication result
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          links:
+            refresh:
+              operationId: refresh
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '403':
+          $ref: '#/components/responses/AccountDisabled'
+        '423':
+          $ref: '#/components/responses/AccountLocked'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /auth/refresh:
+    post:
+      operationId: refresh
+      tags: [authentication]
+      security:
+        - RefreshCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '200':
+          description: Rotated token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/InvalidRefreshToken'
+        '403':
+          $ref: '#/components/responses/CsrfFailure'
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [authentication]
+      security:
+        - RefreshCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204':
+          description: Session family revoked or already absent
+        '403':
+          $ref: '#/components/responses/CsrfFailure'
+  /auth/me:
+    get:
+      operationId: currentPrincipal
+      tags: [authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /admin/users/{userId}/roles:
+    post:
+      operationId: changeUserRole
+      tags: [administration]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleChangeRequest'
+      responses:
+        '200':
+          description: Role change result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleChangeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /.well-known/jwks.json:
+    get:
+      operationId: jwks
+      tags: [authentication]
+      responses:
+        '200':
+          description: JSON Web Key Set
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/jwk-set+json:
+              schema:
+                $ref: '#/components/schemas/JwkSet'
+  /health/live:
+    get:
+      operationId: healthLive
+      tags: [health]
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /health/ready:
+    get:
+      operationId: healthReady
+      tags: [health]
+      responses:
+        '200':
+          description: Database and migrations are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Not ready or draining
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    RefreshCookie:
+      type: apiKey
+      in: cookie
+      name: identity_refresh
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CsrfHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 32
+  headers:
+    CorrelationId:
+      description: Request correlation identifier
+      schema:
+        type: string
+  responses:
+    InvalidRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationError:
+      description: Request schema validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    EmailAlreadyExists:
+      description: Email already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InvalidCredentials:
+      description: Credentials are invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    AccountDisabled:
+      description: Account is disabled
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    AccountLocked:
+      description: Account is temporarily locked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: Too many authentication attempts
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InvalidRefreshToken:
+      description: Refresh token is invalid, expired or reused
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthenticated:
+      description: Authentication is required or token is invalid
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    CsrfFailure:
+      description: CSRF validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 128
+    LoginRequest:
+      $ref: '#/components/schemas/RegisterRequest'
+    RoleChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [role, action]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        action:
+          type: string
+          enum: [ASSIGN, REVOKE]
+    Role:
+      type: string
+      enum: [CUSTOMER, ADMIN, CHECKIN_STAFF, SERVICE]
+    User:
+      type: object
+      additionalProperties: false
+      required: [userId, email, status, roles, tokenVersion, createdAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
+        roles:
+          type: array
+          items:
+            type: string
+        tokenVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required: [accessToken, tokenType, expiresIn, csrfToken, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          minimum: 1
+        csrfToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    RoleChangeResponse:
+      type: object
+      additionalProperties: false
+      required: [user, role, action, changed]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        role:
+          type: string
+        action:
+          type: string
+        changed:
+          type: boolean
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [correlationId, traceId, error]
+      properties:
+        correlationId:
+          type: string
+        traceId:
+          type: string
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            retryable:
+              type: boolean
+            details:
+              type: object
+    Health:
+      type: object
+      additionalProperties: false
+      required: [service, status, version]
+      properties:
+        service:
+          type: string
+        status:
+          type: string
+        version:
+          type: string
+    JwkSet:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            required: [kty, use, alg, kid, n, e]
+            properties:
+              kty: {type: string, enum: [RSA]}
+              use: {type: string, enum: [sig]}
+              alg: {type: string, enum: [RS256]}
+              kid: {type: string}
+              n: {type: string}
+              e: {type: string}

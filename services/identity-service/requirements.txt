@@ -1,1 +1,12 @@
-Placeholder: services/identity-service/requirements.txt
+alembic==1.16.5
+argon2-cffi==25.1.0
+cryptography==49.0.0
+email-validator==2.2.0
+fastapi==0.141.1
+prometheus-client==0.22.1
+psycopg[binary]==3.2.9
+pydantic==2.11.7
+PyJWT==2.13.0
+starlette==1.3.1
+SQLAlchemy==2.0.43
+uvicorn[standard]==0.35.0
