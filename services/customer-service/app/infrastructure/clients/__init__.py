@@ -1,1 +1,2 @@
-"""Placeholder: services/customer-service/app/infrastructure/clients/__init__.py. Chưa có mã nguồn triển khai."""
+"""Customer Service khong goi ra service ben ngoai nao trong MVP nen
+thu muc nay chua co client - giu lai de dong bo cau truc repo."""

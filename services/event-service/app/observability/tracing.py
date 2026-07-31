@@ -1,1 +1,1 @@
-"""Placeholder: services/event-service/app/observability/tracing.py. Chưa có mã nguồn triển khai."""
+"""Tracing - Correlation ID dong vai tro tracing don gian trong MVP."""

@@ -1,1 +1,10 @@
-"""Placeholder: services/event-service/app/api/router.py. Chưa có mã nguồn triển khai."""
+"""Gom tat ca router con cua Event Service."""
+from fastapi import APIRouter
+
+from app.api import health
+from app.api.v1 import admin, resources
+
+api_router = APIRouter()
+api_router.include_router(health.router)
+api_router.include_router(resources.router)
+api_router.include_router(admin.router)

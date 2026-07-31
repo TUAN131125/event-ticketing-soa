@@ -1,1 +1,9 @@
-"""Placeholder: services/notification-service/app/api/health.py. Chưa có mã nguồn triển khai."""
+"""Health check endpoint."""
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/health")
+def health():
+    return {"service": "notification-service", "status": "UP"}

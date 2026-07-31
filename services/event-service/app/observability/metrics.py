@@ -1,1 +1,1 @@
-"""Placeholder: services/event-service/app/observability/metrics.py. Chưa có mã nguồn triển khai."""
+"""Metrics - chua trien khai trong MVP, xem ghi chu Customer Service."""

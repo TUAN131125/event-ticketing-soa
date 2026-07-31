@@ -1,1 +1,2 @@
-"""Placeholder: services/customer-service/app/infrastructure/messaging/__init__.py. Chưa có mã nguồn triển khai."""
+"""Customer Service khong publish/subscribe event trong MVP - moi thay
+doi (tao/sua/vo hieu hoa) hien chi tra ve qua REST response cho ESB."""

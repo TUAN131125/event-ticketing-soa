@@ -1,1 +1,2 @@
-"""Placeholder: services/event-service/app/application/queries/__init__.py. Chưa có mã nguồn triển khai."""
+"""Chua co truy van rieng - cac thao tac doc (get/list) dang nam o
+application/commands/ theo dung cau truc thu muc san co cua repo."""

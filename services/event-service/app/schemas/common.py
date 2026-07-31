@@ -1,1 +1,10 @@
-"""Placeholder: services/event-service/app/schemas/common.py. Chưa có mã nguồn triển khai."""
+"""Schema loi dung chung."""
+from typing import Optional
+
+from pydantic import BaseModel
+
+
+class ErrorResponse(BaseModel):
+    error: str
+    detail: Optional[str] = None
+    correlationId: Optional[str] = None

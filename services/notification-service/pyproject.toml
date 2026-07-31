@@ -1,1 +1,49 @@
-# Placeholder: services/notification-service/pyproject.toml
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "event-ticketing-notification-service"
+version = "1.0.0"
+description = "Notification Service - gui email khi co su kien nghiep vu (REST webhook, PostgreSQL)"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic==1.16.5",
+  "fastapi==0.115.0",
+  "psycopg[binary]==3.2.9",
+  "pydantic[email]==2.9.2",
+  "pydantic-settings==2.5.2",
+  "sqlalchemy==2.0.35",
+  "uvicorn[standard]==0.30.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/versions/*.py" = ["E501"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "integration: requires a real PostgreSQL database",
+]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+exclude = ["migrations/"]

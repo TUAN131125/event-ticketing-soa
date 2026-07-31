@@ -1,1 +1,1 @@
-"""Placeholder: services/event-service/app/security/input_validation.py. Chưa có mã nguồn triển khai."""
+"""Validate bo sung ngoai Pydantic - chua can trong MVP."""

@@ -1,1 +1,21 @@
-"""Placeholder: services/customer-service/app/application/commands/update_customer.py. Chưa có mã nguồn triển khai."""
+"""Use case: cap nhat thong tin lien he cua khach hang."""
+from typing import Optional
+
+from app.domain.entities import Customer
+from app.domain.exceptions import CustomerNotFoundError
+from app.repositories.interfaces import CustomerRepository
+
+
+def update_customer(
+    repo: CustomerRepository,
+    customer_id: str,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+) -> Customer:
+    customer = repo.get(customer_id)
+    if customer is None:
+        raise CustomerNotFoundError(customer_id)
+    customer.update_contact(name=name, email=email, phone=phone)
+    repo.update(customer)
+    return customer

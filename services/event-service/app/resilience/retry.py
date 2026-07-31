@@ -1,1 +1,1 @@
-"""Placeholder: services/event-service/app/resilience/retry.py. Chưa có mã nguồn triển khai."""
+"""Retry - Event Service khong goi ra service ngoai trong MVP nen khong can."""

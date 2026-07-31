@@ -1,1 +1,10 @@
-"""Placeholder: services/event-service/app/domain/enums.py. Chưa có mã nguồn triển khai."""
+"""Enum trang thai su kien."""
+from enum import Enum
+
+
+class EventStatus(str, Enum):
+    DRAFT = "DRAFT"
+    ON_SALE = "ON_SALE"
+    PAUSED = "PAUSED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"

@@ -1,1 +1,16 @@
-"""Placeholder: services/event-service/app/domain/rules.py. Chưa có mã nguồn triển khai."""
+"""Quy tac chuyen trang thai su kien (state machine)."""
+from app.domain.enums import EventStatus
+from app.domain.exceptions import InvalidStateTransitionError
+
+ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
+    EventStatus.DRAFT: {EventStatus.ON_SALE, EventStatus.CANCELLED},
+    EventStatus.ON_SALE: {EventStatus.PAUSED, EventStatus.CLOSED, EventStatus.CANCELLED},
+    EventStatus.PAUSED: {EventStatus.ON_SALE, EventStatus.CLOSED, EventStatus.CANCELLED},
+    EventStatus.CLOSED: set(),
+    EventStatus.CANCELLED: set(),
+}
+
+
+def ensure_transition_allowed(current: EventStatus, target: EventStatus) -> None:
+    if target not in ALLOWED_TRANSITIONS.get(current, set()):
+        raise InvalidStateTransitionError(current.value, target.value)

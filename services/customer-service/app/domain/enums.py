@@ -1,1 +1,7 @@
-"""Placeholder: services/customer-service/app/domain/enums.py. Chưa có mã nguồn triển khai."""
+"""Cac enum thuoc domain cua Customer Service."""
+from enum import Enum
+
+
+class CustomerStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"

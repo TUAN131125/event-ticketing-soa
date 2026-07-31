@@ -1,1 +1,2 @@
-"""Placeholder: services/event-service/app/security/authorization.py. Chưa có mã nguồn triển khai."""
+"""Phan quyen - chua trien khai trong MVP. Diem mo rong: chi Admin duoc
+tao/sua/huy su kien khi co Identity Service."""
