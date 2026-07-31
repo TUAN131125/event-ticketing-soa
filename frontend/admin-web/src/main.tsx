@@ -1,1 +1,5 @@
-// Placeholder: frontend/admin-web/src/main.tsx. Chưa có mã nguồn triển khai.
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
