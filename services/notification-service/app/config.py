@@ -46,7 +46,7 @@ class Settings:
         database_url = os.getenv(
             "NOTIFICATION_DATABASE_URL",
             "postgresql+psycopg://notification_service:notification_service"
-            "@localhost:5436/notification_service",
+            "@localhost:5437/notification_service",
         )
         return cls(
             app_env=os.getenv("NOTIFICATION_APP_ENV", "local"),

@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: notification_service
       POSTGRES_PASSWORD: notification_service
     ports:
-      - "5436:5432"
+      - "5437:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notification_service -d notification_service"]
       interval: 2s
