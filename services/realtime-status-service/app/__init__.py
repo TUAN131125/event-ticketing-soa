@@ -1,1 +1,3 @@
-"""Placeholder: services/realtime-status-service/app/__init__.py. Chưa có mã nguồn triển khai."""
+"""Realtime Status Service."""
+
+__version__ = "1.0.0"

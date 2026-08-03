@@ -1,1 +1,52 @@
-# Placeholder: services/realtime-status-service/pyproject.toml
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "event-ticketing-realtime-status-service"
+version = "1.0.0"
+description = "Best-effort booking status delivery over WebSocket"
+requires-python = ">=3.12"
+dependencies = [
+  "cryptography==45.0.6",
+  "fastapi==0.116.1",
+  "httpx==0.28.1",
+  "prometheus-client==0.22.1",
+  "pydantic==2.11.7",
+  "PyJWT[crypto]==2.10.1",
+  "redis==6.4.0",
+  "uvicorn[standard]==0.35.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "ASYNC"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106", "S107"]
+"app/main.py" = ["B008"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["redis: tests the Redis adapter with fakes and does not require a server"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["prometheus_client.*", "redis.*"]
+ignore_missing_imports = true
