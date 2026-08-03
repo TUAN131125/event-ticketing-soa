@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://event-ticketing.example/contracts/events/ticket-qr-regenerated.schema.json",
+  "title": "ticket.qr-regenerated",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "eventType", "aggregateType", "aggregateId", "aggregateVersion", "correlationId", "occurredAt", "payload"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "ticket.qr-regenerated"},
+    "aggregateType": {"const": "Ticket"},
+    "aggregateId": {"$ref": "#/$defs/identifier"},
+    "aggregateVersion": {"type": "integer", "minimum": 2},
+    "correlationId": {"$ref": "#/$defs/identifier"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "payload": {"$ref": "#/$defs/payload"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ticketId", "bookingId", "customerId", "eventId", "paymentId", "seatId", "seatLabel", "ticketType", "status", "qrVersion", "resourceVersion", "occurredAt", "previousQrVersion"],
+      "properties": {
+        "ticketId": {"$ref": "#/$defs/identifier"},
+        "bookingId": {"$ref": "#/$defs/identifier"},
+        "customerId": {"$ref": "#/$defs/identifier"},
+        "eventId": {"$ref": "#/$defs/identifier"},
+        "paymentId": {"$ref": "#/$defs/identifier"},
+        "seatId": {"$ref": "#/$defs/identifier"},
+        "seatLabel": {"$ref": "#/$defs/identifier"},
+        "ticketType": {"$ref": "#/$defs/identifier"},
+        "status": {"const": "VALID"},
+        "qrVersion": {"type": "integer", "minimum": 2},
+        "resourceVersion": {"type": "integer", "minimum": 2},
+        "occurredAt": {"type": "string", "format": "date-time"},
+        "previousQrVersion": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

@@ -1,1 +1,5 @@
-"""Placeholder: services/ticket-service/app/infrastructure/messaging/__init__.py. Chưa có mã nguồn triển khai."""
+"""Messaging adapter exports."""
+
+from app.infrastructure.messaging.envelope import outbox_event_envelope
+
+__all__ = ["outbox_event_envelope"]

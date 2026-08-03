@@ -1,1 +1,5 @@
-"""Placeholder: services/booking-service/app/application/services/__init__.py. Chưa có mã nguồn triển khai."""
+"""Application service exports."""
+
+from app.application.service import BookingService
+
+__all__ = ["BookingService"]
