@@ -1,1 +1,3 @@
-"""Placeholder: services/booking-service/app/__init__.py. Chưa có mã nguồn triển khai."""
+"""Booking Service package."""
+
+__version__ = "1.0.0"

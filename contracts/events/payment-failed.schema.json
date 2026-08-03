@@ -1,3 +1,44 @@
 {
-  "_placeholder": "contracts/events/payment-failed.schema.json"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://event-ticketing.example/contracts/events/payment-failed.schema.json",
+  "title": "payment.failed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "eventType", "aggregateType", "aggregateId", "aggregateVersion", "correlationId", "occurredAt", "payload"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "payment.failed"},
+    "aggregateType": {"const": "Payment"},
+    "aggregateId": {"$ref": "#/$defs/identifier"},
+    "aggregateVersion": {"type": "integer", "minimum": 2},
+    "correlationId": {"$ref": "#/$defs/identifier"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "payload": {"$ref": "#/$defs/payload"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "money": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{2})$"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paymentId", "bookingId", "customerId", "status", "amount", "capturedAmount", "refundedAmount", "currency", "paymentMethod", "provider", "providerReference", "resourceVersion", "occurredAt", "failureCode", "reason"],
+      "properties": {
+        "paymentId": {"$ref": "#/$defs/identifier"},
+        "bookingId": {"$ref": "#/$defs/identifier"},
+        "customerId": {"$ref": "#/$defs/identifier"},
+        "status": {"const": "FAILED"},
+        "amount": {"$ref": "#/$defs/money"},
+        "capturedAmount": {"const": "0.00"},
+        "refundedAmount": {"const": "0.00"},
+        "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "paymentMethod": {"type": "string", "minLength": 1, "maxLength": 40},
+        "provider": {"type": "string", "minLength": 1, "maxLength": 40},
+        "providerReference": {"type": ["string", "null"]},
+        "resourceVersion": {"type": "integer", "minimum": 2},
+        "occurredAt": {"type": "string", "format": "date-time"},
+        "failureCode": {"$ref": "#/$defs/identifier"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2000}
+      }
+    }
+  }
 }

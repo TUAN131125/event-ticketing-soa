@@ -1,1 +1,5 @@
-"""Placeholder: services/booking-service/app/resilience/concurrency.py. Chưa có mã nguồn triển khai."""
+"""Concurrency helpers."""
+
+from app.domain.rules import advisory_lock_id
+
+__all__ = ["advisory_lock_id"]

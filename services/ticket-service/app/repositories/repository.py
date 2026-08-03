@@ -1,1 +1,5 @@
-"""Placeholder: services/ticket-service/app/repositories/repository.py. Chưa có mã nguồn triển khai."""
+"""Convenient repository exports."""
+
+from app.repositories.interfaces import TicketReadRepository
+
+__all__ = ["TicketReadRepository"]

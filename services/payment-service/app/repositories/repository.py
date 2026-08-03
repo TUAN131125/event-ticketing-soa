@@ -1,1 +1,5 @@
-"""Placeholder: services/payment-service/app/repositories/repository.py. Chưa có mã nguồn triển khai."""
+"""Convenient repository exports."""
+
+from app.repositories.interfaces import PaymentReadRepository
+
+__all__ = ["PaymentReadRepository"]

@@ -1,1 +1,440 @@
-# Placeholder: contracts/openapi/payment-service.yaml
+openapi: 3.1.0
+info:
+  title: Payment Service
+  version: 1.0.0
+  description: >-
+    Internal, provider-neutral ledger for payment lifecycle and refunds. This API
+    accepts provider references and verified outcomes only; raw PAN, CVV and other
+    card credentials are never accepted or stored.
+servers:
+  - url: http://payment-service:8000
+security:
+  - serviceToken: []
+paths:
+  /payments:
+    post:
+      operationId: createPayment
+      summary: Create the single payment aggregate for a booking
+      parameters:
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePaymentRequest'}
+      responses:
+        '201':
+          description: Payment created or an identical completed result replayed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+    get:
+      operationId: listPayments
+      summary: List authoritative payment aggregates
+      parameters:
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: bookingId
+          in: query
+          schema: {$ref: '#/components/schemas/Identifier'}
+        - name: customerId
+          in: query
+          schema: {$ref: '#/components/schemas/Identifier'}
+        - name: provider
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 40}
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/PaymentStatus'}
+        - name: search
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: Page of payments
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentPage'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}:
+    get:
+      operationId: getPayment
+      summary: Get one authoritative payment
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Payment found
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/refunds:
+    get:
+      operationId: listPaymentRefunds
+      summary: List the immutable refund ledger for a payment
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Refund ledger entries ordered by creation time
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RefundList'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/authorize:
+    post:
+      operationId: authorizePayment
+      summary: Record a verified provider authorization or decline
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AuthorizePaymentRequest'}
+      responses:
+        '200':
+          description: Authorization outcome recorded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/capture:
+    post:
+      operationId: capturePayment
+      summary: Record a verified provider capture outcome
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CapturePaymentRequest'}
+      responses:
+        '200':
+          description: Capture outcome recorded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/cancel:
+    post:
+      operationId: cancelPayment
+      summary: Cancel a payment before capture
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CancelPaymentRequest'}
+      responses:
+        '200':
+          description: Payment cancelled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/refund:
+    post:
+      operationId: refundPayment
+      summary: Append a verified full or partial refund
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefundPaymentRequest'}
+      responses:
+        '200':
+          description: Refund appended to the ledger
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+  /payments/{paymentId}/reconcile:
+    post:
+      operationId: reconcilePayment
+      summary: Reconcile local state from a verified authoritative provider result
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/CallerService'
+        - $ref: '#/components/parameters/ActorId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReconcilePaymentRequest'}
+      responses:
+        '200':
+          description: Provider state reconciled without state regression
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: Internal shared secret. Never send payment credentials here.
+  parameters:
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Identifier'}
+    CallerService:
+      name: X-Caller-Service
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Identifier'}
+    ActorId:
+      name: X-Actor-ID
+      in: header
+      required: false
+      schema: {$ref: '#/components/schemas/Identifier'}
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema: {$ref: '#/components/schemas/Identifier'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Identifier'}
+  responses:
+    Error:
+      description: Stable error envelope; inspect error.retryable before retrying
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+  schemas:
+    Identifier:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+    MoneyInput:
+      anyOf:
+        - type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+        - type: string
+          pattern: '^[1-9][0-9]*(\.[0-9]{1,2})?$|^0\.(0[1-9]|[1-9][0-9]?)$'
+    Money:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)(\.[0-9]{2})$'
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+    PaymentStatus:
+      type: string
+      enum: [PENDING, AUTHORIZED, CAPTURED, FAILED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED]
+    RefundKind:
+      type: string
+      enum: [REQUESTED, RECONCILIATION]
+    CreatePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [bookingId, customerId, amount, currency, paymentMethod, provider]
+      properties:
+        bookingId: {$ref: '#/components/schemas/Identifier'}
+        customerId: {$ref: '#/components/schemas/Identifier'}
+        amount: {$ref: '#/components/schemas/MoneyInput'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        paymentMethod:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: '^(?=.*[A-Za-z])[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$'
+          description: Non-sensitive method category; never a card number or credential.
+        provider: {type: string, minLength: 1, maxLength: 40}
+    AuthorizePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [approved, expectedVersion]
+      properties:
+        approved: {type: boolean}
+        providerReference: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        failureCode: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        reason: {type: [string, 'null'], minLength: 1, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 1}
+    CapturePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [succeeded, providerReference, expectedVersion]
+      properties:
+        succeeded: {type: boolean}
+        providerReference: {type: string, minLength: 1, maxLength: 128}
+        failureCode: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        reason: {type: [string, 'null'], minLength: 1, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 1}
+    CancelPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, expectedVersion]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 2000}
+        providerReference: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        expectedVersion: {type: integer, minimum: 1}
+    RefundPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, reason, providerRefundReference, expectedVersion]
+      properties:
+        amount: {$ref: '#/components/schemas/MoneyInput'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+        providerRefundReference: {type: string, minLength: 1, maxLength: 128}
+        expectedVersion: {type: integer, minimum: 1}
+    ReconcilePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [providerStatus, expectedVersion]
+      properties:
+        providerStatus:
+          type: string
+          enum: [AUTHORIZED, CAPTURED, FAILED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED]
+        providerReference: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        providerRefundReference: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        observedRefundedAmount:
+          anyOf:
+            - type: number
+              minimum: 0
+              multipleOf: 0.01
+            - type: string
+              pattern: '^(0|[1-9][0-9]*)(\.[0-9]{1,2})?$'
+            - type: 'null'
+        failureCode: {type: [string, 'null'], minLength: 1, maxLength: 128}
+        reason: {type: [string, 'null'], minLength: 1, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 1}
+    Payment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - paymentId
+        - bookingId
+        - customerId
+        - amount
+        - currency
+        - paymentMethod
+        - provider
+        - providerReference
+        - status
+        - capturedAmount
+        - refundedAmount
+        - failureCode
+        - failureReason
+        - cancellationReason
+        - resourceVersion
+        - createdAt
+        - updatedAt
+        - authorizedAt
+        - capturedAt
+        - cancelledAt
+        - refundedAt
+      properties:
+        id: {$ref: '#/components/schemas/Identifier'}
+        paymentId: {$ref: '#/components/schemas/Identifier'}
+        bookingId: {$ref: '#/components/schemas/Identifier'}
+        customerId: {$ref: '#/components/schemas/Identifier'}
+        amount: {$ref: '#/components/schemas/Money'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        paymentMethod: {type: string}
+        provider: {type: string}
+        providerReference: {type: [string, 'null']}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        capturedAmount: {$ref: '#/components/schemas/Money'}
+        refundedAmount: {$ref: '#/components/schemas/Money'}
+        failureCode: {type: [string, 'null']}
+        failureReason: {type: [string, 'null']}
+        cancellationReason: {type: [string, 'null']}
+        resourceVersion: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        authorizedAt: {type: [string, 'null'], format: date-time}
+        capturedAt: {type: [string, 'null'], format: date-time}
+        cancelledAt: {type: [string, 'null'], format: date-time}
+        refundedAt: {type: [string, 'null'], format: date-time}
+    PaymentPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total, totalPages]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Payment'}}
+        page: {type: integer, minimum: 1}
+        pageSize: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+        totalPages: {type: integer, minimum: 0}
+    Refund:
+      type: object
+      additionalProperties: false
+      required: [refundId, paymentId, amount, currency, reason, kind, providerReference, createdAt]
+      properties:
+        refundId: {$ref: '#/components/schemas/Identifier'}
+        paymentId: {$ref: '#/components/schemas/Identifier'}
+        amount: {$ref: '#/components/schemas/Money'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        reason: {type: string}
+        kind: {$ref: '#/components/schemas/RefundKind'}
+        providerReference: {type: string}
+        createdAt: {type: string, format: date-time}
+    RefundList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Refund'}}
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [correlationId, error]
+      properties:
+        correlationId: {type: string}
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable, details]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            retryable: {type: boolean}
+            details: {type: object, additionalProperties: true}

@@ -1,1 +1,5 @@
-"""Placeholder: services/payment-service/app/observability/tracing.py. Chưa có mã nguồn triển khai."""
+"""Trace context helpers; correlation is the cross-service fallback."""
+
+from app.middleware.correlation_id import current_correlation_id
+
+__all__ = ["current_correlation_id"]

@@ -1,1 +1,5 @@
-"""Placeholder: services/booking-service/app/repositories/repository.py. Chưa có mã nguồn triển khai."""
+"""Convenient repository exports."""
+
+from app.repositories.interfaces import BookingReadRepository
+
+__all__ = ["BookingReadRepository"]

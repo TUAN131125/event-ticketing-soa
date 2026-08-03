@@ -1,1 +1,5 @@
-"""Placeholder: services/ticket-service/app/infrastructure/clients/__init__.py. Chưa có mã nguồn triển khai."""
+"""Upstream booking snapshots are supplied by the trusted orchestrator.
+
+Ticket Service owns no Event, Booking or Payment tables and never joins another
+service's database.
+"""

@@ -1,1 +1,4 @@
-"""Placeholder: services/booking-service/app/infrastructure/clients/__init__.py. Chưa có mã nguồn triển khai."""
+"""Booking Service deliberately has no downstream service clients.
+
+Cross-service orchestration belongs to the Booking Orchestrator/ESB.
+"""
