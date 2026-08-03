@@ -256,6 +256,9 @@ def create_app(
             **stats,
             "broadcastBackend": backend.name,
             "redisAvailability": backend.availability(),
+            "ticketReplayAvailability": (
+                "available" if replay_store.available() else "unavailable"
+            ),
         }
 
     @application.get("/health/live", tags=["health"])
@@ -264,7 +267,9 @@ def create_app(
 
     @application.get("/health/ready", tags=["health"])
     async def readiness() -> Response:
-        ready = not application.state.draining and (not current.redis_required or backend.ready())
+        ready = not application.state.draining and (
+            not current.redis_required or (backend.ready() and replay_store.available())
+        )
         READINESS.set(1 if ready else 0)
         return Response(
             content=json.dumps(

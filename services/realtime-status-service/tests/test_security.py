@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import jwt
@@ -12,6 +13,8 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.security.booking_access import HttpBookingAccessChecker
 from app.security.token_validation import AuthenticatedPrincipal, JwksTokenValidator
+
+SERVICE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def b64uint(value: int) -> str:
@@ -118,6 +121,18 @@ def test_production_configuration_rejects_insecure_values() -> None:
             internal_service_token="a" * 32,
             booking_service_token="b" * 32,
         )
+
+
+def test_booking_authorization_configuration_targets_booking_service() -> None:
+    assert Settings().booking_authorization_url == "http://localhost:8004/bookings/{bookingId}"
+    env_example = (SERVICE_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert (
+        "REALTIME_BOOKING_AUTHORIZATION_URL=http://booking-service:8000/bookings/{bookingId}"
+        in env_example
+    )
+    assert "8007/bookings/{bookingId}" not in env_example
+    with pytest.raises(ValueError, match=r"must contain \{bookingId\}"):
+        Settings(booking_authorization_url="http://localhost:8004/bookings/static")
 
 
 def test_event_schema_rejects_naive_time_unknown_fields_and_sensitive_shape() -> None:

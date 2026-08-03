@@ -1,7 +1,7 @@
 import type { RealtimeWsTicket } from './esb-client';
 
 export interface StatusEvent { messageId: string; bookingId: string; status: string; sequence: number; occurredAt: string; correlationId: string; message?: string; }
-type SocketState = 'connecting' | 'open' | 'closed' | 'error';
+export type SocketState = 'connecting' | 'open' | 'closed' | 'error';
 type TicketMode = { mode?: 'esb-ticket'; ticketProvider: () => Promise<RealtimeWsTicket> };
 type NativeMode = { mode: 'native-subprotocol'; token: string };
 
@@ -11,7 +11,11 @@ export class BookingStatusSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(private readonly url: string, private readonly authentication: TicketMode | NativeMode) {}
 
-  connect(onMessage: (event: StatusEvent) => void, onState: (state: SocketState) => void): () => void {
+  connect(
+    onMessage: (event: StatusEvent) => void,
+    onState: (state: SocketState) => void,
+    onResync?: () => void,
+  ): () => void {
     this.closedByClient = false;
     const open = async (): Promise<void> => {
       onState('connecting');
@@ -38,6 +42,12 @@ export class BookingStatusSocket {
             const payload = JSON.parse(message.data as string) as Record<string, unknown>;
             if (payload.type === 'connected') {
               onState('open');
+            } else if (payload.type === 'heartbeat') {
+              if (socket === this.socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'pong' }));
+              }
+            } else if (payload.type === 'resync_required') {
+              onResync?.();
             } else if (typeof payload.bookingId === 'string' && typeof payload.status === 'string') {
               onMessage(payload as unknown as StatusEvent);
             }

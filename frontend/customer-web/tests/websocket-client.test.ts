@@ -3,17 +3,19 @@ import { EsbClient } from '../src/api/esb-client';
 import { BookingStatusSocket } from '../src/api/websocket-client';
 
 class FakeWebSocket {
+  static readonly OPEN = 1;
   static instances: FakeWebSocket[] = [];
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   readonly sent: string[] = [];
+  readyState = FakeWebSocket.OPEN;
   constructor(readonly url: string, readonly protocols?: string | string[]) {
     FakeWebSocket.instances.push(this);
   }
   send(value: string): void { this.sent.push(value); }
-  close(): void { /* controlled by each test */ }
+  close(): void { this.readyState = 3; }
 }
 
 describe('BookingStatusSocket ESB ticket mode', () => {
@@ -59,6 +61,52 @@ describe('BookingStatusSocket ESB ticket mode', () => {
     const second = FakeWebSocket.instances[1];
     second.onopen?.();
     expect(JSON.parse(second.sent[0]).ticket).toBe('ticket-2');
+    disconnect();
+  });
+
+  it('replies to heartbeat with pong without emitting a status event or changing state', async () => {
+    const states: string[] = [];
+    const onMessage = vi.fn();
+    const client = new BookingStatusSocket('ws://realtime/ws/bookings/BK-1', {
+      ticketProvider: vi.fn().mockResolvedValue({
+        ticket: 'ticket-1', bookingId: 'BK-1', expiresAt: 'soon',
+      }),
+    });
+    const disconnect = client.connect(onMessage, (state) => states.push(state));
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const socket = FakeWebSocket.instances[0];
+    socket.onopen?.();
+    socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify({ type: 'connected' }) }));
+    const statesBeforeHeartbeat = [...states];
+    socket.onmessage?.(new MessageEvent('message', {
+      data: JSON.stringify({ type: 'heartbeat', timestamp: '2026-08-03T03:00:00Z' }),
+    }));
+    expect(JSON.parse(socket.sent.at(-1) as string)).toEqual({ type: 'pong' });
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(states).toEqual(statesBeforeHeartbeat);
+    disconnect();
+  });
+
+  it('requests one authoritative REST resync without emitting status or reconnecting', async () => {
+    const onMessage = vi.fn();
+    const onResync = vi.fn();
+    const client = new BookingStatusSocket('ws://realtime/ws/bookings/BK-1', {
+      ticketProvider: vi.fn().mockResolvedValue({
+        ticket: 'ticket-1', bookingId: 'BK-1', expiresAt: 'soon',
+      }),
+    });
+    const disconnect = client.connect(onMessage, () => undefined, onResync);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const socket = FakeWebSocket.instances[0];
+    socket.onmessage?.(new MessageEvent('message', {
+      data: JSON.stringify({
+        type: 'resync_required', reason: 'sequence_gap', bookingId: 'BK-1',
+        authoritativeUrl: '/api/bookings/BK-1',
+      }),
+    }));
+    expect(onResync).toHaveBeenCalledTimes(1);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(1);
     disconnect();
   });
 });

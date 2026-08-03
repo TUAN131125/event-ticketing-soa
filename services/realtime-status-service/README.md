@@ -99,11 +99,13 @@ JWT được xác minh chữ ký RS256, `kid`, `iss`, `aud`, `exp`, `iat`, và `
 - chấp nhận response quyết định `{ "allowed": true }`, hoặc so `customerId` authoritative với signed JWT `customerId`/`sub`;
 - timeout ngắn và fail closed trên 4xx/5xx, response không đúng contract hoặc network error.
 
+Mặc định khi chạy trực tiếp trên host là `http://localhost:8004/bookings/{bookingId}`. Trong network Compose, dùng DNS/internal port của provider: `http://booking-service:8000/bookings/{bookingId}`; không dùng host port hoặc Notification Service port cho traffic container-to-container.
+
 Repository hiện chưa có contract hoàn chỉnh mapping Identity `sub` sang Customer. Identity hiện cũng chưa phát `customerId`. Vì vậy production cần bổ sung ngoài service một authorization endpoint ở ESB/Booking trả quyết định `allowed`, hoặc bổ sung signed identity/customer mapping chính thức. Cho đến khi có dependency đó, customer không xác minh được mapping sẽ bị từ chối; service không fallback allow.
 
 ### ESB signed ticket mode
 
-The customer frontend uses `POST /api/realtime/ws-tickets` on the ESB, then opens the booking WebSocket without a query token and sends `{"type":"authenticate","ticket":"..."}` within five seconds. Realtime verifies RS256 signature, issuer, audience, subject, booking ID, scope, `iat`, `exp`, and `jti`; the ticket TTL cannot exceed 60 seconds and the booking claim must match the path. A `jti` is consumed atomically before subscription. The in-memory replay store is bounded for one-process local use; when `REALTIME_REDIS_URL` is configured, replay protection uses atomic Redis `SET NX EX` across replicas. Raw tickets are never stored or logged.
+The customer frontend uses `POST /api/realtime/ws-tickets` on the ESB, then opens the booking WebSocket without a query token and sends `{"type":"authenticate","ticket":"..."}` within five seconds. Realtime verifies RS256 signature, issuer, audience, subject, booking ID, scope, `iat`, `exp`, and `jti`; the ticket TTL cannot exceed 60 seconds and the booking claim must match the path. A `jti` is consumed atomically before subscription. The in-memory replay store is bounded for one-process local use only when Redis is not configured. When `REALTIME_REDIS_URL` is configured, replay protection exclusively uses atomic Redis `SET NX EX` across replicas and never falls back to memory. Raw tickets are never stored or logged.
 
 This is additive. Native Identity JWT authentication through the `bearer` WebSocket subprotocol remains supported and still calls `BookingAccessChecker`. Ticket mode does not repeat the ownership call because the ESB performed the access decision before signing. Production requires `REALTIME_WS_TICKET_PUBLIC_KEY_PATH`; the ESB private key must never be installed in this service.
 
@@ -129,7 +131,7 @@ Server gửi heartbeat theo interval. Activity/pong cập nhật `last_seen`; co
 - Mặc định `memory`: không dependency, một process, publish trực tiếp. Phù hợp local/test.
 - Khi có `REALTIME_REDIS_URL`: Redis pub/sub cho nhiều replica. Redis chỉ là transport tạm, không event store; disconnect/restart có thể mất message. Consumer reconnect với capped exponential backoff và jitter. Per-instance delivery cache tránh broadcast lặp cùng `messageId`.
 
-Nếu `REALTIME_REDIS_REQUIRED=true`, Redis unavailable làm readiness fail. Nếu không cấu hình Redis, readiness không phụ thuộc Redis. Khi URL Redis được cấu hình, publish backend lỗi vẫn được báo 503 cho internal producer; booking workflow phải coi realtime là side effect retryable, không phải điều kiện commit.
+Nếu `REALTIME_REDIS_REQUIRED=true`, Redis broadcast hoặc ticket replay unavailable làm readiness trả 503. Với `REALTIME_REDIS_REQUIRED=false`, lỗi kết nối Redis lúc startup không chặn process: liveness và native Identity-JWT mode vẫn hoạt động, nhưng ESB ticket authentication fail closed cho đến khi Redis phục hồi. Store giữ Redis client và thử lại atomic `SET NX EX` ở lần consume sau, không fallback sang memory. Khi URL Redis được cấu hình, publish backend lỗi vẫn được báo 503 cho internal producer; booking workflow phải coi realtime là side effect retryable, không phải điều kiện commit.
 
 ## Cấu hình
 
