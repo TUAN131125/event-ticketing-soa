@@ -7,6 +7,7 @@ export interface Reservation { reservationId: string; bookingId?: string; eventI
 export interface Booking { bookingId: string; eventId?: string; status: string; total?: number; currency?: string; createdAt?: string; seats?: string[]; ticketIds?: string[]; event?: EventSummary; }
 export interface Ticket { ticketId: string; bookingId: string; status: string; qrCode?: string; seatLabel?: string; event?: EventSummary; }
 export interface Page<T> { items: T[]; page: number; pageSize: number; total: number; }
+export interface RealtimeWsTicket { ticket: string; bookingId: string; expiresAt: string; }
 
 function asObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' ? value as Record<string, unknown> : {}; }
 function text(value: unknown, fallback = ''): string { return typeof value === 'string' ? value : fallback; }
@@ -78,4 +79,10 @@ export class EsbClient {
   async listBookings(): Promise<Page<Booking>> { const payload = await this.request<unknown>('/api/bookings'); const raw = asObject(payload); const items = (Array.isArray(payload) ? payload : array<Booking>(raw.items ?? raw.data)) as Booking[]; return { items, page: Number(raw.page ?? 1), pageSize: Number(raw.pageSize ?? items.length), total: Number(raw.total ?? items.length) }; }
   async getBooking(bookingId: string): Promise<Booking> { return this.request(`/api/bookings/${encodeURIComponent(bookingId)}`); }
   async getTicket(ticketId: string): Promise<Ticket> { return this.request(`/api/tickets/${encodeURIComponent(ticketId)}`); }
+  async issueRealtimeWsTicket(bookingId: string): Promise<RealtimeWsTicket> {
+    return this.request('/api/realtime/ws-tickets', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId }),
+    });
+  }
 }

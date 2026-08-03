@@ -19,6 +19,7 @@ from app.observability.metrics import (
 )
 from app.observability.tracing import bind, reset, safe_id, trace_id
 from app.schemas.messages import (
+    AuthenticateMessage,
     ConnectedControl,
     PongMessage,
     ProtocolErrorControl,
@@ -31,7 +32,8 @@ LOGGER = logging.getLogger("realtime.websocket")
 
 CLOSE_UNAUTHENTICATED = 4401
 CLOSE_FORBIDDEN = 4403
-CLOSE_INVALID_ORIGIN = 4408
+CLOSE_INVALID_ORIGIN = 4406
+CLOSE_AUTHENTICATION_TIMEOUT = 4408
 CLOSE_RATE_LIMITED = 4429
 CLOSE_PROTOCOL_ERROR = 4400
 CLOSE_SERVER_SHUTDOWN = 1012
@@ -77,28 +79,81 @@ def create_websocket_router() -> APIRouter:
             token, subprotocol = websocket_token(
                 websocket.headers, websocket.query_params, allow_query=settings.allow_query_token
             )
-            if token is None:
-                await _reject(
-                    websocket, CLOSE_UNAUTHENTICATED, "authentication required", "unauthenticated"
-                )
-                return
-            try:
-                principal = await state.token_validator.validate(token)
-            except Unauthenticated:
-                await _reject(
-                    websocket, CLOSE_UNAUTHENTICATED, "authentication failed", "unauthenticated"
-                )
-                return
-            if not await state.access_checker.can_subscribe(principal, booking_id, correlation_id):
-                await _reject(websocket, CLOSE_FORBIDDEN, "booking access denied", "forbidden")
-                return
+            accepted_for_ticket = False
+            if token is not None:
+                try:
+                    principal = await state.token_validator.validate(token)
+                except Unauthenticated:
+                    await _reject(
+                        websocket,
+                        CLOSE_UNAUTHENTICATED,
+                        "authentication failed",
+                        "unauthenticated",
+                    )
+                    return
+                if not await state.access_checker.can_subscribe(
+                    principal, booking_id, correlation_id
+                ):
+                    await _reject(websocket, CLOSE_FORBIDDEN, "booking access denied", "forbidden")
+                    return
+                principal_id = principal.subject
+            else:
+                await websocket.accept()
+                accepted_for_ticket = True
+                if state.ws_ticket_validator is None:
+                    await _reject(
+                        websocket,
+                        CLOSE_UNAUTHENTICATED,
+                        "ticket authentication is unavailable",
+                        "unauthenticated",
+                    )
+                    return
+                try:
+                    raw_auth = await asyncio.wait_for(
+                        websocket.receive_text(), timeout=settings.ws_ticket_auth_timeout_seconds
+                    )
+                except TimeoutError:
+                    await _reject(
+                        websocket,
+                        CLOSE_AUTHENTICATION_TIMEOUT,
+                        "authentication timeout",
+                        "authentication_timeout",
+                    )
+                    return
+                if len(raw_auth.encode("utf-8")) > settings.max_client_message_bytes:
+                    await _reject(
+                        websocket, CLOSE_PROTOCOL_ERROR, "invalid authenticate frame", "protocol"
+                    )
+                    return
+                try:
+                    authenticate = AuthenticateMessage.model_validate_json(raw_auth)
+                    validated_ticket = await state.ws_ticket_validator.validate(
+                        authenticate.ticket, booking_id
+                    )
+                except (ValidationError, Unauthenticated):
+                    await _reject(
+                        websocket,
+                        CLOSE_UNAUTHENTICATED,
+                        "ticket authentication failed",
+                        "unauthenticated",
+                    )
+                    return
+                if not await state.ticket_replay_store.consume(
+                    validated_ticket.jti, validated_ticket.expires_at
+                ):
+                    await _reject(
+                        websocket, CLOSE_FORBIDDEN, "ticket already used", "ticket_replay"
+                    )
+                    return
+                principal_id = validated_ticket.subject
             try:
                 connection = await state.connection_manager.register(
                     websocket,
                     booking_id=booking_id,
-                    principal_id=principal.subject,
+                    principal_id=principal_id,
                     client_ip=client_ip,
                     subprotocol=subprotocol,
+                    accept_socket=not accepted_for_ticket,
                 )
             except ConnectionLimitExceeded as exc:
                 code = CLOSE_SERVER_SHUTDOWN if exc.reason == "draining" else CLOSE_RATE_LIMITED

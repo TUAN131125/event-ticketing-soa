@@ -64,6 +64,7 @@ class ConnectionManager:
         principal_id: str,
         client_ip: str,
         subprotocol: str | None = None,
+        accept_socket: bool = True,
     ) -> Connection:
         async with self._lock:
             if self._draining:
@@ -74,7 +75,8 @@ class ConnectionManager:
                 raise ConnectionLimitExceeded("principal_limit")
             if self._ip_counts.get(client_ip, 0) >= self._max_per_ip:
                 raise ConnectionLimitExceeded("ip_limit")
-            await websocket.accept(subprotocol=subprotocol)
+            if accept_socket:
+                await websocket.accept(subprotocol=subprotocol)
             connection = Connection(websocket, booking_id, principal_id, client_ip)
             self._connections[connection.id] = connection
             self._channels.setdefault(booking_id, set()).add(connection)

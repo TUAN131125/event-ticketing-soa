@@ -31,7 +31,13 @@ from app.observability.logs import configure_logging
 from app.observability.metrics import BROADCAST_FAILURES, INTERNAL_EVENTS, READINESS
 from app.schemas.messages import EventIngestResponse, RealtimeStatusEvent, ShutdownControl
 from app.security.booking_access import BookingAccessChecker, HttpBookingAccessChecker
+from app.security.ticket_replay import (
+    InMemoryTicketReplayStore,
+    RedisTicketReplayStore,
+    TicketReplayStore,
+)
 from app.security.token_validation import JwksTokenValidator, TokenValidator
+from app.security.ws_ticket import SignedWebSocketTicketValidator, WebSocketTicketValidator
 from app.websocket.connection_manager import ConnectionManager
 from app.websocket.endpoint import CLOSE_SERVER_SHUTDOWN, create_websocket_router
 from app.websocket.heartbeat import HeartbeatRunner
@@ -79,6 +85,8 @@ def create_app(
     token_validator: TokenValidator | None = None,
     access_checker: BookingAccessChecker | None = None,
     broadcast_backend: BroadcastBackend | None = None,
+    ws_ticket_validator: WebSocketTicketValidator | None = None,
+    ticket_replay_store: TicketReplayStore | None = None,
 ) -> FastAPI:
     current = settings or get_settings()
     configure_logging(current.log_level)
@@ -110,11 +118,26 @@ def create_app(
         sequence_ttl=current.sequence_cache_ttl_seconds,
         sequence_max_entries=current.sequence_max_entries,
     )
+    replay_store = ticket_replay_store or (
+        RedisTicketReplayStore(current.redis_url)
+        if current.redis_url
+        else InMemoryTicketReplayStore(current.ws_ticket_replay_max_entries)
+    )
+    configured_ticket_validator = ws_ticket_validator
+    if configured_ticket_validator is None and current.ws_ticket_public_key_path is not None:
+        configured_ticket_validator = SignedWebSocketTicketValidator(
+            public_key_path=current.ws_ticket_public_key_path,
+            issuer=current.ws_ticket_issuer,
+            audience=current.ws_ticket_audience,
+            key_id=current.ws_ticket_key_id,
+            max_ttl_seconds=current.ws_ticket_max_ttl_seconds,
+        )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.draining = False
         await backend.start()
+        await replay_store.start()
         cleanup_task = asyncio.create_task(
             _cleanup_loop(processor, current.cleanup_interval_seconds),
             name="realtime-cache-cleanup",
@@ -126,6 +149,7 @@ def create_app(
             application.state.draining = True
             READINESS.set(0)
             await backend.stop()
+            await replay_store.stop()
             shutdown_payload = ShutdownControl().model_dump(mode="json")
             try:
                 await asyncio.wait_for(
@@ -151,6 +175,8 @@ def create_app(
     application.state.event_processor = processor
     application.state.token_validator = token_validator or JwksTokenValidator(current)
     application.state.access_checker = access_checker or HttpBookingAccessChecker(current)
+    application.state.ws_ticket_validator = configured_ticket_validator
+    application.state.ticket_replay_store = replay_store
     application.state.handshake_limiter = HandshakeRateLimiter(
         current.handshake_rate_limit, current.handshake_rate_window_seconds
     )

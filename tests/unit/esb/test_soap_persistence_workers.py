@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 import pytest
 from app.adapters.soap.seat import NS, SeatSoapAdapter
-from app.domain.errors import BusinessFault, IdempotencyConflict
+from app.domain.errors import BusinessFault, DependencyFailure, IdempotencyConflict
 from app.domain.models import (
     OperationResult,
     OutboxItem,
@@ -36,25 +36,29 @@ def executor() -> ResilienceExecutor:
 
 
 @pytest.mark.asyncio
-async def test_seat_soap_adapter_uses_canonical_action_context_and_reserve_fields() -> (
+async def test_seat_soap_adapter_translates_to_provider_contract_and_flattens_reservation() -> (
     None
 ):
     captured: dict[str, object] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["action"] = request.headers["SOAPAction"]
+        captured["token"] = request.headers["X-Service-Token"]
         captured["body"] = request.content.decode()
-        response = f'''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="{NS}"><soap:Body><tns:ReserveSeatsResponse><tns:reservationId>RES-1</tns:reservationId><tns:bookingId>BK-1</tns:bookingId><tns:eventId>EVT-1</tns:eventId><tns:status>ACTIVE</tns:status><tns:expiresAt>2026-08-03T03:10:00Z</tns:expiresAt><tns:resourceVersion>1</tns:resourceVersion></tns:ReserveSeatsResponse></soap:Body></soap:Envelope>'''
+        response = f'''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="{NS}"><soap:Body><tns:ReserveSeatsResponse><tns:correlationId>CORRELATION-0001</tns:correlationId><tns:reservation><tns:reservationId>RES-1</tns:reservationId><tns:bookingId>BK-1</tns:bookingId><tns:eventId>EVT-1</tns:eventId><tns:seatIds><tns:seatId>SEAT-1</tns:seatId></tns:seatIds><tns:status>ACTIVE</tns:status><tns:expiresAt>2026-08-03T03:10:00Z</tns:expiresAt><tns:extendCount>0</tns:extendCount><tns:resourceVersion>1</tns:resourceVersion><tns:createdAt>2026-08-03T03:00:00Z</tns:createdAt><tns:updatedAt>2026-08-03T03:00:00Z</tns:updatedAt></tns:reservation></tns:ReserveSeatsResponse></soap:Body></soap:Envelope>'''
         return httpx.Response(200, content=response.encode())
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     xsd = (
         Path(__file__).resolve().parents[3]
+        / "services"
+        / "seat-inventory-service"
         / "contracts"
-        / "soap"
         / "seat-inventory.xsd"
     )
-    adapter = SeatSoapAdapter("https://seat.test/soap", client, executor(), str(xsd))
+    adapter = SeatSoapAdapter(
+        "https://seat.test/soap", client, executor(), str(xsd), "seat-provider-secret"
+    )
     payload = {
         "bookingId": "BK-1",
         "eventId": "EVT-1",
@@ -65,7 +69,11 @@ async def test_seat_soap_adapter_uses_canonical_action_context_and_reserve_field
         payload, "stable-reserve-key", request_context()
     )
     assert result["reservationId"] == "RES-1"
-    assert captured["action"] == "urn:event-ticketing:seat:v1/ReserveSeats"
+    assert result["resourceVersion"] == 1
+    assert result["status"] == "ACTIVE"
+    assert result["seatIds"] == ["SEAT-1"]
+    assert captured["action"] == "urn:event-ticketing:seat-inventory:v1/ReserveSeats"
+    assert captured["token"] == "seat-provider-secret"
     body = str(captured["body"])
     for expected in (
         "BK-1",
@@ -76,12 +84,15 @@ async def test_seat_soap_adapter_uses_canonical_action_context_and_reserve_field
         "booking-orchestrator",
     ):
         assert expected in body
+    assert "holdSeconds" in body
+    assert "ttlSeconds" not in body
+    assert "ticketTypeCode" not in body
     await client.aclose()
 
 
 @pytest.mark.asyncio
 async def test_seat_soap_fault_is_normalized_without_raw_xml() -> None:
-    fault = f'''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="{NS}"><soap:Body><soap:Fault><faultcode>soap:Client</faultcode><faultstring>Unavailable</faultstring><detail><tns:SeatServiceFault><tns:code>SEAT_UNAVAILABLE</tns:code><tns:message>Seat unavailable.</tns:message><tns:correlationId>CORRELATION-0001</tns:correlationId><tns:retryable>false</tns:retryable></tns:SeatServiceFault></detail></soap:Fault></soap:Body></soap:Envelope>'''
+    fault = f'''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="{NS}"><soap:Body><soap:Fault><faultcode>soap:Client</faultcode><faultstring>Unavailable</faultstring><detail><tns:SeatInventoryFault><tns:code>SEAT_UNAVAILABLE</tns:code><tns:message>Seat unavailable.</tns:message><tns:correlationId>CORRELATION-0001</tns:correlationId><tns:retryable>false</tns:retryable></tns:SeatInventoryFault></detail></soap:Fault></soap:Body></soap:Envelope>'''
     client = httpx.AsyncClient(
         transport=httpx.MockTransport(
             lambda request: httpx.Response(409, content=fault.encode())
@@ -89,16 +100,38 @@ async def test_seat_soap_fault_is_normalized_without_raw_xml() -> None:
     )
     xsd = (
         Path(__file__).resolve().parents[3]
+        / "services"
+        / "seat-inventory-service"
         / "contracts"
-        / "soap"
         / "seat-inventory.xsd"
     )
-    adapter = SeatSoapAdapter("https://seat.test/soap", client, executor(), str(xsd))
+    adapter = SeatSoapAdapter(
+        "https://seat.test/soap", client, executor(), str(xsd), "seat-provider-secret"
+    )
     with pytest.raises(BusinessFault) as raised:
         await adapter.check_availability("EVT-1", ["SEAT-1"], request_context())
     assert raised.value.code == "SEAT_UNAVAILABLE"
     assert raised.value.details == {"soapFaultCode": "SEAT_UNAVAILABLE"}
     assert "Envelope" not in str(raised.value.details)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_seat_soap_adapter_fails_closed_without_provider_token() -> None:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(500))
+    )
+    xsd = (
+        Path(__file__).resolve().parents[3]
+        / "services"
+        / "seat-inventory-service"
+        / "contracts"
+        / "seat-inventory.xsd"
+    )
+    adapter = SeatSoapAdapter("https://seat.test/soap", client, executor(), str(xsd))
+    with pytest.raises(DependencyFailure) as raised:
+        await adapter.check_availability("EVT-1", ["SEAT-1"], request_context())
+    assert raised.value.code == "SEAT_AUTH_CONFIGURATION_INVALID"
     await client.aclose()
 
 
