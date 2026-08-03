@@ -1,0 +1,1 @@
+"""Canonical Seat SOAP adapter."""

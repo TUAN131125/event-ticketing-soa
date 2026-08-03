@@ -1,0 +1,1 @@
+"""Typed canonical REST adapters."""
