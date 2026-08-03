@@ -1,324 +1,344 @@
 openapi: 3.1.0
 info:
-  title: Ticket Service
+  title: Ticket Service API
   version: 1.0.0
-  description: >-
-    Internal API for atomic ticket issuance, versioned signed QR presentation,
-    cancellation and role-gated venue check-in. One ticket represents one event seat.
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
 servers:
-  - url: http://ticket-service:8000
+- url: http://ticket-service:8006
 security:
-  - serviceToken: []
+- bearerAuth: []
 paths:
-  /tickets/issue:
+  /tickets:issue:
     post:
+      summary: Phát hành vé
       operationId: issueTickets
-      summary: Atomically issue one ticket per confirmed booking seat
-      parameters:
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/IssueTicketsRequest'}
       responses:
         '201':
-          description: Complete ticket set created or identical result replayed
+          description: Đã phát hành
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/TicketBatch'}
-        default: {$ref: '#/components/responses/Error'}
-  /tickets:
-    get:
-      operationId: listTickets
-      summary: List ticket summaries without embedding QR images
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ticket'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketIssue'
       parameters:
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
-        - name: page
-          in: query
-          schema: {type: integer, minimum: 1, default: 1}
-        - name: pageSize
-          in: query
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
-        - name: bookingId
-          in: query
-          schema: {$ref: '#/components/schemas/Identifier'}
-        - name: customerId
-          in: query
-          schema: {$ref: '#/components/schemas/Identifier'}
-        - name: eventId
-          in: query
-          schema: {$ref: '#/components/schemas/Identifier'}
-        - name: status
-          in: query
-          schema: {$ref: '#/components/schemas/TicketStatus'}
-        - name: search
-          in: query
-          schema: {type: string, minLength: 1, maxLength: 128}
-      responses:
-        '200':
-          description: Page of ticket summaries
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/TicketPage'}
-        default: {$ref: '#/components/responses/Error'}
+      - $ref: '#/components/parameters/IdempotencyKey'
   /tickets/{ticketId}:
     get:
+      summary: Lấy vé
       operationId: getTicket
-      summary: Get ticket detail and current QR image when valid
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
       responses:
         '200':
-          description: Ticket found
+          description: Thành công
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Ticket'}
-        default: {$ref: '#/components/responses/Error'}
-  /tickets/{ticketId}/cancel:
-    post:
-      operationId: cancelTicket
-      summary: Cancel a valid, unused ticket
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       parameters:
-        - $ref: '#/components/parameters/TicketId'
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+  /bookings/{bookingId}/tickets:
+    get:
+      summary: Liệt kê vé theo booking
+      operationId: listBookingTickets
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ticket'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: bookingId
+        in: path
+        required: true
+        schema:
+          type: string
+  /tickets/validate:
+    post:
+      summary: Xác thực QR
+      operationId: validateTicket
+      responses:
+        '200':
+          description: Kết quả
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CancelTicketRequest'}
-      responses:
-        '200':
-          description: Ticket cancelled
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Ticket'}
-        default: {$ref: '#/components/responses/Error'}
+            schema:
+              $ref: '#/components/schemas/TicketValidate'
   /tickets/{ticketId}/check-in:
     post:
+      summary: Check-in
       operationId: checkInTicket
-      summary: Validate current signed QR and atomically check in the ticket
-      description: Requires X-Actor-ID and CHECKIN_STAFF or ADMIN in X-Actor-Roles.
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/CheckInTicketRequest'}
       responses:
         '200':
-          description: Ticket checked in or identical completed result replayed
+          description: Đã check-in
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Ticket'}
-        default: {$ref: '#/components/responses/Error'}
-  /tickets/{ticketId}/qr/regenerate:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /tickets/{ticketId}/cancel:
     post:
-      operationId: regenerateTicketQr
-      summary: Rotate QR version and immediately invalidate the old QR
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-        - $ref: '#/components/parameters/CallerService'
-        - $ref: '#/components/parameters/ActorId'
-        - $ref: '#/components/parameters/ActorRoles'
-        - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/RegenerateQrRequest'}
+      summary: Hủy vé
+      operationId: cancelTicket
       responses:
         '200':
-          description: QR rotated
+          description: Đã hủy
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Ticket'}
-        default: {$ref: '#/components/responses/Error'}
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /tickets/{ticketId}/reissue-qr:
+    post:
+      summary: Cấp lại QR
+      operationId: reissueQr
+      responses:
+        '200':
+          description: Đã cấp lại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /health/live:
+    get:
+      summary: Liveness
+      operationId: ticketLiveness
+      responses:
+        '200':
+          description: UP
+      security: []
+  /health/ready:
+    get:
+      summary: Readiness
+      operationId: ticketReadiness
+      responses:
+        '200':
+          description: READY
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
 components:
-  securitySchemes:
-    serviceToken:
-      type: apiKey
-      in: header
-      name: X-Service-Token
-      description: Internal shared secret. Never expose QR signing material here.
+  schemas:
+    ErrorResponse:
+      $ref: '../common/error-response.schema.json'
+    Money:
+      $ref: '../common/money.schema.json'
+    PageMeta:
+      $ref: '../common/pagination.schema.json'
+    TicketIssue:
+      type: object
+      additionalProperties: false
+      required:
+      - bookingId
+      - eventId
+      - customerId
+      - items
+      properties:
+        bookingId:
+          type: string
+        eventId:
+          type: string
+        customerId:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+            - seatId
+            properties:
+              seatId:
+                type: string
+    Ticket:
+      type: object
+      additionalProperties: false
+      required:
+      - ticketId
+      - bookingId
+      - eventId
+      - customerId
+      - seatId
+      - status
+      - resourceVersion
+      properties:
+        ticketId:
+          type: string
+        bookingId:
+          type: string
+        eventId:
+          type: string
+        customerId:
+          type: string
+        seatId:
+          type: string
+        status:
+          enum:
+          - ISSUED
+          - CHECKED_IN
+          - CANCELLED
+        qrToken:
+          type:
+          - string
+          - 'null'
+          description: Chỉ trả cho owner; không ghi log.
+        resourceVersion:
+          type: integer
+          minimum: 1
+    TicketValidate:
+      type: object
+      additionalProperties: false
+      required:
+      - qrToken
+      properties:
+        qrToken:
+          type: string
+          minLength: 16
   parameters:
-    TicketId:
-      name: ticketId
-      in: path
-      required: true
-      schema: {$ref: '#/components/schemas/Identifier'}
-    CallerService:
-      name: X-Caller-Service
-      in: header
-      required: true
-      schema: {$ref: '#/components/schemas/Identifier'}
-    ActorId:
-      name: X-Actor-ID
-      in: header
-      required: false
-      schema: {$ref: '#/components/schemas/Identifier'}
-    ActorRoles:
-      name: X-Actor-Roles
-      in: header
-      required: false
-      description: Comma-separated roles from the trusted identity boundary.
-      schema: {type: string, maxLength: 256}
     CorrelationId:
       name: X-Correlation-ID
       in: header
       required: false
-      schema: {$ref: '#/components/schemas/Identifier'}
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    TraceParent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
-      schema: {$ref: '#/components/schemas/Identifier'}
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[0-9]+"$
   responses:
-    Error:
-      description: Stable error envelope; inspect error.retryable before retrying
+    BadRequest:
+      description: Request không hợp lệ
       content:
         application/json:
-          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
-  schemas:
-    Identifier:
-      type: string
-      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
-    TicketStatus:
-      type: string
-      enum: [VALID, CHECKED_IN, CANCELLED]
-    TicketDefinition:
-      type: object
-      additionalProperties: false
-      required: [seatId, ticketType]
-      properties:
-        seatId: {$ref: '#/components/schemas/Identifier'}
-        seatLabel:
-          anyOf:
-            - {$ref: '#/components/schemas/Identifier'}
-            - {type: 'null'}
-        ticketType: {$ref: '#/components/schemas/Identifier'}
-    IssueTicketsRequest:
-      type: object
-      additionalProperties: false
-      required: [bookingId, customerId, eventId, paymentId, tickets]
-      properties:
-        bookingId: {$ref: '#/components/schemas/Identifier'}
-        customerId: {$ref: '#/components/schemas/Identifier'}
-        eventId: {$ref: '#/components/schemas/Identifier'}
-        paymentId: {$ref: '#/components/schemas/Identifier'}
-        tickets:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items: {$ref: '#/components/schemas/TicketDefinition'}
-    CancelTicketRequest:
-      type: object
-      additionalProperties: false
-      required: [reason, expectedVersion]
-      properties:
-        reason: {type: string, minLength: 1, maxLength: 2000}
-        expectedVersion: {type: integer, minimum: 1}
-    CheckInTicketRequest:
-      type: object
-      additionalProperties: false
-      required: [qrToken, gateId, expectedVersion]
-      properties:
-        qrToken: {type: string, minLength: 1, maxLength: 256}
-        gateId: {$ref: '#/components/schemas/Identifier'}
-        expectedVersion: {type: integer, minimum: 1}
-    RegenerateQrRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedVersion]
-      properties:
-        expectedVersion: {type: integer, minimum: 1}
-    TicketFields:
-      type: object
-      required: [id, ticketId, bookingId, customerId, eventId, paymentId, seatId, seatLabel, ticketType, status, qrVersion, resourceVersion, issuedAt, updatedAt, checkedInAt, checkedInGateId, checkedInBy, cancelledAt, cancellationReason]
-      properties:
-        id: {$ref: '#/components/schemas/Identifier'}
-        ticketId: {$ref: '#/components/schemas/Identifier'}
-        bookingId: {$ref: '#/components/schemas/Identifier'}
-        customerId: {$ref: '#/components/schemas/Identifier'}
-        eventId: {$ref: '#/components/schemas/Identifier'}
-        paymentId: {$ref: '#/components/schemas/Identifier'}
-        seatId: {$ref: '#/components/schemas/Identifier'}
-        seatLabel: {$ref: '#/components/schemas/Identifier'}
-        ticketType: {$ref: '#/components/schemas/Identifier'}
-        status: {$ref: '#/components/schemas/TicketStatus'}
-        qrVersion: {type: integer, minimum: 1}
-        resourceVersion: {type: integer, minimum: 1}
-        issuedAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-        checkedInAt: {type: [string, 'null'], format: date-time}
-        checkedInGateId: {type: [string, 'null']}
-        checkedInBy: {type: [string, 'null']}
-        cancelledAt: {type: [string, 'null'], format: date-time}
-        cancellationReason: {type: [string, 'null']}
-    TicketSummary:
-      allOf:
-        - {$ref: '#/components/schemas/TicketFields'}
-      unevaluatedProperties: false
-    Ticket:
-      allOf:
-        - {$ref: '#/components/schemas/TicketFields'}
-        - type: object
-          required: [qrCode]
-          properties:
-            qrCode:
-              type: [string, 'null']
-              description: SVG data URI containing only the signed opaque QR token.
-      unevaluatedProperties: false
-    TicketBatch:
-      type: object
-      additionalProperties: false
-      required: [items]
-      properties:
-        items: {type: array, items: {$ref: '#/components/schemas/Ticket'}}
-    TicketPage:
-      type: object
-      additionalProperties: false
-      required: [items, page, pageSize, total, totalPages]
-      properties:
-        items: {type: array, items: {$ref: '#/components/schemas/TicketSummary'}}
-        page: {type: integer, minimum: 1}
-        pageSize: {type: integer, minimum: 1, maximum: 100}
-        total: {type: integer, minimum: 0}
-        totalPages: {type: integer, minimum: 0}
-    ErrorEnvelope:
-      type: object
-      additionalProperties: false
-      required: [correlationId, error]
-      properties:
-        correlationId: {type: string}
-        error:
-          type: object
-          additionalProperties: false
-          required: [code, message, retryable, details]
-          properties:
-            code: {type: string}
-            message: {type: string}
-            retryable: {type: boolean}
-            details: {type: object, additionalProperties: true}
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Chưa xác thực
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Không đủ quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Xung đột trạng thái hoặc idempotency
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Dữ liệu đúng cú pháp nhưng sai nghiệp vụ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Dependency hoặc service không sẵn sàng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,5 @@
+{
+  "allowed": true,
+  "reasonCode": "ADMIN_OVERRIDE",
+  "cacheTtlSeconds": 5
+}

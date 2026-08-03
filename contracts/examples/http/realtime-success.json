@@ -1,0 +1,8 @@
+{
+  "status": "UP",
+  "activeConnections": 12,
+  "activeBookingChannels": 5,
+  "broadcastBackend": "memory",
+  "backendAvailable": true,
+  "draining": false
+}

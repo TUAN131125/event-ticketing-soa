@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:realtime-client-message:v1",
+  "title": "RealtimeClientMessage",
+  "description": "Realtime client frames. authenticate with an ESB-issued signed one-time JWT/JWS ticket is mandatory before subscribe; long-lived access tokens and customerId are forbidden.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ticket"
+      ],
+      "properties": {
+        "type": {
+          "const": "authenticate"
+        },
+        "ticket": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096,
+          "writeOnly": true,
+          "description": "Signed short-lived single-use JWT/JWS ticket; never log or place in a URL."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "bookingId"
+      ],
+      "properties": {
+        "type": {
+          "const": "subscribe"
+        },
+        "bookingId": {
+          "$ref": "#/$defs/bookingId"
+        },
+        "lastSequence": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "bookingId"
+      ],
+      "properties": {
+        "type": {
+          "const": "unsubscribe"
+        },
+        "bookingId": {
+          "$ref": "#/$defs/bookingId"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "heartbeatId"
+      ],
+      "properties": {
+        "type": {
+          "const": "heartbeat_ack"
+        },
+        "heartbeatId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "x-classification": "REVIEWED_RUNTIME_CANDIDATE"
+    }
+  ],
+  "$defs": {
+    "bookingId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    }
+  },
+  "examples": [
+    {
+      "type": "authenticate",
+      "ticket": "eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJyZWFsdGltZS1zdGF0dXMtc2VydmljZSJ9.signature"
+    },
+    {
+      "type": "subscribe",
+      "bookingId": "BKG-001",
+      "lastSequence": 2
+    },
+    {
+      "type": "unsubscribe",
+      "bookingId": "BKG-001"
+    }
+  ],
+  "x-origin": "official-design-v1"
+}

@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-1234567890abcdef",
+  "traceId": null,
+  "error": {
+    "code": "DEPENDENCY_UNAVAILABLE",
+    "message": "A required provider is unavailable",
+    "retryable": true,
+    "details": {}
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "booking.failed",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BOOKING-001",
+  "data": {
+    "bookingId": "BOOKING-001",
+    "status": "FAILED",
+    "reasonCode": "PROCESSING_FAILED",
+    "compensationState": "NOT_REQUIRED",
+    "resourceVersion": 1
+  }
+}

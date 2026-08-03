@@ -1,0 +1,12 @@
+{
+  "bookingId": "BKG-001",
+  "status": "PAYMENT_PROCESSING",
+  "total": {
+    "amountMinor": 100000,
+    "currency": "VND"
+  },
+  "reservationId": "RES-001",
+  "paymentId": "PAY-001",
+  "ticketIds": [],
+  "correlationId": "corr-1234567890abcdef"
+}

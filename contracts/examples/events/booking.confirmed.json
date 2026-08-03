@@ -1,0 +1,18 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "booking.confirmed",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BOOKING-001",
+  "data": {
+    "bookingId": "BOOKING-001",
+    "status": "CONFIRMED",
+    "reservationId": "RESERVATION-001",
+    "paymentId": "PAYMENT-001",
+    "ticketIds": [
+      "TKT-001"
+    ],
+    "resourceVersion": 1
+  }
+}

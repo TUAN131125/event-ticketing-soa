@@ -1,0 +1,15 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "booking.created",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BOOKING-001",
+  "data": {
+    "bookingId": "BOOKING-001",
+    "customerId": "CUSTOMER-001",
+    "eventId": "EVENT-001",
+    "status": "PENDING",
+    "resourceVersion": 1
+  }
+}

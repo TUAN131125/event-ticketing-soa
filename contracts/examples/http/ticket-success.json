@@ -1,0 +1,10 @@
+{
+  "ticketId": "TKT-001",
+  "bookingId": "BKG-001",
+  "eventId": "EV-001",
+  "customerId": "CUS-001",
+  "seatId": "A12",
+  "status": "ISSUED",
+  "qrToken": null,
+  "resourceVersion": 1
+}

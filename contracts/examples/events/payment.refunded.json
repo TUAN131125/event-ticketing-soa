@@ -1,0 +1,18 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "payment.refunded",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BOOKING-001",
+  "data": {
+    "paymentId": "PAYMENT-001",
+    "bookingId": "BOOKING-001",
+    "status": "PARTIALLY_REFUNDED",
+    "refundAmount": {
+      "amountMinor": 100000,
+      "currency": "VND"
+    },
+    "resourceVersion": 1
+  }
+}

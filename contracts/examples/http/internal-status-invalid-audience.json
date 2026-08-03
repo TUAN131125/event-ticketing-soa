@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-1234567890abcdef",
+  "traceId": null,
+  "error": {
+    "code": "INVALID_SERVICE_AUDIENCE",
+    "message": "The service credential audience is invalid",
+    "retryable": false,
+    "details": {}
+  }
+}

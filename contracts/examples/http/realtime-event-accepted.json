@@ -1,0 +1,7 @@
+{
+  "outcome": "ACCEPTED",
+  "messageId": "MSG-001",
+  "bookingId": "BKG-001",
+  "sequence": 3,
+  "correlationId": "corr-1234567890abcdef"
+}

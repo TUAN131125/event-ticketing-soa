@@ -1,0 +1,37 @@
+contractStatus: canonical-v1
+designedBaselineVersion: 1.0.0
+description: >-
+  Stable close-code registry for the signed one-time-ticket authentication state
+  machine. Close reasons never contain a raw ticket, JWT or ownership data.
+classification: CANONICAL_V1
+codes:
+  - code: 1000
+    name: NORMAL_CLOSURE
+    category: lifecycle
+    standard: true
+  - code: 1001
+    name: GOING_AWAY
+    category: lifecycle
+    standard: true
+  - code: 1012
+    name: SERVICE_RESTART
+    category: lifecycle
+    standard: true
+  - code: 4400
+    name: PROTOCOL_ERROR
+    category: protocol
+  - code: 4401
+    name: AUTHENTICATION_REQUIRED
+    category: authentication
+  - code: 4403
+    name: ACCESS_DENIED
+    category: authorization
+  - code: 4408
+    name: AUTHENTICATION_TIMEOUT
+    category: authentication
+  - code: 4410
+    name: HEARTBEAT_TIMEOUT
+    category: lifecycle
+  - code: 4429
+    name: CONNECTION_LIMIT
+    category: connection-limit

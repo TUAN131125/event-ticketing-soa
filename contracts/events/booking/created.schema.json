@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event:booking.created:v1",
+  "title": "booking.created",
+  "description": "Official design-derived v1 producer-owned schema for booking.created. Delivery is at-least-once and consumers deduplicate by eventId.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "x-origin": "design-derived-v1",
+  "allOf": [
+    {
+      "$ref": "urn:event-ticketing:event-envelope:v1"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "booking.created"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bookingId",
+        "customerId",
+        "eventId",
+        "status",
+        "resourceVersion"
+      ],
+      "properties": {
+        "bookingId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "customerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "status": {
+          "const": "PENDING"
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "EVTMSG-001",
+      "eventType": "booking.created",
+      "schemaVersion": 1,
+      "occurredAt": "2026-08-03T03:00:00Z",
+      "correlationId": "corr-1234567890abcdef",
+      "aggregateId": "BOOKING-001",
+      "data": {
+        "bookingId": "BOOKING-001",
+        "customerId": "CUSTOMER-001",
+        "eventId": "EVENT-001",
+        "status": "PENDING",
+        "resourceVersion": 1
+      }
+    }
+  ]
+}

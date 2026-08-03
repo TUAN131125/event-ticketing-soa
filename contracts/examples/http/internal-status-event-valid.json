@@ -1,0 +1,9 @@
+{
+  "messageId": "MSG-001",
+  "bookingId": "BKG-001",
+  "status": "PAYMENT_PROCESSING",
+  "sequence": 3,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "message": "Payment result is being verified"
+}

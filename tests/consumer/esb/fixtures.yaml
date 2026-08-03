@@ -1,0 +1,236 @@
+version: 1.0.0
+contractFreezeId: event-ticketing-contracts-v1.0.0
+requestExamples:
+  placeBooking: &placeBookingRequest
+    customerId: browser-value-not-ownership-proof
+    eventId: EV-001
+    seatIds: [A12]
+    paymentMethodToken: tok_example_nonsecret
+  bookingPath: &bookingPath {bookingId: BKG-001}
+  realtimeTicket: &realtimeTicketRequest {bookingId: BKG-001}
+scenarios:
+  - scenarioId: ESB-EVENT-READ-001
+    publicOperationId: publicListEvents
+    requestExample: null
+    providerSequence: [listEvents]
+    providerResults: {listEvents: contracts/examples/http/event-success.json}
+    expectedPublicStatus: 200
+    expectedPublicSchema: '#/paths/~1api~1events/get/responses/200/content/application~1json/schema'
+    expectedBookingState: null
+    expectedCompensations: []
+    expectedRetryClass: safeRead
+    expectedSideEffects: []
+    requiredInvariants: [event-only-routing, no-seat-call, no-payment-call]
+
+  - scenarioId: ESB-BOOKING-GET-001
+    publicOperationId: publicGetBooking
+    requestExample: *bookingPath
+    providerSequence: [decideBookingResourceAccess, getBooking]
+    providerResults: {decideBookingResourceAccess: contracts/examples/http/booking-access-owner.json, getBooking: contracts/examples/http/booking-success.json}
+    expectedPublicStatus: 200
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: COMPENSATION_PENDING
+    expectedCompensations: []
+    scheduledCompensations: []
+    completedCompensations: []
+    expectedRetryClass: safeRead
+    expectedSideEffects: []
+    requiredInvariants: [access-before-disclosure, verified-jwt-context, browser-customerId-not-proof, correlation-propagated]
+
+  - scenarioId: ESB-BOOKING-SUCCESS-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, issueTickets, bookingTickets, ConfirmSeats, bookingConfirm]
+    providerResults: {capturePayment: CAPTURED, issueTickets: contracts/examples/http/ticket-success.json, bookingConfirm: CONFIRMED}
+    expectedPublicStatus: 201
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: CONFIRMED
+    expectedCompensations: []
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: [receiveEventWebhook, ingestRealtimeStatusEvent]
+    requiredInvariants: [authoritative-customer-mapping, authoritative-event-price, reserve-before-payment, captured-before-ticket, all-confirmation-evidence, correlation-propagated]
+
+  - scenarioId: ESB-SEAT-UNAVAILABLE-001
+    publicOperationId: placeBooking
+    requestExample: contracts/soap/examples/check-availability.xml
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability]
+    providerResults: {CheckAvailability: SEAT_UNAVAILABLE}
+    expectedPublicStatus: 409
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: null
+    expectedCompensations: []
+    expectedRetryClass: none
+    expectedSideEffects: []
+    requiredInvariants: [soap-fault-normalized, no-payment, no-ticket, no-booking-confirm]
+
+  - scenarioId: ESB-RESERVE-FAIL-AFTER-BOOKING-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingFail]
+    providerResults: {createBooking: BKG-001-PENDING, ReserveSeats: DETERMINED_FAILURE, bookingFail: FAILED}
+    expectedPublicStatus: 409
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: FAILED
+    expectedCompensations: []
+    expectedRetryClass: none
+    expectedSideEffects: []
+    requiredInvariants: [booking-created-before-reserve, reserve-booking-id-from-create-output, determined-reserve-failure, booking-fail-recorded, no-payment, no-ticket, no-release-seats]
+
+  - scenarioId: ESB-RESERVE-UNKNOWN-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, ReserveSeats, bookingReservation]
+    providerResults:
+      createBooking: BKG-001-PENDING
+      ReserveSeats:
+        - {attempt: 1, outcome: TIMEOUT_UNKNOWN}
+        - {attempt: 2, outcome: SAME_RECORDED_RESERVATION, reservationId: RES-001}
+      bookingReservation: SEAT_RESERVED
+    reserveReplay:
+      idempotencyKey: reserve:BKG-001:step-7
+      firstAttemptRequestFingerprint: sha256:unchanged-reserve-request
+      replayRequestFingerprint: sha256:unchanged-reserve-request
+      unchangedFields: [bookingId, eventId, seatIds, ttlSeconds, requestContext, idempotencyKey]
+    expectedPublicStatus: 202
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: SEAT_RESERVED
+    expectedCompensations: []
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: []
+    requiredInvariants: [booking-created-before-reserve, reserve-booking-id-from-create-output, same-idempotency-key, same-request-payload, idempotent-reserve-replay, no-get-reservation-without-reservation-id, no-payment, no-ticket, no-unsafe-release]
+
+  - scenarioId: ESB-PAYMENT-FAILED-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, ReleaseSeats, bookingFail]
+    providerResults: {capturePayment: FAILED, ReleaseSeats: RELEASED, bookingFail: FAILED}
+    expectedPublicStatus: 402
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: FAILED
+    expectedCompensations: [ReleaseSeats]
+    scheduledCompensations: [ReleaseSeats]
+    completedCompensations: [ReleaseSeats]
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: []
+    requiredInvariants: [release-after-payment-failure, no-ticket, failure-evidence-persisted, correlation-propagated]
+
+  - scenarioId: ESB-PAYMENT-UNKNOWN-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, reconcilePayment]
+    providerResults: {capturePayment: UNKNOWN, bookingPaymentResult: PAYMENT_PROCESSING, reconcilePayment: scheduled}
+    expectedPublicStatus: 202
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: PAYMENT_PROCESSING
+    expectedCompensations: []
+    expectedRetryClass: reconciliationOnly
+    expectedSideEffects: []
+    requiredInvariants: [no-blind-payment-retry, no-ticket, no-confirm, no-unsafe-release, reconciliation-path, correlation-propagated]
+
+  - scenarioId: ESB-TICKET-FAIL-AFTER-CAPTURE-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, issueTickets, bookingFail]
+    providerResults: {capturePayment: CAPTURED, issueTickets: FAILED, bookingFail: COMPENSATION_PENDING}
+    expectedPublicStatus: 503
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: COMPENSATION_PENDING
+    expectedCompensations: [createRefund, ReleaseSeats]
+    scheduledCompensations: [createRefund, ReleaseSeats]
+    completedCompensations: []
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: []
+    requiredInvariants: [captured-evidence-retained, no-false-rollback, compensation-pending, refund-idempotent, release-idempotent]
+
+  - scenarioId: ESB-CANCEL-001
+    publicOperationId: publicCancelBooking
+    requestExample: *bookingPath
+    providerSequence: [decideBookingResourceAccess, getBooking, listBookingTickets, cancelTicket, getPayment, createRefund, GetReservation, ReleaseSeats, bookingCancel]
+    providerResults: {decideBookingResourceAccess: contracts/examples/http/booking-access-owner.json, cancelTicket: CANCELLED, createRefund: REFUNDED, ReleaseSeats: RELEASED, bookingCancel: CANCELLED}
+    expectedPublicStatus: 200
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: CANCELLED
+    expectedCompensations: [cancelTicket, createRefund, ReleaseSeats]
+    scheduledCompensations: [cancelTicket, createRefund, ReleaseSeats]
+    completedCompensations: [cancelTicket, createRefund, ReleaseSeats]
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: []
+    requiredInvariants: [access-before-cancellation, authoritative-evidence, compensation-idempotent, cancelled-only-after-compensation, correlation-propagated]
+
+  - scenarioId: ESB-IDEMPOTENCY-REPLAY-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: []
+    providerResults: {workflowRepository: replay-recorded-result}
+    expectedPublicStatus: 201
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: CONFIRMED
+    expectedCompensations: []
+    expectedRetryClass: none
+    expectedSideEffects: []
+    requiredInvariants: [same-key-same-payload, no-new-workflow, recorded-result-returned]
+
+  - scenarioId: ESB-AUTH-DENY-001
+    publicOperationId: publicGetBooking
+    requestExample: *bookingPath
+    providerSequence: [decideBookingResourceAccess]
+    providerResults: {decideBookingResourceAccess: contracts/examples/http/booking-access-not-owner.json}
+    expectedPublicStatus: 403
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: null
+    expectedCompensations: []
+    expectedRetryClass: none
+    expectedSideEffects: []
+    requiredInvariants: [access-deny-fail-closed, no-resource-disclosure, no-provider-call-after-deny]
+
+  - scenarioId: ESB-NOTIFICATION-FAIL-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, issueTickets, bookingTickets, ConfirmSeats, bookingConfirm, receiveEventWebhook]
+    providerResults: {capturePayment: CAPTURED, bookingConfirm: CONFIRMED, receiveEventWebhook: FAILED}
+    expectedPublicStatus: 201
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: CONFIRMED
+    expectedCompensations: []
+    expectedRetryClass: sideEffectAtLeastOnce
+    expectedSideEffects: [receiveEventWebhook]
+    requiredInvariants: [side-effect-non-critical, no-booking-rollback, confirmed-result-preserved]
+
+  - scenarioId: ESB-REALTIME-TICKET-001
+    publicOperationId: issueRealtimeWebSocketTicket
+    requestExample: *realtimeTicketRequest
+    providerSequence: [decideBookingResourceAccess]
+    providerResults: {decideBookingResourceAccess: contracts/examples/http/booking-access-owner.json}
+    expectedPublicStatus: 201
+    expectedPublicSchema: '#/components/schemas/WsTicketResponse'
+    expectedBookingState: null
+    expectedCompensations: []
+    expectedRetryClass: safeRead
+    expectedSideEffects: [signed-websocket-ticket]
+    requiredInvariants: [access-before-ticket, signed-ticket, issuer-booking-orchestrator, audience-realtime-status-service, scope-booking-status-read, unique-jti, ttl-max-60, no-query-token]
+
+  - scenarioId: ESB-SOAP-FAULT-MAP-001
+    publicOperationId: placeBooking
+    requestExample: contracts/soap/examples/soap-fault.xml
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingFail]
+    providerResults: {ReserveSeats: contracts/soap/examples/soap-fault.xml}
+    expectedPublicStatus: 409
+    expectedPublicSchema: ../common/error-response.schema.json
+    expectedBookingState: FAILED
+    expectedCompensations: []
+    expectedRetryClass: none
+    expectedSideEffects: []
+    requiredInvariants: [common-error-response, original-soap-fault-code-safe-details, no-raw-xml, booking-fail-recorded, no-payment, no-ticket, no-release-seats]
+
+  - scenarioId: ESB-CORRELATION-001
+    publicOperationId: placeBooking
+    requestExample: *placeBookingRequest
+    providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, issueTickets, bookingTickets, ConfirmSeats, bookingConfirm, receiveEventWebhook, ingestRealtimeStatusEvent]
+    providerResults: {all: success}
+    expectedPublicStatus: 201
+    expectedPublicSchema: '#/components/schemas/BookingResult'
+    expectedBookingState: CONFIRMED
+    expectedCompensations: []
+    expectedRetryClass: idempotentCommand
+    expectedSideEffects: [receiveEventWebhook, ingestRealtimeStatusEvent]
+    requiredInvariants: [single-correlation-id, correlation-propagated-to-every-provider-step, safe-error-correlation]

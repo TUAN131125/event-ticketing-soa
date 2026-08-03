@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-1234567890abcdef",
+  "traceId": null,
+  "error": {
+    "code": "IDENTITY_NOT_MAPPED",
+    "message": "No identity mapping was found",
+    "retryable": false,
+    "details": {}
+  }
+}

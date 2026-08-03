@@ -1,2 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder: contracts/soap/examples/soap-fault.xml -->
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat:v1">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>soapenv:Client</faultcode><faultstring>Seat is unavailable</faultstring>
+      <detail><seat:SeatServiceFault><seat:code>SEAT_UNAVAILABLE</seat:code><seat:message>Seat A12 is unavailable</seat:message><seat:correlationId>corr-1234567890abcdef</seat:correlationId><seat:retryable>false</seat:retryable></seat:SeatServiceFault></detail>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>

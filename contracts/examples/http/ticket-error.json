@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-1234567890abcdef",
+  "traceId": null,
+  "error": {
+    "code": "TICKET_ALREADY_USED",
+    "message": "Ticket has already been checked in",
+    "retryable": false,
+    "details": {}
+  }
+}

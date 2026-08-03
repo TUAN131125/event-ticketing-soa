@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event:ticket.cancelled:v1",
+  "title": "ticket.cancelled",
+  "description": "Official design-derived v1 producer-owned schema for ticket.cancelled. Delivery is at-least-once and consumers deduplicate by eventId.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "x-origin": "design-derived-v1",
+  "allOf": [
+    {
+      "$ref": "urn:event-ticketing:event-envelope:v1"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ticket.cancelled"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticketId",
+        "bookingId",
+        "status",
+        "reason",
+        "resourceVersion"
+      ],
+      "properties": {
+        "ticketId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "bookingId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "status": {
+          "const": "CANCELLED"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "EVTMSG-001",
+      "eventType": "ticket.cancelled",
+      "schemaVersion": 1,
+      "occurredAt": "2026-08-03T03:00:00Z",
+      "correlationId": "corr-1234567890abcdef",
+      "aggregateId": "BOOKING-001",
+      "data": {
+        "ticketId": "TICKET-001",
+        "bookingId": "BOOKING-001",
+        "status": "CANCELLED",
+        "reason": "Requested cancellation",
+        "resourceVersion": 1
+      }
+    }
+  ]
+}

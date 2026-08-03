@@ -1,2 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder: contracts/soap/examples/release-seats.xml -->
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat:v1">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <seat:ReleaseSeatsRequest>
+      <seat:context><seat:correlationId>corr-1234567890abcdef</seat:correlationId><seat:idempotencyKey>release-RES-001</seat:idempotencyKey><seat:callerService>booking-esb</seat:callerService><seat:schemaVersion>1</seat:schemaVersion></seat:context>
+      <seat:reservationId>RES-001</seat:reservationId><seat:reasonCode>PAYMENT_FAILED</seat:reasonCode>
+    </seat:ReleaseSeatsRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
