@@ -28,7 +28,11 @@ export function BookingResultPage() {
     const socket = new BookingStatusSocket(url, {
       ticketProvider: () => esb.issueRealtimeWsTicket(currentBookingId),
     });
-    return socket.connect(setLiveEvent, setLiveState);
+    return socket.connect(
+      setLiveEvent,
+      setLiveState,
+      () => void result.refetch(),
+    );
   }, [bookingId, esb]);
   if (result.isLoading)
     return (

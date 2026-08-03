@@ -76,7 +76,7 @@ class Settings:
         "payment-service",
         "ticket-service",
     )
-    booking_authorization_url: str = "http://localhost:8007/bookings/{bookingId}"
+    booking_authorization_url: str = "http://localhost:8004/bookings/{bookingId}"
     booking_service_token: str = ""
     booking_client_timeout_seconds: float = 2.0
     admin_roles: tuple[str, ...] = ("ADMIN",)
@@ -185,7 +185,7 @@ class Settings:
                 "booking-orchestrator,booking-service,payment-service,ticket-service",
             ),
             booking_authorization_url=os.getenv(
-                "REALTIME_BOOKING_AUTHORIZATION_URL", "http://localhost:8007/bookings/{bookingId}"
+                "REALTIME_BOOKING_AUTHORIZATION_URL", "http://localhost:8004/bookings/{bookingId}"
             ),
             booking_service_token=os.getenv("REALTIME_BOOKING_SERVICE_TOKEN", ""),
             booking_client_timeout_seconds=_float(

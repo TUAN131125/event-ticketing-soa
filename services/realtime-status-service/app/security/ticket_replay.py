@@ -16,6 +16,7 @@ class TicketReplayStore(Protocol):
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
     async def consume(self, jti: str, expires_at: int) -> bool: ...
+    def available(self) -> bool: ...
 
 
 class InMemoryTicketReplayStore:
@@ -33,6 +34,9 @@ class InMemoryTicketReplayStore:
     async def stop(self) -> None:
         async with self._lock:
             self._entries.clear()
+
+    def available(self) -> bool:
+        return True
 
     async def consume(self, jti: str, expires_at: int) -> bool:
         digest = hashlib.sha256(jti.encode("utf-8")).hexdigest()
@@ -56,19 +60,29 @@ class RedisTicketReplayStore:
     def __init__(self, redis_url: str) -> None:
         self._url = redis_url
         self._redis: Any | None = None
+        self._available = False
 
     async def start(self) -> None:
         import redis.asyncio as redis
 
-        self._redis = redis.from_url(
-            self._url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
-        )
-        await self._redis.ping()
+        try:
+            self._redis = redis.from_url(
+                self._url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
+            )
+            await self._redis.ping()
+        except (TimeoutError, OSError, RedisError):
+            self._available = False
+        else:
+            self._available = True
 
     async def stop(self) -> None:
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
+        self._available = False
+
+    def available(self) -> bool:
+        return self._available
 
     async def consume(self, jti: str, expires_at: int) -> bool:
         if self._redis is None:
@@ -79,6 +93,8 @@ class RedisTicketReplayStore:
         digest = hashlib.sha256(jti.encode("utf-8")).hexdigest()
         try:
             result = await self._redis.set(f"realtime:ws-ticket:{digest}", "1", nx=True, ex=ttl)
-        except (OSError, RedisError):
+        except (TimeoutError, OSError, RedisError):
+            self._available = False
             return False
+        self._available = True
         return bool(result)
