@@ -22,12 +22,15 @@ class Settings(BaseModel):
     customer_service_url: str = "http://localhost:8001"
     event_service_url: str = "http://localhost:8002"
     seat_service_url: str = "http://localhost:8003/soap"
+    seat_service_token: str | None = None
     booking_service_url: str = "http://localhost:8004"
     payment_service_url: str = "http://localhost:8005"
     ticket_service_url: str = "http://localhost:8006"
     notification_service_url: str = "http://localhost:8007"
     notification_webhook_secret: str | None = None
     realtime_service_url: str = "http://localhost:8008"
+    realtime_internal_service_token: str | None = None
+    realtime_caller_service: str = "booking-orchestrator"
     internal_service_issuer: str = "booking-orchestrator"
     internal_service_subject: str = "booking-orchestrator"
     internal_service_audience: str = "provider-services"
@@ -48,8 +51,7 @@ class Settings(BaseModel):
     reconciliation_poll_seconds: float = Field(default=1.0, gt=0)
     create_schema_on_start: bool = True
     verify_contract_freeze: bool = True
-    seat_wsdl_path: Path = REPOSITORY_ROOT / "contracts" / "soap" / "seat-inventory.wsdl"
-    seat_xsd_path: Path = REPOSITORY_ROOT / "contracts" / "soap" / "seat-inventory.xsd"
+    seat_provider_xsd_path: Path = REPOSITORY_ROOT / "services" / "seat-inventory-service" / "contracts" / "seat-inventory.xsd"
 
     @model_validator(mode="after")
     def production_security(self) -> Settings:
@@ -60,6 +62,10 @@ class Settings(BaseModel):
                 raise ValueError("production signing keys must be supplied by secret reference")
             if not self.notification_webhook_secret or len(self.notification_webhook_secret) < 32:
                 raise ValueError("production notification webhook secret must be at least 32 characters")
+            if not self.seat_service_token or len(self.seat_service_token) < 32:
+                raise ValueError("production Seat service token must be at least 32 characters")
+            if not self.realtime_internal_service_token or len(self.realtime_internal_service_token) < 32:
+                raise ValueError("production Realtime internal service token must be at least 32 characters")
             if self.docs_enabled:
                 raise ValueError("production docs must be disabled")
             if self.create_schema_on_start:

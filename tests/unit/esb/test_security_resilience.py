@@ -161,6 +161,21 @@ def test_production_config_rejects_insecure_defaults() -> None:
             docs_enabled=False,
             notification_webhook_secret="short",
         )
+    production = {
+        "environment": "production",
+        "database_url": "postgresql+asyncpg://db/prod",
+        "internal_service_private_key": "key",
+        "ws_ticket_private_key": "key",
+        "docs_enabled": False,
+        "create_schema_on_start": False,
+        "notification_webhook_secret": "n" * 32,
+        "seat_service_token": "s" * 32,
+        "realtime_internal_service_token": "r" * 32,
+    }
+    with pytest.raises(ValueError, match="Seat service token"):
+        Settings(**{**production, "seat_service_token": "short"})
+    with pytest.raises(ValueError, match="Realtime internal service token"):
+        Settings(**{**production, "realtime_internal_service_token": "short"})
 
 
 @pytest.mark.asyncio

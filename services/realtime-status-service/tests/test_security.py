@@ -109,6 +109,15 @@ def test_production_configuration_rejects_insecure_values() -> None:
             booking_service_token="b" * 32,
             allow_query_token=True,
         )
+    with pytest.raises(ValueError, match="ticket public key"):
+        Settings(
+            app_env="production",
+            allowed_ws_origins=("https://app.example",),
+            jwt_issuer="https://identity.example",
+            jwks_url="https://identity.example/.well-known/jwks.json",
+            internal_service_token="a" * 32,
+            booking_service_token="b" * 32,
+        )
 
 
 def test_event_schema_rejects_naive_time_unknown_fields_and_sensitive_shape() -> None:

@@ -27,8 +27,8 @@ def connect(
 
 def test_missing_invalid_token_and_origin_are_rejected(client: TestClient) -> None:
     with pytest.raises(WebSocketDisconnect) as missing:
-        with client.websocket_connect("/ws/bookings/BK-1", headers=ws_headers()):
-            pass
+        with client.websocket_connect("/ws/bookings/BK-1", headers=ws_headers()) as websocket:
+            websocket.receive_json()
     assert missing.value.code == CLOSE_UNAUTHENTICATED
     with pytest.raises(WebSocketDisconnect) as invalid:
         with connect(client, token="invalid"):

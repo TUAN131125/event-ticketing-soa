@@ -87,6 +87,11 @@ class PongMessage(StrictModel):
     type: Literal["pong"]
 
 
+class AuthenticateMessage(StrictModel):
+    type: Literal["authenticate"]
+    ticket: Annotated[str, Field(min_length=1, max_length=4096)]
+
+
 class EventIngestResponse(StrictModel):
     correlation_id: SafeIdentifier = Field(alias="correlationId")
     outcome: Literal["accepted", "duplicate", "stale", "no_subscribers"]

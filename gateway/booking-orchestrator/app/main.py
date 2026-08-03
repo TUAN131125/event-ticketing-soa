@@ -94,7 +94,8 @@ def build_container(settings: Settings) -> RuntimeContainer:
         settings.seat_service_url,
         http,
         _executor(settings),
-        str(settings.seat_xsd_path),
+        str(settings.seat_provider_xsd_path),
+        settings.seat_service_token,
         repositories,
     )
     notification_secret = settings.notification_webhook_secret or secrets.token_urlsafe(32)
@@ -102,7 +103,11 @@ def build_container(settings: Settings) -> RuntimeContainer:
         rest(settings.notification_service_url, "notification-service"),
         notification_secret,
     )
-    realtime = RealtimeRestAdapter(rest(settings.realtime_service_url, "realtime-status-service"))
+    realtime = RealtimeRestAdapter(
+        rest(settings.realtime_service_url, "realtime-status-service"),
+        settings.realtime_internal_service_token,
+        settings.realtime_caller_service,
+    )
     saga = BookingSaga(
         customer,
         events,

@@ -164,7 +164,9 @@ async def test_side_effect_adapters_send_signed_raw_notification_and_internal_re
             http,
             token_signer,
             executor(),
-        )
+        ),
+        "realtime-internal-secret",
+        "booking-orchestrator",
     )
     context = request_context()
     payload = {"bookingId": "BK-1", "status": "CONFIRMED", "sequence": 3}
@@ -183,6 +185,18 @@ async def test_side_effect_adapters_send_signed_raw_notification_and_internal_re
     )
     assert json.loads(notification_request.content)["eventId"] == "MSG-NOTIFY-1"
     realtime_body = json.loads(seen["/internal/status-events"].content)
+    assert (
+        seen["/internal/status-events"].headers["X-Service-Token"]
+        == "realtime-internal-secret"
+    )
+    assert (
+        seen["/internal/status-events"].headers["X-Caller-Service"]
+        == "booking-orchestrator"
+    )
+    assert (
+        seen["/internal/status-events"].headers["X-Correlation-ID"]
+        == context.correlation_id
+    )
     assert realtime_body["messageId"] == "MSG-REALTIME-1"
     assert realtime_body["sequence"] == 3
     await http.aclose()

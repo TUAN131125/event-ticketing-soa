@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Clock3, Ticket } from "lucide-react";
 import { Badge, Card, Spinner } from "@event-ticketing/shared-ui";
-import { useBooking } from "../app/hooks";
+import { useBooking, useEsb } from "../app/hooks";
 import {
   BookingStatusSocket,
   statusSocketUrl,
@@ -9,25 +9,27 @@ import {
 } from "../api/websocket-client";
 import { useEffect, useState } from "react";
 import { QueryState } from "./PageState";
-import { useAuth } from "../app/auth";
 export function BookingResultPage() {
   const { bookingId } = useParams();
   const [params] = useSearchParams();
-  const { client } = useAuth();
+  const esb = useEsb();
   const result = useBooking(bookingId);
   const [liveState, setLiveState] = useState<
     "connecting" | "open" | "closed" | "error"
   >("connecting");
   const [liveEvent, setLiveEvent] = useState<StatusEvent | null>(null);
   useEffect(() => {
-    const url = bookingId ? statusSocketUrl(bookingId) : "";
-    if (!url) {
+    const currentBookingId = bookingId;
+    const url = currentBookingId ? statusSocketUrl(currentBookingId) : "";
+    if (!url || !currentBookingId) {
       setLiveState("closed");
       return undefined;
     }
-    const socket = new BookingStatusSocket(url, client.token);
+    const socket = new BookingStatusSocket(url, {
+      ticketProvider: () => esb.issueRealtimeWsTicket(currentBookingId),
+    });
     return socket.connect(setLiveEvent, setLiveState);
-  }, [bookingId, client.token]);
+  }, [bookingId, esb]);
   if (result.isLoading)
     return (
       <section className="container page-section page-state">

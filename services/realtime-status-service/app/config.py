@@ -5,8 +5,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -98,6 +102,13 @@ class Settings:
     allow_query_token: bool = False
     insecure_auth_bypass: bool = False
     authoritative_booking_url_template: str = "/api/bookings/{bookingId}"
+    ws_ticket_public_key_path: Path | None = None
+    ws_ticket_issuer: str = "booking-orchestrator"
+    ws_ticket_audience: str = "realtime-status-service"
+    ws_ticket_key_id: str | None = None
+    ws_ticket_max_ttl_seconds: int = 60
+    ws_ticket_auth_timeout_seconds: float = 5.0
+    ws_ticket_replay_max_entries: int = 10000
 
     def __post_init__(self) -> None:
         if self.idle_timeout_seconds <= self.heartbeat_interval_seconds:
@@ -110,6 +121,8 @@ class Settings:
             raise ValueError("REALTIME_AUTHORITATIVE_BOOKING_URL_TEMPLATE must contain {bookingId}")
         if self.jwt_algorithm != "RS256":
             raise ValueError("Only RS256 is supported by the repository Identity contract")
+        if not 1 <= self.ws_ticket_max_ttl_seconds <= 60:
+            raise ValueError("REALTIME_WS_TICKET_MAX_TTL_SECONDS must be between 1 and 60")
         if self.app_env == "production":
             if "*" in self.allowed_ws_origins:
                 raise ValueError("Wildcard WebSocket Origin is forbidden in production")
@@ -129,6 +142,14 @@ class Settings:
                 )
             if self.allow_query_token or self.insecure_auth_bypass:
                 raise ValueError("Development authentication modes are forbidden in production")
+            if self.ws_ticket_public_key_path is None:
+                raise ValueError("Production WebSocket ticket public key is required")
+            try:
+                key = serialization.load_pem_public_key(self.ws_ticket_public_key_path.read_bytes())
+            except (OSError, ValueError, TypeError) as exc:
+                raise ValueError("Production WebSocket ticket public key is invalid") from exc
+            if not isinstance(key, RSAPublicKey):
+                raise ValueError("Production WebSocket ticket public key must be RSA")
         for url_name, url in (
             ("JWKS", self.jwks_url),
             ("Booking authorization", self.booking_authorization_url),
@@ -198,6 +219,19 @@ class Settings:
             insecure_auth_bypass=_bool("REALTIME_INSECURE_AUTH_BYPASS", False),
             authoritative_booking_url_template=os.getenv(
                 "REALTIME_AUTHORITATIVE_BOOKING_URL_TEMPLATE", "/api/bookings/{bookingId}"
+            ),
+            ws_ticket_public_key_path=(
+                Path(value) if (value := os.getenv("REALTIME_WS_TICKET_PUBLIC_KEY_PATH")) else None
+            ),
+            ws_ticket_issuer=os.getenv("REALTIME_WS_TICKET_ISSUER", "booking-orchestrator"),
+            ws_ticket_audience=os.getenv("REALTIME_WS_TICKET_AUDIENCE", "realtime-status-service"),
+            ws_ticket_key_id=os.getenv("REALTIME_WS_TICKET_KEY_ID") or None,
+            ws_ticket_max_ttl_seconds=_int("REALTIME_WS_TICKET_MAX_TTL_SECONDS", 60, 1, 60),
+            ws_ticket_auth_timeout_seconds=_float(
+                "REALTIME_WS_TICKET_AUTH_TIMEOUT_SECONDS", 5, 0.05, 5
+            ),
+            ws_ticket_replay_max_entries=_int(
+                "REALTIME_WS_TICKET_REPLAY_MAX_ENTRIES", 10000, 1, 1000000
             ),
         )
 

@@ -9,6 +9,7 @@ from typing import Any
 
 from app.adapters.rest.base import RestClient
 from app.contract_freeze import EXPECTED_CATALOG_SHA, EXPECTED_FREEZE_ID
+from app.domain.errors import DependencyFailure
 from app.domain.models import Money, RequestContext
 from app.resilience.policies import RetryClass
 
@@ -280,10 +281,19 @@ class RealtimeRestAdapter:
         EXPECTED_CATALOG_SHA,
     )
 
-    def __init__(self, client: RestClient) -> None:
+    def __init__(self, client: RestClient, service_token: str | None, caller_service: str = "booking-orchestrator") -> None:
         self.client = client
+        self.service_token = service_token
+        self.caller_service = caller_service
 
     async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None:
+        if not self.service_token:
+            raise DependencyFailure(
+                "REALTIME_AUTH_CONFIGURATION_INVALID",
+                "Realtime internal credential is not configured.",
+                503,
+                False,
+            )
         body = {
             "messageId": message_id,
             "bookingId": payload["bookingId"],
@@ -299,4 +309,8 @@ class RealtimeRestAdapter:
             context,
             json_body=body,
             retry_class=RetryClass.SIDE_EFFECT,
+            extra_headers={
+                "X-Service-Token": self.service_token,
+                "X-Caller-Service": self.caller_service,
+            },
         )

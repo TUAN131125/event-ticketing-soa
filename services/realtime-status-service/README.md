@@ -71,7 +71,8 @@ Close codes ổn định:
 |---:|---|
 | `4401` | Chưa xác thực/JWT không hợp lệ |
 | `4403` | Không có quyền booking |
-| `4408` | Origin không hợp lệ |
+| `4406` | Origin không hợp lệ |
+| `4408` | ESB ticket authentication timeout |
 | `4429` | Handshake/connection limit |
 | `4400` | Protocol hoặc client payload không hợp lệ |
 | `1012` | Server draining/restart |
@@ -99,6 +100,12 @@ JWT được xác minh chữ ký RS256, `kid`, `iss`, `aud`, `exp`, `iat`, và `
 - timeout ngắn và fail closed trên 4xx/5xx, response không đúng contract hoặc network error.
 
 Repository hiện chưa có contract hoàn chỉnh mapping Identity `sub` sang Customer. Identity hiện cũng chưa phát `customerId`. Vì vậy production cần bổ sung ngoài service một authorization endpoint ở ESB/Booking trả quyết định `allowed`, hoặc bổ sung signed identity/customer mapping chính thức. Cho đến khi có dependency đó, customer không xác minh được mapping sẽ bị từ chối; service không fallback allow.
+
+### ESB signed ticket mode
+
+The customer frontend uses `POST /api/realtime/ws-tickets` on the ESB, then opens the booking WebSocket without a query token and sends `{"type":"authenticate","ticket":"..."}` within five seconds. Realtime verifies RS256 signature, issuer, audience, subject, booking ID, scope, `iat`, `exp`, and `jti`; the ticket TTL cannot exceed 60 seconds and the booking claim must match the path. A `jti` is consumed atomically before subscription. The in-memory replay store is bounded for one-process local use; when `REALTIME_REDIS_URL` is configured, replay protection uses atomic Redis `SET NX EX` across replicas. Raw tickets are never stored or logged.
+
+This is additive. Native Identity JWT authentication through the `bearer` WebSocket subprotocol remains supported and still calls `BookingAccessChecker`. Ticket mode does not repeat the ownership call because the ESB performed the access decision before signing. Production requires `REALTIME_WS_TICKET_PUBLIC_KEY_PATH`; the ESB private key must never be installed in this service.
 
 ## Reconnect, sequence và dedup
 
@@ -131,6 +138,7 @@ Toàn bộ biến có trong `.env.example`. Các nhóm chính:
 - Runtime: `REALTIME_APP_ENV`, `HOST`, `PORT`, `LOG_LEVEL`, `DOCS_ENABLED`.
 - WebSocket security: `ALLOWED_WS_ORIGINS`, connection/rate/size limits, `ALLOW_QUERY_TOKEN`.
 - JWT: `JWT_ISSUER`, `JWT_AUDIENCE`, `JWKS_URL`, `JWT_ALGORITHM`, JWKS timeout/TTL.
+- ESB ticket: `WS_TICKET_PUBLIC_KEY_PATH`, issuer, audience, key ID, max TTL, authentication timeout, and replay cache bound.
 - Internal auth: `INTERNAL_SERVICE_TOKEN`, `ALLOWED_INTERNAL_CALLERS`.
 - Ownership: `BOOKING_AUTHORIZATION_URL`, `BOOKING_SERVICE_TOKEN`, client timeout, `ADMIN_ROLES`.
 - Redis: `REDIS_URL`, `REDIS_REQUIRED`, `REDIS_CHANNEL`.
