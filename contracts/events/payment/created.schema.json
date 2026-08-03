@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event:payment.created:v1",
+  "title": "payment.created",
+  "description": "Official design-derived v1 producer-owned schema for payment.created. Delivery is at-least-once and consumers deduplicate by eventId.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "x-origin": "design-derived-v1",
+  "allOf": [
+    {
+      "$ref": "urn:event-ticketing:event-envelope:v1"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "payment.created"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paymentId",
+        "bookingId",
+        "status",
+        "amount",
+        "resourceVersion"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "bookingId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "status": {
+          "const": "CREATED"
+        },
+        "amount": {
+          "$ref": "urn:event-ticketing:money:v1"
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "EVTMSG-001",
+      "eventType": "payment.created",
+      "schemaVersion": 1,
+      "occurredAt": "2026-08-03T03:00:00Z",
+      "correlationId": "corr-1234567890abcdef",
+      "aggregateId": "BOOKING-001",
+      "data": {
+        "paymentId": "PAYMENT-001",
+        "bookingId": "BOOKING-001",
+        "status": "CREATED",
+        "amount": {
+          "amountMinor": 100000,
+          "currency": "VND"
+        },
+        "resourceVersion": 1
+      }
+    }
+  ]
+}

@@ -1,1 +1,414 @@
-# Placeholder: contracts/openapi/event-service.yaml
+openapi: 3.1.0
+info:
+  title: Event Service API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
+servers:
+- url: http://event-service:8002
+security:
+- bearerAuth: []
+paths:
+  /events:
+    get:
+      summary: Liệt kê sự kiện
+      operationId: listEvents
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      security: []
+    post:
+      summary: Tạo sự kiện
+      operationId: createEvent
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /events/{eventId}:
+    get:
+      summary: Chi tiết sự kiện
+      operationId: getEvent
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      security: []
+    put:
+      summary: Thay thế sự kiện
+      operationId: replaceEvent
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /events/{eventId}/publish:
+    post:
+      summary: Mở bán
+      operationId: publishEvent
+      responses:
+        '200':
+          description: Đã mở bán
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /events/{eventId}/pause:
+    post:
+      summary: Tạm dừng bán
+      operationId: pauseEvent
+      responses:
+        '200':
+          description: Đã tạm dừng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /events/{eventId}/cancel:
+    post:
+      summary: Hủy sự kiện
+      operationId: cancelEvent
+      responses:
+        '200':
+          description: Đã hủy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /events/{eventId}/sale-eligibility:
+    get:
+      summary: Kiểm tra điều kiện bán
+      operationId: getSaleEligibility
+      responses:
+        '200':
+          description: Kết quả
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleEligibility'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+  /health/live:
+    get:
+      summary: Liveness
+      operationId: eventLiveness
+      responses:
+        '200':
+          description: UP
+      security: []
+  /health/ready:
+    get:
+      summary: Readiness
+      operationId: eventReadiness
+      responses:
+        '200':
+          description: READY
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
+components:
+  schemas:
+    ErrorResponse:
+      $ref: '../common/error-response.schema.json'
+    Money:
+      $ref: '../common/money.schema.json'
+    PageMeta:
+      $ref: '../common/pagination.schema.json'
+    EventCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - venue
+      - startsAt
+      - saleStartsAt
+      - saleEndsAt
+      - ticketTypes
+      properties:
+        name:
+          type: string
+          minLength: 2
+        venue:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        saleStartsAt:
+          type: string
+          format: date-time
+        saleEndsAt:
+          type: string
+          format: date-time
+        ticketTypes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - code
+            - name
+            - price
+            properties:
+              code:
+                type: string
+              name:
+                type: string
+              price:
+                $ref: '#/components/schemas/Money'
+    Event:
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - name
+      - venue
+      - startsAt
+      - status
+      - ticketTypes
+      - resourceVersion
+      properties:
+        eventId:
+          type: string
+        name:
+          type: string
+        venue:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        saleStartsAt:
+          type: string
+          format: date-time
+        saleEndsAt:
+          type: string
+          format: date-time
+        status:
+          enum:
+          - DRAFT
+          - ON_SALE
+          - PAUSED
+          - CANCELLED
+          - ENDED
+        ticketTypes:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              name:
+                type: string
+              price:
+                $ref: '#/components/schemas/Money'
+        resourceVersion:
+          type: integer
+          minimum: 1
+    SaleEligibility:
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - eligible
+      - status
+      properties:
+        eventId:
+          type: string
+        eligible:
+          type: boolean
+        status:
+          type: string
+        reasonCode:
+          type:
+          - string
+          - 'null'
+        priceSnapshot:
+          type: array
+          items:
+            type: object
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    TraceParent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[0-9]+"$
+  responses:
+    BadRequest:
+      description: Request không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Chưa xác thực
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Không đủ quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Xung đột trạng thái hoặc idempotency
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Dữ liệu đúng cú pháp nhưng sai nghiệp vụ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Dependency hoặc service không sẵn sàng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

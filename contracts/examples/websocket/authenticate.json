@@ -1,0 +1,4 @@
+{
+  "type": "authenticate",
+  "ticket": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xIn0.eyJhdWQiOiJyZWFsdGltZS1zdGF0dXMtc2VydmljZSJ9.signature"
+}

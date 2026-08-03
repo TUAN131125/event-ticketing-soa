@@ -1,2 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder: contracts/soap/examples/check-availability.xml -->
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat:v1">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <seat:CheckAvailabilityRequest>
+      <seat:context><seat:correlationId>corr-1234567890abcdef</seat:correlationId><seat:callerService>booking-esb</seat:callerService><seat:schemaVersion>1</seat:schemaVersion></seat:context>
+      <seat:eventId>EV-001</seat:eventId>
+      <seat:seatIds><seat:seat><seat:seatId>A12</seat:seatId><seat:ticketTypeCode>VIP</seat:ticketTypeCode></seat:seat></seat:seatIds>
+    </seat:CheckAvailabilityRequest>
+  </soapenv:Body>
+</soapenv:Envelope>

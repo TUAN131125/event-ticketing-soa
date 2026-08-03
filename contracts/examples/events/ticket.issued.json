@@ -1,0 +1,16 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "ticket.issued",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BOOKING-001",
+  "data": {
+    "ticketId": "TICKET-001",
+    "bookingId": "BOOKING-001",
+    "eventId": "EVENT-001",
+    "seatId": "SEAT-001",
+    "status": "ISSUED",
+    "resourceVersion": 1
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "eventId": "EV-001",
+  "name": "SOA Conference",
+  "venue": "Hall A",
+  "startsAt": "2026-08-20T12:00:00Z",
+  "saleStartsAt": "2026-08-03T03:00:00Z",
+  "saleEndsAt": "2026-08-19T12:00:00Z",
+  "status": "ON_SALE",
+  "ticketTypes": [
+    {
+      "code": "VIP",
+      "name": "VIP",
+      "price": {
+        "amountMinor": 100000,
+        "currency": "VND"
+      }
+    }
+  ],
+  "resourceVersion": 2
+}

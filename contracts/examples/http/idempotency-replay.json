@@ -1,0 +1,22 @@
+{
+  "bookingId": "BKG-001",
+  "customerId": "CUS-001",
+  "eventId": "EV-001",
+  "status": "COMPENSATION_PENDING",
+  "items": [
+    {
+      "seatId": "A12",
+      "ticketTypeCode": "VIP"
+    }
+  ],
+  "total": {
+    "amountMinor": 100000,
+    "currency": "VND"
+  },
+  "reservationId": "RES-001",
+  "paymentId": "PAY-001",
+  "ticketIds": [],
+  "resourceVersion": 5,
+  "createdAt": "2026-08-03T03:00:00Z",
+  "updatedAt": "2026-08-03T03:00:00Z"
+}

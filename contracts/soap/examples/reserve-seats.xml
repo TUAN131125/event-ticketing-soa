@@ -1,2 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder: contracts/soap/examples/reserve-seats.xml -->
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat:v1">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <seat:ReserveSeatsRequest>
+      <seat:context><seat:correlationId>corr-1234567890abcdef</seat:correlationId><seat:idempotencyKey>seat-BKG-001</seat:idempotencyKey><seat:callerService>booking-esb</seat:callerService><seat:schemaVersion>1</seat:schemaVersion></seat:context>
+      <seat:bookingId>BKG-001</seat:bookingId><seat:eventId>EV-001</seat:eventId>
+      <seat:seatIds><seat:seat><seat:seatId>A12</seat:seatId><seat:ticketTypeCode>VIP</seat:ticketTypeCode></seat:seat></seat:seatIds>
+      <seat:ttlSeconds>600</seat:ttlSeconds>
+    </seat:ReserveSeatsRequest>
+  </soapenv:Body>
+</soapenv:Envelope>

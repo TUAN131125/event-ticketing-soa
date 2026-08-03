@@ -1,0 +1,10 @@
+{
+  "customerId": "CUS-001",
+  "name": "Demo Customer",
+  "email": "demo@example.invalid",
+  "phone": null,
+  "status": "ACTIVE",
+  "resourceVersion": 1,
+  "createdAt": "2026-08-03T03:00:00Z",
+  "updatedAt": "2026-08-03T03:00:00Z"
+}

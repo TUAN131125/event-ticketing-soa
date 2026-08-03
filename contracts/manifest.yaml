@@ -1,0 +1,503 @@
+catalogVersion: 1.0.0
+baselineType: clean-slate
+compatibilityPolicy: no-legacy-baseline
+status: canonical-v1
+canonicalRoot: contracts/
+contracts:
+- contractId: common.error-response
+  title: ErrorResponse
+  semanticOwner: Architecture
+  format: json-schema-2020-12
+  canonicalPath: common/error-response.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - All contract providers and consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 99920fe1e4ffad981dcc24dad6773ce6ac063b1d48c998dbb6a7d1143ca97ceb
+- contractId: common.event-envelope
+  title: EventEnvelope
+  semanticOwner: Architecture
+  format: json-schema-2020-12
+  canonicalPath: common/event-envelope.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - All contract providers and consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: dee6edf6f204cdb5e8d06427b3947ccc83f51518c97b88bf70158fd2d4cb81b2
+- contractId: common.money
+  title: Money
+  semanticOwner: Architecture
+  format: json-schema-2020-12
+  canonicalPath: common/money.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - All contract providers and consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 9fc6f63f242e00bb6678d50a17be94e05fffb447cd1b68bd90c14a052ef223b6
+- contractId: common.openapi-security
+  title: Openapi Security
+  semanticOwner: Architecture
+  format: openapi-3.1
+  canonicalPath: common/openapi-security.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - All contract providers and consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 04d2873974ebe61d8f6ade4ddbf014c7b945d7296fe823bd3bdf3bbea6dec0df
+- contractId: common.pagination
+  title: PageMetadata
+  semanticOwner: Architecture
+  format: json-schema-2020-12
+  canonicalPath: common/pagination.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - All contract providers and consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: e958590153af045149aa1d17b099de9bce9cdb8c0be3f82d4fb5402422f2aeb5
+- contractId: events.booking.cancelled
+  title: booking.cancelled
+  semanticOwner: Booking Service
+  format: json-schema-2020-12
+  canonicalPath: events/booking/cancelled.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 2b21bca8c88afa8322942da1c523cf256865623e23e62364831b7e02e81a8d03
+- contractId: events.booking.confirmed
+  title: booking.confirmed
+  semanticOwner: Booking Service
+  format: json-schema-2020-12
+  canonicalPath: events/booking/confirmed.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 35b8f1f6a6c09217503ce4a2651f14ef3a05897013040d8de0db20c53309ce22
+- contractId: events.booking.created
+  title: booking.created
+  semanticOwner: Booking Service
+  format: json-schema-2020-12
+  canonicalPath: events/booking/created.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: a1a56f3dd369c92fb55979a5f61746b60cb42403611bfe03d42daaf85fe6b0d0
+- contractId: events.booking.failed
+  title: booking.failed
+  semanticOwner: Booking Service
+  format: json-schema-2020-12
+  canonicalPath: events/booking/failed.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: b250692a9910a964b5089e5de5f22d677ac7fb4941c2fe880ca7e77374219e61
+- contractId: events.payment.authorized
+  title: payment.authorized
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/authorized.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: a40fd670b6297173ad70e38ede94e6b935ac5c38370bc9e94866d1308cc627d6
+- contractId: events.payment.cancelled
+  title: payment.cancelled
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/cancelled.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 5a1fe3cb808240e944668f1e2863fb241817486184f8fa2c7f23b9450bee95ae
+- contractId: events.payment.created
+  title: payment.created
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/created.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 6e49aa266531e7172f6cc5618dd66d3866143af8bd69477c658c8130c8983722
+- contractId: events.payment.failed
+  title: payment.failed
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/failed.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: c9cf683c21a420147db6c386e77dca3a70a9ec779944f1eb5b658024a5fdb0e9
+- contractId: events.payment.refunded
+  title: payment.refunded
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/refunded.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 6a17e92f30ab6d162735c644532be5ec93d3005150ac2c5cf09b044af5583930
+- contractId: events.payment.succeeded
+  title: payment.succeeded
+  semanticOwner: Payment Service
+  format: json-schema-2020-12
+  canonicalPath: events/payment/succeeded.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 80eba1a416ceb1aeaf7c2454495ced48e25df714225beac1738ae28724ffa72a
+- contractId: events.ticket.cancelled
+  title: ticket.cancelled
+  semanticOwner: Ticket Service
+  format: json-schema-2020-12
+  canonicalPath: events/ticket/cancelled.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 5736fc0365b64b666ecf7489129acba2d8d5ca1a251e37b2da9fddd8da68a843
+- contractId: events.ticket.checked-in
+  title: ticket.checked-in
+  semanticOwner: Ticket Service
+  format: json-schema-2020-12
+  canonicalPath: events/ticket/checked-in.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 051934ef507e7362827c3cb92234c00bf3fa49e0f4fa72425f06ae9a93c664bc
+- contractId: events.ticket.issued
+  title: ticket.issued
+  semanticOwner: Ticket Service
+  format: json-schema-2020-12
+  canonicalPath: events/ticket/issued.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: c32b8d67a6cbdedfa901bd9fcfef0e475b45b7a8c95f84e5fe76b4f33daf89de
+- contractId: events.ticket.qr-regenerated
+  title: ticket.qr-regenerated
+  semanticOwner: Ticket Service
+  format: json-schema-2020-12
+  canonicalPath: events/ticket/qr-regenerated.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: fff314305fe06e78e65fc4cb2d3b225bac1b6ba5d37bafbadf89956d134322c9
+- contractId: openapi.booking-service
+  title: Booking Service
+  semanticOwner: Booking Service
+  format: openapi-3.1
+  canonicalPath: openapi/booking-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: c7692472fe9cb89f9260983dd9e0931772ca9cf7b65a16f8de6015e017c87f3d
+- contractId: openapi.customer-service
+  title: Customer Service
+  semanticOwner: Customer Service
+  format: openapi-3.1
+  canonicalPath: openapi/customer-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 00da24fdb7a30e0bf22961f77ea994e289f3a8ae0300e5440dfcc418279aec17
+- contractId: openapi.esb-public-api
+  title: Esb Public Api
+  semanticOwner: Booking Orchestrator / ESB
+  format: openapi-3.1
+  canonicalPath: openapi/esb-public-api.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Operations
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 882021887229c2a48bf276406bdb0679e272eac79b8b1365718b590000f6662d
+- contractId: openapi.event-service
+  title: Event Service
+  semanticOwner: Event Service
+  format: openapi-3.1
+  canonicalPath: openapi/event-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: a504e07f22e111ed34e9c163c6d86f76dd7dcda4c88b5a65d2cd9010af2d8d2c
+- contractId: openapi.identity-service
+  title: Identity Service
+  semanticOwner: Identity Service
+  format: openapi-3.1
+  canonicalPath: openapi/identity-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 7efae868a722e4ac8f539d3ee7b022a8cf29fae18e0648ea99478dd384484b72
+- contractId: openapi.notification-service
+  title: Notification Service
+  semanticOwner: Notification Service
+  format: openapi-3.1
+  canonicalPath: openapi/notification-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: df3139735de48e66baa0901f5016ec1ec35f667959c563b5cc60cb2ba61bc933
+- contractId: openapi.payment-service
+  title: Payment Service
+  semanticOwner: Payment Service
+  format: openapi-3.1
+  canonicalPath: openapi/payment-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 620045ba7d14c60a902d0862682caeae45b22c97d48fb13ec5af0d44d425aa74
+- contractId: openapi.realtime-service
+  title: Realtime Service
+  semanticOwner: Realtime Status Service
+  format: openapi-3.1
+  canonicalPath: openapi/realtime-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 186691c508be12ec0d8abe5fb1b0b61d1aba696f0cc1f7b7c0b4b279710ab9c5
+- contractId: openapi.ticket-service
+  title: Ticket Service
+  semanticOwner: Ticket Service
+  format: openapi-3.1
+  canonicalPath: openapi/ticket-service.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  - Authorized internal consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 0928610a48663a8e903eb966cf8d9583f61092223aaa7776631ca31261fbd18c
+- contractId: soap.seat-inventory.wsdl
+  title: Seat Inventory
+  semanticOwner: Seat Inventory Service
+  format: wsdl-1.1
+  canonicalPath: soap/seat-inventory.wsdl
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: dc2e793fa1e435a643bc258476dd9d5cfb08bb99a2079fcd7e74a8ebe456c73d
+- contractId: soap.seat-inventory.xsd
+  title: Seat Inventory
+  semanticOwner: Seat Inventory Service
+  format: xsd-1.0
+  canonicalPath: soap/seat-inventory.xsd
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Booking Orchestrator / ESB
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 8f5407cab7448e8e8c872e923f7fff6e510435b0d4351e28c9dba073657f3f42
+- contractId: webhooks.notification.notification-webhook
+  title: NotificationWebhook
+  semanticOwner: Notification Service
+  format: json-schema-2020-12
+  canonicalPath: webhooks/notification/notification-webhook.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Notification Service
+  - Authorized event consumers
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 6c3f469a4b98792cf2180309606345e9d67299dadec93ae44c4c823eee30808b
+- contractId: websocket.realtime-status.client-message
+  title: RealtimeClientMessage
+  semanticOwner: Realtime Status Service
+  format: json-schema-2020-12
+  canonicalPath: websocket/realtime-status/client-message.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Realtime Status Service
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 25f5672231c204009a1f2a9c89d51a4ba729453bdafde01499218ad2c7b88b63
+- contractId: websocket.realtime-status.close-codes
+  title: Close Codes
+  semanticOwner: Realtime Status Service
+  format: yaml
+  canonicalPath: websocket/realtime-status/close-codes.yaml
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Realtime Status Service
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: c513050f6f51e6b3e738c984277f255702482ad3a3debb99b700a7fabe0ef2ab
+- contractId: websocket.realtime-status.protocol
+  title: Protocol
+  semanticOwner: Realtime Status Service
+  format: markdown
+  canonicalPath: websocket/realtime-status/protocol.md
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Realtime Status Service
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 2f0c5560a709fc14febdd5faa5adfcceb21e2603fa2763aca791d6ea87b8a677
+- contractId: websocket.realtime-status.server-control-message
+  title: RealtimeServerControlMessage
+  semanticOwner: Realtime Status Service
+  format: json-schema-2020-12
+  canonicalPath: websocket/realtime-status/server-control-message.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Realtime Status Service
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 476628393c8c2010cfe8ba15643cd1d506024cfe61b60b6cac649a67ee8902dd
+- contractId: websocket.realtime-status.status-message
+  title: RealtimeMessage
+  semanticOwner: Realtime Status Service
+  format: json-schema-2020-12
+  canonicalPath: websocket/realtime-status/status-message.schema.json
+  designedBaselineVersion: 1.0.0
+  publicationVersion: 1.0.0
+  contractStatus: canonical-v1
+  consumers:
+  - Browser frontend
+  - Realtime Status Service
+  sourceEvidence:
+  - Official clean-slate v1 contract decision
+  sha256: 043c7088769bac399217a27f09a6ff1eac4a9d4aef28f8036ce0f2b9ff0ea528

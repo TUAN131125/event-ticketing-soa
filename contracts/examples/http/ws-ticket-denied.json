@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-1234567890abcdef",
+  "traceId": null,
+  "error": {
+    "code": "ACCESS_DENIED",
+    "message": "Booking access was denied",
+    "retryable": false,
+    "details": {}
+  }
+}

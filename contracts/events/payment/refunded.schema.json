@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event:payment.refunded:v1",
+  "title": "payment.refunded",
+  "description": "Official design-derived v1 producer-owned schema for payment.refunded. Delivery is at-least-once and consumers deduplicate by eventId.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "x-origin": "design-derived-v1",
+  "allOf": [
+    {
+      "$ref": "urn:event-ticketing:event-envelope:v1"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "payment.refunded"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paymentId",
+        "bookingId",
+        "status",
+        "refundAmount",
+        "resourceVersion"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "bookingId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PARTIALLY_REFUNDED",
+            "REFUNDED"
+          ]
+        },
+        "refundAmount": {
+          "$ref": "urn:event-ticketing:money:v1"
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "EVTMSG-001",
+      "eventType": "payment.refunded",
+      "schemaVersion": 1,
+      "occurredAt": "2026-08-03T03:00:00Z",
+      "correlationId": "corr-1234567890abcdef",
+      "aggregateId": "BOOKING-001",
+      "data": {
+        "paymentId": "PAYMENT-001",
+        "bookingId": "BOOKING-001",
+        "status": "PARTIALLY_REFUNDED",
+        "refundAmount": {
+          "amountMinor": 100000,
+          "currency": "VND"
+        },
+        "resourceVersion": 1
+      }
+    }
+  ]
+}

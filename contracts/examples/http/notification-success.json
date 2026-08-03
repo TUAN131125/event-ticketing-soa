@@ -1,0 +1,9 @@
+{
+  "deliveryId": "DEL-001",
+  "eventId": "EVTMSG-001",
+  "channel": "EMAIL",
+  "status": "RETRY_PENDING",
+  "attemptCount": 1,
+  "lastErrorCode": "PROVIDER_TIMEOUT",
+  "createdAt": "2026-08-03T03:00:00Z"
+}

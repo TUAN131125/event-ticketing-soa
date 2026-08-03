@@ -1,3 +1,33 @@
 {
-  "_placeholder": "contracts/common/money.schema.json"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:money:v1",
+  "title": "Money",
+  "description": "Cross-service money. amountMinor is an int64; VND uses exponent 0.",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "amountMinor",
+    "currency"
+  ],
+  "properties": {
+    "amountMinor": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 0,
+      "maximum": 9223372036854775807
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    }
+  },
+  "examples": [
+    {
+      "amountMinor": 100000,
+      "currency": "VND"
+    }
+  ],
+  "x-origin": "phase5-machine-baseline"
 }

@@ -1,3 +1,53 @@
 {
-  "_placeholder": "contracts/common/event-envelope.schema.json"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event-envelope:v1",
+  "title": "EventEnvelope",
+  "x-contract-status": "canonical-v1",
+  "x-designed-baseline-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "eventType",
+    "schemaVersion",
+    "occurredAt",
+    "correlationId",
+    "aggregateId",
+    "data"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "aggregateId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "x-origin": "phase5-machine-baseline"
 }

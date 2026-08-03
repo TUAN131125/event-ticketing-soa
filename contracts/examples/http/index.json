@@ -1,0 +1,156 @@
+[
+  {
+    "file": "customer-success.json",
+    "openapi": "customer-service.yaml",
+    "schema": "Customer"
+  },
+  {
+    "file": "event-success.json",
+    "openapi": "event-service.yaml",
+    "schema": "Event"
+  },
+  {
+    "file": "booking-success.json",
+    "openapi": "booking-service.yaml",
+    "schema": "Booking"
+  },
+  {
+    "file": "payment-success.json",
+    "openapi": "payment-service.yaml",
+    "schema": "Payment"
+  },
+  {
+    "file": "ticket-success.json",
+    "openapi": "ticket-service.yaml",
+    "schema": "Ticket"
+  },
+  {
+    "file": "notification-success.json",
+    "openapi": "notification-service.yaml",
+    "schema": "Delivery"
+  },
+  {
+    "file": "esb-success.json",
+    "openapi": "esb-public-api.yaml",
+    "schema": "BookingResult"
+  },
+  {
+    "file": "realtime-success.json",
+    "openapi": "realtime-service.yaml",
+    "schema": "ConnectionHealth"
+  },
+  {
+    "file": "realtime-event-accepted.json",
+    "openapi": "realtime-service.yaml",
+    "schema": "StatusEventResult"
+  },
+  {
+    "file": "identity-link-success.json",
+    "openapi": "customer-service.yaml",
+    "schema": "IdentityMapping"
+  },
+  {
+    "file": "identity-resolve-active.json",
+    "openapi": "customer-service.yaml",
+    "schema": "IdentityMapping"
+  },
+  {
+    "file": "identity-resolve-inactive.json",
+    "openapi": "customer-service.yaml",
+    "schema": "IdentityMapping"
+  },
+  {
+    "file": "booking-access-owner.json",
+    "openapi": "booking-service.yaml",
+    "schema": "BookingAccessDecision"
+  },
+  {
+    "file": "booking-access-admin-override.json",
+    "openapi": "booking-service.yaml",
+    "schema": "BookingAccessDecision"
+  },
+  {
+    "file": "booking-access-not-owner.json",
+    "openapi": "booking-service.yaml",
+    "schema": "BookingAccessDecision"
+  },
+  {
+    "file": "booking-access-dependency-failure.json",
+    "openapi": "booking-service.yaml",
+    "schema": "BookingAccessDecision"
+  },
+  {
+    "file": "ws-ticket-success.json",
+    "openapi": "esb-public-api.yaml",
+    "schema": "WsTicketResponse"
+  },
+  {
+    "file": "customer-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "event-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "booking-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "payment-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "ticket-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "notification-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "esb-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "realtime-error.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "idempotency-conflict.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "optimistic-concurrency-conflict.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "identity-link-conflict.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "identity-resolve-not-found.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "ws-ticket-denied.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "internal-status-invalid-audience.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "internal-status-replayed-jti.json",
+    "jsonSchema": "../../common/error-response.schema.json"
+  },
+  {
+    "file": "idempotency-replay.json",
+    "openapi": "booking-service.yaml",
+    "schema": "Booking"
+  },
+  {
+    "file": "internal-status-event-valid.json",
+    "jsonSchema": "../../websocket/realtime-status/status-message.schema.json"
+  }
+]

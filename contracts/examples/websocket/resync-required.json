@@ -1,0 +1,7 @@
+{
+  "type": "resync_required",
+  "bookingId": "BKG-001",
+  "authoritativeUrl": "/api/bookings/BKG-001",
+  "reason": "sequence_gap",
+  "lastObservedSequence": 3
+}

@@ -1,0 +1,13 @@
+{
+  "paymentId": "PAY-001",
+  "bookingId": "BKG-001",
+  "amount": {
+    "amountMinor": 100000,
+    "currency": "VND"
+  },
+  "status": "UNKNOWN",
+  "providerReference": "PROV-001",
+  "resourceVersion": 3,
+  "createdAt": "2026-08-03T03:00:00Z",
+  "updatedAt": "2026-08-03T03:00:00Z"
+}

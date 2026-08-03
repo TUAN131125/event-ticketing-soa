@@ -1,0 +1,12 @@
+{
+  "eventId": "EVTMSG-001",
+  "eventType": "booking.confirmed",
+  "schemaVersion": 1,
+  "occurredAt": "2026-08-03T03:00:00Z",
+  "correlationId": "corr-1234567890abcdef",
+  "aggregateId": "BKG-001",
+  "data": {
+    "bookingId": "BKG-001",
+    "ticketIds": ["TKT-001"]
+  }
+}

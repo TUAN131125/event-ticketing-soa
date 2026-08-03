@@ -1,1 +1,314 @@
-# Placeholder: contracts/openapi/notification-service.yaml
+openapi: 3.1.0
+info:
+  title: Notification Service API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
+servers:
+- url: http://notification-service:8007
+security:
+- bearerAuth: []
+paths:
+  /webhooks/events:
+    post:
+      summary: Nhận sự kiện
+      operationId: receiveEventWebhook
+      description: >-
+        Generic at-least-once ingress. The signature is HMAC SHA-256 over
+        timestamp + "." + raw body; eventId is the deduplication key.
+      parameters:
+      - name: X-Webhook-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: X-Webhook-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: '^sha256=[A-Fa-f0-9]{64}$'
+      responses:
+        '202':
+          description: Đã nhận
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../webhooks/notification/notification-webhook.schema.json'
+      security:
+      - webhookHmac: []
+  /deliveries:
+    get:
+      summary: Liệt kê delivery
+      operationId: listDeliveries
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Delivery'
+  /deliveries/{deliveryId}:
+    get:
+      summary: Chi tiết delivery
+      operationId: getDelivery
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema:
+          type: string
+  /deliveries/{deliveryId}/retry:
+    post:
+      summary: Retry thủ công
+      operationId: retryDelivery
+      responses:
+        '202':
+          description: Đã xếp hàng
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /templates/{code}:
+    put:
+      summary: Cập nhật template
+      operationId: replaceTemplate
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUpdate'
+      parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+  /health/live:
+    get:
+      summary: Liveness
+      operationId: notificationLiveness
+      responses:
+        '200':
+          description: UP
+      security: []
+  /health/ready:
+    get:
+      summary: Readiness
+      operationId: notificationReadiness
+      responses:
+        '200':
+          description: READY
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
+components:
+  schemas:
+    ErrorResponse:
+      $ref: '../common/error-response.schema.json'
+    Money:
+      $ref: '../common/money.schema.json'
+    PageMeta:
+      $ref: '../common/pagination.schema.json'
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - eventType
+      - schemaVersion
+      - occurredAt
+      - correlationId
+      - aggregateId
+      - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        schemaVersion:
+          type: integer
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+        correlationId:
+          type: string
+        aggregateId:
+          type: string
+        data:
+          type: object
+    Delivery:
+      type: object
+      additionalProperties: false
+      required:
+      - deliveryId
+      - eventId
+      - channel
+      - status
+      - attemptCount
+      - createdAt
+      properties:
+        deliveryId:
+          type: string
+        eventId:
+          type: string
+        channel:
+          enum:
+          - EMAIL
+          - SMS
+        status:
+          enum:
+          - PENDING
+          - SENDING
+          - DELIVERED
+          - RETRY_PENDING
+          - DEAD_LETTER
+          - CANCELLED
+        attemptCount:
+          type: integer
+          minimum: 0
+        lastErrorCode:
+          type:
+          - string
+          - 'null'
+        createdAt:
+          type: string
+          format: date-time
+    TemplateUpdate:
+      type: object
+      additionalProperties: false
+      required:
+      - subject
+      - body
+      properties:
+        subject:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 10000
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    TraceParent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[0-9]+"$
+  responses:
+    BadRequest:
+      description: Request không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Chưa xác thực
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Không đủ quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Xung đột trạng thái hoặc idempotency
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Dữ liệu đúng cú pháp nhưng sai nghiệp vụ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Dependency hoặc service không sẵn sàng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    webhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
