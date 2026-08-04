@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 
 def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -31,6 +32,15 @@ def _normalize_database_url(raw: str) -> str:
     return raw
 
 
+def _read_public_key(path_value: str | None) -> str | None:
+    if not path_value:
+        return None
+    path = Path(path_value)
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_env: str
@@ -40,6 +50,10 @@ class Settings:
     db_pool_size: int
     db_max_overflow: int
     sql_echo: bool
+    webhook_shared_secret: str
+    jwt_public_key: str | None
+    jwt_issuer: str
+    jwt_audience: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -59,6 +73,17 @@ class Settings:
             ),
             sql_echo=os.getenv("NOTIFICATION_SQL_ECHO", "false").strip().lower()
             in {"1", "true", "yes", "on"},
+            # NOT-02: bi mat dung chung voi ben phat webhook (ESB) de xac
+            # minh chu ky HMAC-SHA256 (xem security/webhook_signature.py).
+            # Gia tri mac dinh CHI danh cho local/dev - bat buoc doi trong
+            # moi moi truong that.
+            webhook_shared_secret=os.getenv(
+                "NOTIFICATION_WEBHOOK_SHARED_SECRET", "dev-only-shared-secret-change-me"
+            ),
+            # RS256 public key cua Identity Service - xem security/authentication.py.
+            jwt_public_key=_read_public_key(os.getenv("NOTIFICATION_JWT_PUBLIC_KEY_PATH")),
+            jwt_issuer=os.getenv("NOTIFICATION_JWT_ISSUER", "identity-service"),
+            jwt_audience=os.getenv("NOTIFICATION_JWT_AUDIENCE", "event-ticketing-soa"),
         )
 
 

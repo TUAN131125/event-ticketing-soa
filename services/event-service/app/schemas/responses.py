@@ -1,28 +1,71 @@
-"""Response schema cua Event Service."""
+"""Pydantic response schema - khop Event/SaleEligibility trong OpenAPI."""
+
 from __future__ import annotations
+
+from datetime import datetime
 
 from pydantic import BaseModel
 
 from app.domain.entities import Event
 
 
+class MoneyResponse(BaseModel):
+    amountMinor: int
+    currency: str
+
+
 class TicketTypeResponse(BaseModel):
-    type: str
-    price: int
+    code: str
+    name: str
+    price: MoneyResponse
 
 
 class EventResponse(BaseModel):
-    id: str
+    eventId: str
     name: str
-    location: str
-    startTime: str
+    venue: str
+    startsAt: datetime
+    saleStartsAt: datetime
+    saleEndsAt: datetime
     status: str
     ticketTypes: list[TicketTypeResponse]
+    resourceVersion: int
 
     @classmethod
-    def from_entity(cls, event: Event) -> "EventResponse":
+    def from_entity(cls, event: Event) -> EventResponse:
         return cls(
-            id=event.id, name=event.name, location=event.location,
-            startTime=event.start_time, status=event.status.value,
-            ticketTypes=[TicketTypeResponse(type=t.type, price=t.price) for t in event.ticket_types],
+            eventId=event.id,
+            name=event.name,
+            venue=event.venue,
+            startsAt=event.starts_at,
+            saleStartsAt=event.sale_starts_at,
+            saleEndsAt=event.sale_ends_at,
+            status=event.status.value,
+            ticketTypes=[
+                TicketTypeResponse(
+                    code=t.code,
+                    name=t.name,
+                    price=MoneyResponse(
+                        amountMinor=t.price.amount_minor, currency=t.price.currency
+                    ),
+                )
+                for t in event.ticket_types
+            ],
+            resourceVersion=event.resource_version,
         )
+
+
+class SaleEligibilityResponse(BaseModel):
+    eventId: str
+    eligible: bool
+    status: str
+    reasonCode: str | None = None
+    priceSnapshot: list[TicketTypeResponse]
+
+
+class EventListResponse(BaseModel):
+    """Khong nam trong OpenAPI (listEvents tra ve mang thuan tuy), dung
+    noi bo de truyen ca totalItems cho router tinh header phan trang."""
+
+    items: list[EventResponse]
+    total: int

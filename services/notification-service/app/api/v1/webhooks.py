@@ -1,37 +1,45 @@
-"""Webhook endpoint - noi ESB goi toi sau khi co su kien nghiep vu.
+"""NOT-01 ReceiveEvent - endpoint webhook DUY NHAT theo hop dong (Giai
+doan 5): POST /webhooks/events, nhan EventEnvelope, tra 202. Khong yeu
+cau Bearer JWT (security: [] trong OpenAPI - ESB goi bang chu ky HMAC
+rieng, xem security/webhook_signature.py) nhung PHAI co X-Signature hop
+le."""
+from __future__ import annotations
 
-Luon tra HTTP 200 kem truong "status" ("SENT" / "DUPLICATE_IGNORED") -
-day la dung hop dong webhook idempotent: khong bao gio tra 4xx/5xx cho
-truong hop trung lap, de ESB khong hieu nham la loi va retry vo han.
-"""
-from fastapi import APIRouter, Depends
+import json
 
-from app.application.commands.handle_booking_confirmed import handle_booking_confirmed
-from app.application.commands.handle_booking_failed import handle_booking_failed
-from app.dependencies import get_provider, get_repository
+from fastapi import APIRouter, Depends, Header, Request
+from pydantic import ValidationError
+
+from app.application.commands.receive_event import receive_event
+from app.config import Settings, get_settings
+from app.dependencies import get_event_repository, get_provider, get_template_repository
+from app.domain.exceptions import EventSchemaInvalidError
 from app.providers.email_provider import EmailProvider
-from app.repositories.interfaces import DeliveryRepository
-from app.schemas.requests import BookingConfirmedPayload, BookingFailedPayload
-from app.schemas.responses import WebhookResultResponse
+from app.repositories.interfaces import EventDeliveryRepository, TemplateRepository
+from app.schemas.requests import EventEnvelope
+from app.security.webhook_signature import SIGNATURE_HEADER, verify_signature
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
-@router.post("/booking-confirmed", response_model=WebhookResultResponse)
-def booking_confirmed(
-    payload: BookingConfirmedPayload,
-    repo: DeliveryRepository = Depends(get_repository),
+@router.post("/events", status_code=202)
+async def receive_event_webhook(
+    request: Request,
+    x_signature: str | None = Header(default=None, alias=SIGNATURE_HEADER),
+    settings: Settings = Depends(get_settings),
+    event_repo: EventDeliveryRepository = Depends(get_event_repository),
+    template_repo: TemplateRepository = Depends(get_template_repository),
     provider: EmailProvider = Depends(get_provider),
 ):
-    status_ = handle_booking_confirmed(repo, provider, payload.model_dump())
-    return WebhookResultResponse(status=status_)
+    raw_body = await request.body()
+    # NOT-02: xac minh chu ky TRUOC khi parse/tin bat cu field nao trong
+    # body - tranh xu ly payload chua duoc xac thuc nguon goc.
+    verify_signature(raw_body, x_signature, settings.webhook_shared_secret)
 
+    try:
+        envelope = EventEnvelope.model_validate(json.loads(raw_body))
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise EventSchemaInvalidError(f"EventEnvelope khong hop le: {exc}") from exc
 
-@router.post("/booking-failed", response_model=WebhookResultResponse)
-def booking_failed(
-    payload: BookingFailedPayload,
-    repo: DeliveryRepository = Depends(get_repository),
-    provider: EmailProvider = Depends(get_provider),
-):
-    status_ = handle_booking_failed(repo, provider, payload.model_dump())
-    return WebhookResultResponse(status=status_)
+    delivery = receive_event(event_repo, template_repo, provider, envelope.model_dump())
+    return {"eventId": envelope.eventId, "deliveryId": delivery.id, "status": delivery.status.value}

@@ -1,32 +1,44 @@
-"""Pydantic response schema."""
+"""Pydantic response schema - khop CHINH XAC hop dong (Giai doan 5)."""
 from __future__ import annotations
 
 from pydantic import BaseModel
 
-from app.domain.entities import Delivery
-
-
-class WebhookResultResponse(BaseModel):
-    status: str
+from app.domain.entities import Delivery, Template
 
 
 class DeliveryResponse(BaseModel):
-    id: str
-    type: str
-    correlationId: str
-    toEmail: str
-    subject: str
+    deliveryId: str
+    eventId: str
+    channel: str
     status: str
+    attemptCount: int
+    lastErrorCode: str | None
     createdAt: str
 
     @classmethod
     def from_entity(cls, delivery: Delivery) -> "DeliveryResponse":
         return cls(
-            id=delivery.id,
-            type=delivery.type.value,
-            correlationId=delivery.correlation_id,
-            toEmail=delivery.to_email,
-            subject=delivery.subject,
+            deliveryId=delivery.id,
+            eventId=delivery.event_id,
+            channel=delivery.channel.value,
             status=delivery.status.value,
+            attemptCount=delivery.attempt_count,
+            lastErrorCode=delivery.last_error_code,
             createdAt=delivery.created_at.isoformat(),
+        )
+
+
+class TemplateResponse(BaseModel):
+    templateCode: str
+    subject: str
+    resourceVersion: int
+    updatedAt: str
+
+    @classmethod
+    def from_entity(cls, template: Template) -> "TemplateResponse":
+        return cls(
+            templateCode=template.code,
+            subject=template.subject,
+            resourceVersion=template.resource_version,
+            updatedAt=template.updated_at.isoformat(),
         )

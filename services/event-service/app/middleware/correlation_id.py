@@ -1,4 +1,5 @@
 """Middleware gan Correlation ID cho moi request (giu nguyen neu ESB da gui)."""
+
 import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware

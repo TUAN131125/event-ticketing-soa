@@ -1,9 +1,9 @@
-"""Use case: xem lai lich su gui thong bao - huu ich khi demo/tra cuu."""
+"""Use case: liet ke lich su delivery (GET /deliveries)."""
 from typing import Iterable
 
 from app.domain.entities import Delivery
-from app.repositories.interfaces import DeliveryRepository
+from app.repositories.interfaces import EventDeliveryRepository
 
 
-def list_deliveries(repo: DeliveryRepository) -> Iterable[Delivery]:
-    return repo.list_all()
+def list_deliveries(repo: EventDeliveryRepository) -> Iterable[Delivery]:
+    return repo.list_deliveries()

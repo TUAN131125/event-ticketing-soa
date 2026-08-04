@@ -29,6 +29,9 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "migrations/versions/*.py" = ["E501"]
+# B008 (Depends trong default arg) la idiom bat buoc cua FastAPI, khong
+# phai loi thuc su - xem https://fastapi.tiangolo.com/tutorial/dependencies/
+"app/api/**/*.py" = ["B008"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"

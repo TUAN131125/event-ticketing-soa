@@ -1,17 +1,18 @@
-"""Doc va dien du lieu vao mau HTML trong app/templates/.
-
-Tach rieng khoi application/commands: doc file la chi tiet ha tang
-(infrastructure), khong phai logic nghiep vu - use case chi goi
-render(template_name, **fields) ma khong biet file nam o dau.
-"""
+"""Render noi dung email tu template - uu tien doc tu TemplateRepository
+(DB, co the sua qua PUT /templates/{code} - NOT-09), fallback ve
+template mac dinh (application/services/template_defaults.py) neu DB
+chua co dong tuong ung."""
 from __future__ import annotations
 
-from pathlib import Path
+from app.application.services.template_defaults import DEFAULT_TEMPLATES
+from app.repositories.interfaces import TemplateRepository
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
-
-def render(template_name: str, **fields: str) -> str:
-    path = _TEMPLATES_DIR / template_name
-    with path.open(encoding="utf-8") as f:
-        return f.read().format(**fields)
+def render(template_repo: TemplateRepository, template_code: str, fields: dict[str, str]) -> tuple[str, str]:
+    """Tra ve (subject, body) da dien du lieu."""
+    template = template_repo.get(template_code)
+    if template is not None:
+        subject, body = template.subject, template.body
+    else:
+        subject, body = DEFAULT_TEMPLATES[template_code]
+    return subject.format(**fields), body.format(**fields)

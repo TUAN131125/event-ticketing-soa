@@ -23,6 +23,15 @@ services:
     environment:
       NOTIFICATION_APP_ENV: local
       NOTIFICATION_DATABASE_URL: postgresql+psycopg://notification_service:notification_service@postgres:5432/notification_service
+      # NOT-02: doi gia tri that, phai KHOP voi bi mat ben ESB dung de ky.
+      NOTIFICATION_WEBHOOK_SHARED_SECRET: dev-only-shared-secret-change-me
+      # RS256 public key cua Identity Service - xem ./keys/README (chua co,
+      # can nhom Identity chia se file public key that de mount vao day).
+      NOTIFICATION_JWT_PUBLIC_KEY_PATH: /app/keys/identity-public.pem
+      NOTIFICATION_JWT_ISSUER: identity-service
+      NOTIFICATION_JWT_AUDIENCE: event-ticketing-soa
+    volumes:
+      - ./keys:/app/keys:ro
     ports:
       - "8007:8007"
     depends_on:

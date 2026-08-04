@@ -1,130 +1,111 @@
 # Event Service
 
-Event Service quản lý vòng đời sự kiện (tạo, cập nhật thông tin, và máy
-trạng thái bán vé DRAFT → ON_SALE → PAUSED/CLOSED, hoặc → CANCELLED). Đây
-là service T2 (theo phân loại DOC-04 của nhóm): không có tài nguyên tranh
-chấp đồng thời như Seat Inventory, nên service ưu tiên sự đơn giản và rõ
-ràng của REST + PostgreSQL thay vì các cơ chế khóa nâng cao.
+Event Service quản lý vòng đời sự kiện: tạo, xem chi tiết, liệt kê (lọc +
+phân trang), thay thế toàn bộ profile, mở bán/tạm dừng/hủy, và kiểm tra
+điều kiện được phép bán vé (sale-eligibility) cho ESB gọi trước khi
+booking. Đây là service T2 (theo phân loại DOC-04): không có tài nguyên
+tranh chấp đồng thời như Seat Inventory, nhưng có `resourceVersion`/
+`If-Match` để tránh lost-update khi 2 admin sửa cùng lúc.
 
-## Kiến trúc
+**Bản này viết lại để khớp đúng `contracts/openapi/event-service.yaml`
+(Giai đoạn 5) và đặc tả `01_EVENT_SERVICE.docx` (Giai đoạn 3)** — thay
+cho bản MVP trước chỉ có CRUD lõi, sai path (`/open-sales` thay vì
+`/publish`), thiếu `resourceVersion`, thiếu `Idempotency-Key`, thiếu
+audit, và dùng error envelope không khớp contract.
 
-Clean Architecture / layered, cùng phong cách với các service khác trong
-repo (Customer Service, Seat Inventory Service, Identity Service):
+## Endpoint (khớp OpenAPI Giai đoạn 5)
 
-```text
-HTTP (FastAPI)
-    |
-    v
-app/api            - nhan request, tra response (khong chua logic)
-    |
-    v
-app/application     - use case (create/get/update event, open/pause/close
-    |                 sales, cancel)
-    v
-app/domain          - entity + state machine (rules.py), khong biet
-    |                 FastAPI/DB
-    v
-app/repositories     - interface (Protocol) EventRepository
-    |
-    v
-app/infrastructure/database - PostgresEventRepository (SQLAlchemy 2.0)
-    |
-    v
-PostgreSQL (schema "event")
+| Method | Path | Header bắt buộc | Ghi chú |
+|---|---|---|---|
+| GET | `/health/live`, `/health/ready` | | |
+| GET | `/events?status=&page=&pageSize=` | | EVT-03, tổng số trả qua `X-Total-Count` |
+| POST | `/events` | `Idempotency-Key` | EVT-01, tạo DRAFT, trả 201 |
+| GET | `/events/{id}` | | EVT-04, 404 nếu không có |
+| PUT | `/events/{id}` | `Idempotency-Key`, `If-Match` | EVT-02, replace toàn bộ profile |
+| POST | `/events/{id}/publish` | `Idempotency-Key`, `If-Match` | EVT-07, DRAFT/PAUSED → ON_SALE |
+| POST | `/events/{id}/pause` | `Idempotency-Key`, `If-Match` | EVT-08, ON_SALE → PAUSED |
+| POST | `/events/{id}/cancel` | `Idempotency-Key`, `If-Match` | EVT-09, → CANCELLED |
+| GET | `/events/{id}/sale-eligibility` | | EVT-10, ESB gọi trước booking |
+
+`If-Match` gửi dạng `"3"` (đúng resourceVersion hiện tại của bản ghi,
+lấy từ response trước đó) — sai sẽ trả **409 VERSION_CONFLICT**.
+`Idempotency-Key` là chuỗi tuỳ ý do client sinh; gọi lại với cùng key +
+cùng thân request sẽ trả lại đúng response đã lưu (không chạy lại
+nghiệp vụ); cùng key nhưng khác thân request → **409
+IDEMPOTENCY_KEY_REUSED**.
+
+## Lỗi trả về
+
+Theo đúng `ErrorResponse` trong contract:
+
+```json
+{
+  "correlationId": "...",
+  "traceId": null,
+  "error": { "code": "EVENT_NOT_FOUND", "message": "...", "retryable": false, "details": null }
+}
 ```
 
-Domain và application layer chỉ phụ thuộc vào `EventRepository`
-(Protocol) - không biết dữ liệu lưu ở đâu. Nhờ vậy khi nâng cấp từ
-`InMemoryEventRepository` (bản MVP ban đầu) lên `PostgresEventRepository`
-thật, không phải sửa gì ở tầng `application`/`api`, chỉ đổi 1 dòng trong
-`app/dependencies.py`.
+Mã lỗi: `EVENT_NOT_FOUND` (404), `INVALID_EVENT_TRANSITION` (409),
+`VERSION_CONFLICT` (409), `INVALID_EVENT_DATA` (422),
+`IDEMPOTENCY_KEY_REUSED` (409).
 
-`InMemoryEventRepository` vẫn còn trong code nhưng chỉ dùng cho
-`tests/unit` (chạy nhanh, không cần Postgres) - app thật (`app/main.py`)
-luôn dùng `PostgresEventRepository`.
+## Dữ liệu (schema `event`, quản lý bằng Alembic)
 
-## Dữ liệu
+- `events`: `id` (EVxxx, sinh từ `SEQUENCE`), `name`, `venue`, `starts_at`,
+  `sale_starts_at`, `sale_ends_at`, `status`
+  (`DRAFT`/`ON_SALE`/`PAUSED`/`CANCELLED`/`ENDED`), `resource_version`,
+  `created_at`.
+- `ticket_types` (bảng con, `ON DELETE CASCADE`): `code`, `name`,
+  `amount_minor`, `currency` (Money — không còn là số nguyên đơn giản).
+- `event_audit` (EVT-11, append-only): ghi mọi mutation (`actor_id`,
+  `action`, `changed_at`). Chưa có endpoint đọc audit qua REST (không có
+  trong contract) — đọc trực tiếp qua DB hoặc `AuditRepository.list_for_event`
+  nếu cần cho demo.
+- `idempotency_keys`: lưu response đã xử lý theo từng `Idempotency-Key`.
 
-- Schema riêng `event` trong PostgreSQL, quản lý bằng Alembic
-  (`migrations/versions/0001_initial_schema.py`).
-- Bảng `event.events`: `id` (dạng `EV001`, `EV002`, ...), `name`,
-  `location`, `start_time`, `status`
-  (`DRAFT`/`ON_SALE`/`PAUSED`/`CLOSED`/`CANCELLED`), `created_at`.
-- Bảng `event.ticket_types` (bảng con, `ON DELETE CASCADE` theo
-  `event_id`): `id`, `event_id`, `type`, `price`. Được ghi cùng lúc với
-  `events` khi tạo sự kiện; không có use case nào sửa `ticket_types` sau
-  khi tạo, nên `update()` chỉ đụng tới cột của `events`.
-- `id` được sinh bằng PostgreSQL `SEQUENCE event.event_id_seq` - sinh tại
-  tầng database nên vẫn đúng khi chạy nhiều worker/container cùng lúc
-  (khác với biến đếm trong bộ nhớ của bản MVP cũ).
-- Dữ liệu seed sẵn 1 sự kiện demo `EV001` (`ON_SALE`, 2 loại vé
-  VIP/STANDARD) - giữ tương thích với dữ liệu test cũ / Postman
-  collection.
+Seed sẵn `EV001` (`ON_SALE`, 2 loại vé VIP/STANDARD) để tương thích
+Postman/test cũ.
 
-## API
+## Giới hạn đã biết (ghi rõ để không hiểu nhầm là "xong 100%")
 
-| Method | Path | Ghi chú |
-|---|---|---|
-| GET | `/health` | Health check đơn giản |
-| GET | `/events` | Liệt kê tất cả sự kiện |
-| POST | `/events` | Tạo sự kiện mới (mặc định `DRAFT`) |
-| GET | `/events/{id}` | Lấy chi tiết 1 sự kiện, 404 nếu không có |
-| PUT | `/events/{id}` | Cập nhật tên/địa điểm/thời gian |
-| GET | `/events/{id}/on-sale` | Endpoint tiện lợi cho ESB kiểm tra nhanh |
-| POST | `/events/{id}/open-sales` | Mở bán vé, 409 nếu chuyển trạng thái không hợp lệ |
-| POST | `/events/{id}/pause-sales` | Tạm dừng bán vé |
-| POST | `/events/{id}/close-sales` | Đóng bán vé |
-| POST | `/events/{id}/cancel` | Hủy sự kiện |
+- **`ENDED`** có trong enum status nhưng **không có endpoint mutation
+  nào đạt tới trạng thái này** trong OpenAPI baseline hiện tại (chỉ có
+  publish/pause/cancel) — cần một cơ chế tự động (job theo `saleEndsAt`)
+  nếu muốn dùng, chưa làm.
+- **Auth**: `X-Actor-Id` là header tuỳ chọn, dùng để ghi audit — CHƯA có
+  JWT/service-to-service auth thật (giống toàn bộ MVP hiện tại của
+  nhóm, xem `middleware/authentication.py` các service khác).
+- **EVT-05/06 (tạo/sửa/ẩn loại vé + giá theo thời gian hiệu lực riêng)**:
+  OpenAPI baseline hiện tại không có endpoint riêng cho việc này —
+  `ticketTypes` chỉ được set trọn gói qua `POST /events` hoặc
+  `PUT /events/{id}` (replace toàn bộ). Nếu nhóm cần endpoint riêng,
+  đây là việc bổ sung contract trước, không phải lỗi thiếu code.
 
 ## Chạy thử
-
-### Cách 1: Docker Compose (khuyến nghị, giống hệt CI/production)
 
 ```powershell
 cd services\event-service
 docker compose up --build
 ```
 
-Compose tự khởi động PostgreSQL, chạy `alembic upgrade head` (qua
-`docker-entrypoint.sh`) rồi mới start service ở cổng `8002`.
-
-### Cách 2: Chạy trực tiếp (cần tự có PostgreSQL)
-
 ```powershell
-cd services\event-service
-pip install -r requirements-dev.txt
-copy .env.example .env
-# sua EVENT_DATABASE_URL trong .env cho khop voi Postgres cua ban
-alembic upgrade head
-python -m uvicorn app.main:app --port 8002 --reload
-```
-
-### Kiểm thử nhanh bằng curl
-
-```powershell
-curl http://localhost:8002/health
-curl http://localhost:8002/events/EV001
-curl -X POST http://localhost:8002/events -H "Content-Type: application/json" ^
-  -d "{\"name\":\"Hoi thao AI\",\"location\":\"Trung tam hoi nghi\",\"startTime\":\"2026-09-15T09:00:00\",\"ticketTypes\":[{\"type\":\"STANDARD\",\"price\":100000}]}"
-curl -X POST http://localhost:8002/events/EV001/pause-sales
-curl -X POST http://localhost:8002/events/EV001/open-sales
+curl.exe http://localhost:8002/events/EV001
+curl.exe -X POST http://localhost:8002/events -H "Content-Type: application/json" -H "Idempotency-Key: demo-1" -d "{\"name\":\"Hoi thao AI\",\"venue\":\"Trung tam hoi nghi\",\"startsAt\":\"2026-09-15T09:00:00+07:00\",\"saleStartsAt\":\"2026-08-05T00:00:00+07:00\",\"saleEndsAt\":\"2026-09-14T00:00:00+07:00\",\"ticketTypes\":[{\"code\":\"STD\",\"name\":\"Standard\",\"price\":{\"amountMinor\":100000,\"currency\":\"VND\"}}]}"
+curl.exe -X POST http://localhost:8002/events/EV001/pause -H "Idempotency-Key: demo-2" -H "If-Match: \"1\""
 ```
 
 ## Test
 
 ```powershell
 pip install -r requirements-dev.txt
-pytest tests/unit                 # khong can Postgres
-pytest tests/integration -m integration   # can Postgres that dang chay
+pytest tests/unit                          # 11 test, khong can Postgres
+pytest tests/integration -m integration    # 10 test, can Postgres that
+ruff check app/
+mypy app/    # con vai loi khong-nghiem-trong tu Column[] typing cua SQLAlchemy declarative (chung toan bo repo)
 ```
 
-## Ghi chú nâng cấp so với bản MVP trước
-
-Bản đầu (MVP) dùng `InMemoryEventRepository` (dict trong bộ nhớ) để có
-luồng chạy được sớm cho ESB gọi thử; dữ liệu mất khi restart, và
-`env.py`/`alembic.ini`/`README.md`/`pyproject.toml`/`requirements-dev.txt`
-vẫn là placeholder vì chưa có database thật để Alembic quản lý. Bản này
-thay bằng `PostgresEventRepository` thật, đồng bộ với cách Customer
-Service, Seat Inventory Service và Identity Service đã làm - dữ liệu bền
-vững qua Alembic migration (kể cả bảng con `ticket_types`), không còn
-placeholder ở bất kỳ tệp cấu hình nào.
+Đã chạy kiểm chứng trước khi đóng gói: **21/21 test pass**, `ruff check`
+sạch, server thật chạy được, và test bằng curl trực tiếp toàn bộ luồng
+publish → version-conflict → sale-eligibility → pause → cancel →
+idempotency replay/conflict.

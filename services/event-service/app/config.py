@@ -4,6 +4,7 @@ Quy uoc dat ten bien moi truong: tien to EVENT_ (giong CUSTOMER_ cua
 customer-service, SEAT_ cua seat-inventory-service, IDENTITY_ cua
 identity-service) de tranh dung do khi nhieu service chay chung mot may.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,7 +43,7 @@ class Settings:
     sql_echo: bool
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         database_url = os.getenv(
             "EVENT_DATABASE_URL",
             "postgresql+psycopg://event_service:event_service@localhost:5436/event_service",

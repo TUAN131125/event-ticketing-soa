@@ -1,4 +1,5 @@
 """Middleware ghi log co cau truc cho moi request."""
+
 import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -17,7 +18,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         correlation_id = getattr(request.state, "correlation_id", None)
         logger.info(
             "%s %s -> %s (%sms) correlationId=%s",
-            request.method, request.url.path, response.status_code,
-            duration_ms, correlation_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            correlation_id,
         )
         return response

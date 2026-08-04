@@ -1,11 +1,18 @@
 """FastAPI dependency injection - noi duy nhat quyet dinh dang dung
-repository implementation nao. App that luon dung PostgresCustomerRepository;
-InMemoryCustomerRepository chi con duoc tests/unit tu import truc tiep."""
-from app.infrastructure.database.repositories import PostgresCustomerRepository
-from app.repositories.interfaces import CustomerRepository
+repository/store implementation nao."""
+from app.infrastructure.database.repositories import (
+    PostgresCustomerRepository,
+    PostgresIdempotencyStore,
+)
+from app.repositories.interfaces import CustomerRepository, IdempotencyStore
 
 _repository = PostgresCustomerRepository()
+_idempotency_store = PostgresIdempotencyStore()
 
 
 def get_repository() -> CustomerRepository:
     return _repository
+
+
+def get_idempotency_store() -> IdempotencyStore:
+    return _idempotency_store

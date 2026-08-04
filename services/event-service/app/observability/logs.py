@@ -1,4 +1,5 @@
 """Cau hinh logging dung chung."""
+
 import logging
 
 from app.config import get_settings

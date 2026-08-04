@@ -9,10 +9,12 @@ description = "Notification Service - gui email khi co su kien nghiep vu (REST w
 requires-python = ">=3.12"
 dependencies = [
   "alembic==1.16.5",
+  "cryptography==49.0.0",
   "fastapi==0.115.0",
   "psycopg[binary]==3.2.9",
   "pydantic[email]==2.9.2",
   "pydantic-settings==2.5.2",
+  "PyJWT==2.13.0",
   "sqlalchemy==2.0.35",
   "uvicorn[standard]==0.30.6",
 ]

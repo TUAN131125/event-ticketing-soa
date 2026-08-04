@@ -1,4 +1,5 @@
 """Quan ly vong doi engine va session SQLAlchemy ket noi PostgreSQL that."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
