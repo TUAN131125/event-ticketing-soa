@@ -1,1 +1,0 @@
--- Placeholder: database/schemas/seat_schema.sql. Chưa có câu lệnh SQL.

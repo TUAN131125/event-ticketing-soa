@@ -1,1 +1,0 @@
--- Placeholder: database/schemas/customer_schema.sql. Chưa có câu lệnh SQL.

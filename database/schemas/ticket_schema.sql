@@ -1,1 +1,0 @@
--- Placeholder: database/schemas/ticket_schema.sql. Chưa có câu lệnh SQL.

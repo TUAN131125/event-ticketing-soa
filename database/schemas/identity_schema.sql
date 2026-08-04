@@ -1,1 +1,0 @@
--- Placeholder: database/schemas/identity_schema.sql. Chưa có câu lệnh SQL.

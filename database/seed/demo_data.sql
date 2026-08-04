@@ -1,1 +1,0 @@
--- Placeholder: database/seed/demo_data.sql. Chưa có câu lệnh SQL.

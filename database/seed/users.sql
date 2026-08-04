@@ -1,1 +1,0 @@
--- Placeholder: database/seed/users.sql. Chưa có câu lệnh SQL.
