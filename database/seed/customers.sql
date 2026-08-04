@@ -1,1 +1,0 @@
--- Placeholder: database/seed/customers.sql. Chưa có câu lệnh SQL.

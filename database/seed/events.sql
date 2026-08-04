@@ -1,1 +1,0 @@
--- Placeholder: database/seed/events.sql. Chưa có câu lệnh SQL.
