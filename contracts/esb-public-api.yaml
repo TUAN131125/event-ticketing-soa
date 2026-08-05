@@ -76,11 +76,25 @@ paths:
             ETag:
               $ref: '#/components/headers/ETag'
         '202':
-          description: Đang đối soát
+          description: Kết quả thanh toán chưa xác định; booking đang chờ đối soát. Client phải poll
+            Location thay vì gửi lại lệnh đặt vé.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookingResult'
+          headers:
+            Location:
+              description: Đường dẫn đọc trạng thái booking đang đối soát.
+              required: true
+              schema:
+                type: string
+                pattern: ^/api/bookings/
+            Retry-After:
+              description: Số giây tối thiểu trước lần poll kế tiếp.
+              required: true
+              schema:
+                type: integer
+                minimum: 1
         '402':
           description: Thanh toán bị từ chối
           content:
@@ -167,18 +181,26 @@ paths:
     get:
       summary: Health tổng hợp
       operationId: aggregateHealth
+      description: Tổng hợp trạng thái của ESB và mọi provider. Customer, Event, Seat Inventory, Booking,
+        Payment và Ticket là critical; Notification và Realtime là noncritical. Một critical provider
+        DOWN trả 503/DOWN; chỉ noncritical DOWN trả 200/DEGRADED. Endpoint này không thay thế
+        /health/ready, vốn chỉ phản ánh chính ESB.
       responses:
         '200':
-          description: UP
+          description: UP hoặc DEGRADED
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/AggregateHealth'
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: DOWN vì ít nhất một dependency critical không phục vụ được.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateHealth'
       security: []
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
@@ -227,7 +249,6 @@ paths:
       security:
       - UserJwt: []
       parameters:
-      - $ref: '#/components/parameters/RequiredCorrelationId'
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/Traceparent'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -378,8 +399,6 @@ components:
       example:
         amountMinor: 250000
         currency: VND
-    PageMeta:
-      $ref: '#/components/schemas/PageMeta'
     SafeIdentifier:
       type: string
       minLength: 1
@@ -601,6 +620,69 @@ components:
           type:
           - string
           - 'null'
+    DependencyHealth:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - critical
+      - status
+      properties:
+        name:
+          type: string
+          description: Logical dependency name. Never an internal URL or hostname.
+        critical:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - UP
+          - DOWN
+        latencyMs:
+          type: integer
+          minimum: 0
+        errorCode:
+          type: string
+          description: Stable public-safe probe code; never a provider message or stack trace.
+          enum:
+          - TIMEOUT
+          - UNREACHABLE
+          - NOT_READY
+    AggregateHealth:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - checkedAt
+      - dependencies
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - DEGRADED
+          - DOWN
+        checkedAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyHealth'
+      example:
+        status: DEGRADED
+        checkedAt: '2026-08-05T10:30:00Z'
+        dependencies:
+        - name: seat-inventory-service
+          critical: true
+          status: UP
+          latencyMs: 12
+        - name: notification-service
+          critical: false
+          status: DOWN
+          latencyMs: 2000
+          errorCode: TIMEOUT
     HealthStatus:
       type: object
       additionalProperties: false
@@ -629,14 +711,6 @@ components:
         minLength: 1
         maxLength: 128
       example: corr-1234567890abcdef
-    RequiredCorrelationId:
-      name: X-Correlation-ID
-      in: header
-      required: true
-      schema:
-        type: string
-        minLength: 16
-        maxLength: 64
     Traceparent:
       name: traceparent
       in: header

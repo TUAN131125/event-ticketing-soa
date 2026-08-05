@@ -1,4 +1,5 @@
 """Interface repository cho Event."""
+
 from collections.abc import Iterable
 from typing import Protocol
 

@@ -27,9 +27,7 @@ class UserRepository:
         if not for_update:
             return self._session.get(UserModel, user_id)
         return self._session.scalar(
-            select(UserModel)
-            .where(UserModel.user_id == user_id)
-            .with_for_update()
+            select(UserModel).where(UserModel.user_id == user_id).with_for_update()
         )
 
     def add(self, user: UserModel) -> None:

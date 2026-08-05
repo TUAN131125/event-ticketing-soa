@@ -93,9 +93,7 @@ class RegistrationUseCase:
         record_success("register")
         return created
 
-    def _audit_conflict(
-        self, normalized_email: str, context: RequestContext
-    ) -> None:
+    def _audit_conflict(self, normalized_email: str, context: RequestContext) -> None:
         with self._sessions() as session, session.begin():
             users = UserRepository(session)
             existing = users.find_by_normalized_email(normalized_email)

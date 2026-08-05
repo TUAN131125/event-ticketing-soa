@@ -19,7 +19,7 @@ def soap_fault(error: SeatInventoryError, correlation_id: str) -> bytes:
     fault_string = etree.SubElement(fault, "faultstring")
     fault_string.text = error.message
     detail = etree.SubElement(fault, "detail")
-    contract_fault = etree.SubElement(detail, qname("SeatInventoryFault"))
+    contract_fault = etree.SubElement(detail, qname("SeatServiceFault"))
     code = etree.SubElement(contract_fault, qname("code"))
     code.text = error.code
     message = etree.SubElement(contract_fault, qname("message"))

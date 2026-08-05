@@ -11,6 +11,7 @@ class PaymentStatus(StrEnum):
     CANCELLED = "CANCELLED"
     PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"
     REFUNDED = "REFUNDED"
+    UNKNOWN = "UNKNOWN"
 
 
 class RefundKind(StrEnum):

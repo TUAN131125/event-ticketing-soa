@@ -1,7 +1,8 @@
 """Cac enum thuoc domain cua Customer Service."""
-from enum import Enum
+
+from enum import StrEnum
 
 
-class CustomerStatus(str, Enum):
+class CustomerStatus(StrEnum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"

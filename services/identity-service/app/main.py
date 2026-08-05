@@ -81,8 +81,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "X-CSRF-Token",
             "X-Correlation-ID",
             "traceparent",
+            # Declared as required by /auth/register and /admin/users/{userId}/roles.
+            "Idempotency-Key",
+            "If-Match",
         ],
-        expose_headers=["X-Correlation-ID", "X-Trace-ID"],
+        expose_headers=["X-Correlation-ID", "X-Trace-ID", "ETag"],
     )
     application.add_middleware(BaseHTTPMiddleware, dispatch=access_log_middleware)
     application.add_middleware(BaseHTTPMiddleware, dispatch=context_middleware)

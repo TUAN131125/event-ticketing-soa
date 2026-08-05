@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --requirement requirements.txt
 COPY --chown=ticket:ticket services/ticket-service/alembic.ini ./
 COPY --chown=ticket:ticket services/ticket-service/migrations ./migrations
 COPY --chown=ticket:ticket services/ticket-service/app ./app
+COPY --chown=ticket:ticket libs ./libs
 COPY --chown=ticket:ticket services/ticket-service/docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod 0555 docker-entrypoint.sh

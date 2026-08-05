@@ -49,7 +49,12 @@ class FakeProviders:
         self.eligibility: Mapping[str, Any] = {"eligible": True}
         self.available = True
         self.reserve_outcomes: list[object] = [
-            {"reservationId": "RES-1", "resourceVersion": 1, "status": "ACTIVE"}
+            {
+                "reservationId": "RES-1",
+                "resourceVersion": 1,
+                "status": "ACTIVE",
+                "expiresAt": "2026-08-05T10:10:00Z",
+            }
         ]
         self.payment_outcomes: dict[str, object] = {
             "authorizePayment": {"status": "AUTHORIZED"},
@@ -57,6 +62,11 @@ class FakeProviders:
             "createRefund": {"status": "REFUNDED"},
             "cancelPayment": {"status": "CANCELLED"},
         }
+        self.create_payment_outcome: object = {
+            "paymentId": "PAY-1",
+            "status": "CREATED",
+        }
+        self.reservation_status = "ACTIVE"
         self.transition_failures: set[str] = set()
         self.ticket_failure = False
         self.confirm_failure = False
@@ -69,6 +79,7 @@ class FakeProviders:
             "reservationId": "RES-1",
             "paymentId": "PAY-1",
             "ticketIds": ["TKT-1"],
+            "resourceVersion": 1,
         }
         self.payment: Mapping[str, Any] = {"paymentId": "PAY-1", "status": "CAPTURED"}
         self.booking_tickets: list[Mapping[str, Any]] = [
@@ -131,7 +142,7 @@ class FakeProviders:
         self, reservation_id: str, context: RequestContext
     ) -> Mapping[str, Any]:
         self._record("GetReservation", reservationId=reservation_id)
-        return {"reservationId": reservation_id, "status": "ACTIVE"}
+        return {"reservationId": reservation_id, "status": self.reservation_status}
 
     async def confirm_seats(
         self,
@@ -252,7 +263,9 @@ class FakeProviders:
             amount=amount.as_wire(),
             idempotencyKey=idempotency_key,
         )
-        return {"paymentId": "PAY-1", "status": "CREATED"}
+        if isinstance(self.create_payment_outcome, Exception):
+            raise self.create_payment_outcome
+        return self.create_payment_outcome
 
     async def get_payment(
         self, payment_id: str, context: RequestContext

@@ -1,42 +1,53 @@
 # Event Ticketing SOA
 
-Monorepo cho hệ thống đặt vé sự kiện theo kiến trúc SOA/ESB. Thư mục
-`contracts/` là nguồn sự thật duy nhất cho các contract runtime.
+This monorepo runs the ticketing workflow behind a contract-first ESB. Runtime contracts in
+`/contracts` are the only source of truth; `dist/contracts` is generated output.
 
-## Chạy local bằng Docker Compose
+## Local startup
 
-1. Build contract runtime:
+Prerequisites: Docker Desktop/Engine with Compose v2, Python 3.12 and OpenSSL.
 
-   ```powershell
-   python contracts/scripts/validate_contracts.py
-   python contracts/scripts/build_contracts.py
-   ```
+```sh
+python contracts/scripts/validate_contracts.py
+python contracts/scripts/build_contracts.py
+cp .env.example .env
+sh scripts/generate-local-keys.sh
+docker compose --profile all up --build --wait
+```
 
-2. Sao chép `.env.example` thành `.env`, thay các mật khẩu/token mẫu và đặt
-   các RSA key local trong `local-secrets/` theo các đường dẫn khai báo trong
-   `.env`. Repository không tự sinh signing key.
+The key script is an explicit local bootstrap step. Containers never create or replace signing
+keys. Edit `.env` before any shared use; `.env` and `local-secrets/*` are ignored by Git.
 
-3. Khởi động toàn hệ thống:
+Migrations run only in one-shot Compose jobs (`identity-migrate` through
+`orchestrator-migrate`). Application entrypoints use `app.main:create_app --factory` and start
+only after their migration job succeeds.
 
-   ```powershell
-   docker compose --profile all up --build --wait
-   ```
+Stop and remove local data with:
 
-   Có thể thay `all` bằng `identity`, `customer`, `event`, `seat`, `booking`,
-   `payment`, `ticket`, `notification`, `orchestrator`, `realtime`, `backend`
-   hoặc `frontend`. Mỗi backend có một migration job one-shot; application chỉ
-   khởi động sau khi migration hoàn thành thành công.
+```sh
+docker compose down --volumes --remove-orphans
+```
 
-4. Dọn môi trường local:
+## Ports and boundaries
 
-   ```powershell
-   docker compose down --volumes --remove-orphans
-   ```
+| Component | Port |
+|---|---:|
+| ESB | 8000 |
+| Customer | 8001 |
+| Event | 8002 |
+| Seat Inventory | 8003 |
+| Booking | 8004 |
+| Payment | 8005 |
+| Ticket | 8006 |
+| Notification | 8007 |
+| Realtime | 8008 |
+| Identity | 8009 |
+| Customer Web / Admin Web | 3000 / 3001 |
 
-## Cổng chuẩn
+Browsers call only ESB, Identity and Realtime. ESB-to-provider calls use Service JWTs;
+Notification webhooks use HMAC. Liveness is `/health/live`; Compose readiness uses
+`/health/ready`.
 
-ESB `8000`, Customer `8001`, Event `8002`, Seat `8003`, Booking `8004`,
-Payment `8005`, Ticket `8006`, Notification `8007`, Realtime `8008` và
-Identity `8009`. Customer Web dùng `3000`; Admin Web dùng `3001`.
-
-Không commit `.env`, private key, certificate, token hoặc artifact build.
+Individual provider profiles are available (`identity`, `customer`, `event`, `seat`, `booking`,
+`payment`, `ticket`, `notification`, `realtime`). The `all` profile is the supported end-to-end
+configuration because ESB orchestration requires every provider.

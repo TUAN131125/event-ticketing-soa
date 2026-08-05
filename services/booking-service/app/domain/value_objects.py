@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class BookingItem:
     seat_id: str
-    ticket_type: str
+    ticket_type_code: str
     unit_price: Decimal
 
 

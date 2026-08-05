@@ -1,94 +1,121 @@
-"""Internal ticket issuance and query endpoints."""
+"""Canonical Ticket issuance, query and validation endpoints."""
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, Path, Response, status
+from libs.platform_http import etag
 
 from app.application.service import TicketService
 from app.dependencies import get_service
-from app.domain.enums import TicketStatus
 from app.domain.value_objects import RequestContext, TicketDefinition
 from app.middleware.authentication import require_internal_caller
-from app.observability.metrics import COMMAND_TOTAL
-from app.schemas.requests import IssueTicketsRequest
-from app.schemas.responses import (
-    TicketBatchResponse,
-    TicketPageResponse,
-    TicketResponse,
-)
+from app.schemas.requests import IssueTicketsRequest, ValidateTicketRequest
+from app.schemas.responses import TicketResponse
+from app.security.qr_tokens import verify_qr_token
 
-router = APIRouter(prefix="/tickets", tags=["tickets"])
+router = APIRouter(tags=["tickets"])
 
 
 @router.post(
-    "/issue",
-    response_model=TicketBatchResponse,
+    "/tickets:issue",
+    response_model=list[TicketResponse],
     status_code=status.HTTP_201_CREATED,
     operation_id="issueTickets",
 )
 def issue(
     body: IssueTicketsRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
+    ],
     context: RequestContext = Depends(require_internal_caller),
     service: TicketService = Depends(get_service),
-) -> TicketBatchResponse:
-    try:
-        tickets = service.issue(
-            context,
-            idempotency_key=idempotency_key,
-            booking_id=body.booking_id,
-            customer_id=body.customer_id,
-            event_id=body.event_id,
-            payment_id=body.payment_id,
-            definitions=tuple(
-                TicketDefinition(
-                    seat_id=item.seat_id,
-                    seat_label=item.seat_label or item.seat_id,
-                    ticket_type=item.ticket_type,
-                )
-                for item in body.tickets
-            ),
-        )
-        COMMAND_TOTAL.labels("issue", "success").inc()
-        return TicketBatchResponse.from_entities(
-            tickets, service.settings.qr_signing_key
-        )
-    except Exception:
-        COMMAND_TOTAL.labels("issue", "failure").inc()
-        raise
-
-
-@router.get("", response_model=TicketPageResponse, operation_id="listTickets")
-def list_all(
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
-    booking_id: str | None = Query(default=None, alias="bookingId"),
-    customer_id: str | None = Query(default=None, alias="customerId"),
-    event_id: str | None = Query(default=None, alias="eventId"),
-    ticket_status: TicketStatus | None = Query(default=None, alias="status"),
-    search: str | None = Query(default=None, min_length=1, max_length=128),
-    _context: RequestContext = Depends(require_internal_caller),
-    service: TicketService = Depends(get_service),
-) -> TicketPageResponse:
-    return TicketPageResponse.from_page(
-        service.list(
-            page=page,
-            page_size=page_size,
-            booking_id=booking_id,
-            customer_id=customer_id,
-            event_id=event_id,
-            status=ticket_status,
-            search=search,
-        )
+) -> list[TicketResponse]:
+    tickets = service.issue(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=body.booking_id,
+        customer_id=body.customer_id,
+        event_id=body.event_id,
+        payment_id="CAPTURED",
+        definitions=tuple(
+            TicketDefinition(
+                seat_id=item.seat_id,
+                seat_label=item.seat_id,
+                ticket_type="STANDARD",
+            )
+            for item in body.items
+        ),
     )
+    return [
+        TicketResponse.from_entity(ticket, service.settings.qr_signing_key)
+        for ticket in tickets
+    ]
 
 
-@router.get("/{ticket_id}", response_model=TicketResponse, operation_id="getTicket")
+@router.get(
+    "/tickets/{ticketId}",
+    response_model=TicketResponse,
+    operation_id="getTicket",
+)
 def get(
-    ticket_id: str,
-    _context: RequestContext = Depends(require_internal_caller),
+    ticket_id: Annotated[str, Path(alias="ticketId")],
+    response: Response,
+    context: RequestContext = Depends(require_internal_caller),
     service: TicketService = Depends(get_service),
 ) -> TicketResponse:
-    return TicketResponse.from_entity_with_qr(
-        service.get(ticket_id), service.settings.qr_signing_key
+    ticket = service.get(ticket_id)
+    response.headers["ETag"] = etag(ticket.resource_version)
+    return TicketResponse.from_entity(ticket, service.settings.qr_signing_key)
+
+
+@router.get(
+    "/bookings/{bookingId}/tickets",
+    response_model=list[TicketResponse],
+    operation_id="listBookingTickets",
+)
+def by_booking(
+    booking_id: Annotated[str, Path(alias="bookingId")],
+    context: RequestContext = Depends(require_internal_caller),
+    service: TicketService = Depends(get_service),
+) -> list[TicketResponse]:
+    page = service.list(
+        page=1,
+        page_size=100,
+        booking_id=booking_id,
+        customer_id=None,
+        event_id=None,
+        status=None,
+        search=None,
     )
+    return [
+        TicketResponse.from_entity(ticket, service.settings.qr_signing_key)
+        for ticket in page.items
+    ]
+
+
+@router.post(
+    "/tickets/validate",
+    response_model=TicketResponse,
+    operation_id="validateTicket",
+)
+def validate(
+    body: ValidateTicketRequest,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
+    ],
+    context: RequestContext = Depends(require_internal_caller),
+    service: TicketService = Depends(get_service),
+) -> TicketResponse:
+    parts = body.qr_token.split(".")
+    if len(parts) != 4:
+        from app.domain.exceptions import InvalidQrToken
+
+        raise InvalidQrToken()
+    ticket = service.get(parts[1])
+    verify_qr_token(
+        body.qr_token,
+        expected_ticket_id=ticket.ticket_id,
+        expected_qr_version=ticket.qr_version,
+        signing_key=service.settings.qr_signing_key,
+    )
+    return TicketResponse.from_entity(ticket, service.settings.qr_signing_key)

@@ -20,18 +20,15 @@ class Settings(BaseModel):
     customer_service_url: str = ""
     event_service_url: str = ""
     seat_service_url: str = ""
-    seat_service_token: str | None = None
     booking_service_url: str = ""
     payment_service_url: str = ""
     ticket_service_url: str = ""
     notification_service_url: str = ""
     notification_webhook_secret: str | None = None
     realtime_service_url: str = ""
-    realtime_internal_service_token: str | None = None
-    realtime_caller_service: str = "booking-orchestrator"
+    allowed_origins: str = ""
     internal_service_issuer: str = "booking-orchestrator"
     internal_service_subject: str = "booking-orchestrator"
-    internal_service_audience: str = "provider-services"
     internal_service_private_key: str | None = None
     internal_service_private_key_path: Path | None = None
     internal_service_key_id: str = "esb-internal-1"
@@ -49,6 +46,13 @@ class Settings(BaseModel):
     bulkhead_limit: int = Field(default=20, ge=1)
     outbox_poll_seconds: float = Field(default=1.0, gt=0)
     reconciliation_poll_seconds: float = Field(default=1.0, gt=0)
+    health_probe_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
+    booking_retry_after_seconds: int = Field(default=5, ge=1, le=300)
+    reconciliation_deadline_seconds: int = Field(default=900, ge=60, le=86_400)
+    reconciliation_backoff_seconds: int = Field(default=15, ge=1, le=3600)
+    reconciliation_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    max_reservation_extensions: int = Field(default=3, ge=0, le=20)
+    reservation_extension_seconds: int = Field(default=300, ge=30, le=3600)
     verify_contract_freeze: bool = True
     seat_provider_xsd_path: Path = Path("contracts/seat-inventory.xsd")
 
@@ -57,20 +61,21 @@ class Settings(BaseModel):
         if self.environment == "production":
             if not self.database_url.startswith("postgresql+"):
                 raise ValueError("production requires PostgreSQL")
-            if not (
-                self.internal_service_private_key
-                or self.internal_service_private_key_path
-            ) or not (self.ws_ticket_private_key or self.ws_ticket_private_key_path):
+            if not (self.internal_service_private_key or self.internal_service_private_key_path) or not (
+                self.ws_ticket_private_key or self.ws_ticket_private_key_path
+            ):
                 raise ValueError("production signing keys must be supplied by secret reference")
             if not self.notification_webhook_secret or len(self.notification_webhook_secret) < 32:
                 raise ValueError("production notification webhook secret must be at least 32 characters")
-            if not self.seat_service_token or len(self.seat_service_token) < 32:
-                raise ValueError("production Seat service token must be at least 32 characters")
-            if not self.realtime_internal_service_token or len(self.realtime_internal_service_token) < 32:
-                raise ValueError("production Realtime internal service token must be at least 32 characters")
+            origins = self.origin_list()
+            if not origins or "*" in origins:
+                raise ValueError("production CORS origins must be explicit")
             if self.docs_enabled:
                 raise ValueError("production docs must be disabled")
         return self
+
+    def origin_list(self) -> list[str]:
+        return [item.strip().rstrip("/") for item in self.allowed_origins.split(",") if item.strip()]
 
     @classmethod
     def from_env(cls) -> Settings:

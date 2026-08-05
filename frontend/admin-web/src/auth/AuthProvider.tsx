@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { authClient } from '../api/auth';
-import type { AuthSession, Role, User } from '../types';
+import type { AuthSession, User } from '../types';
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -16,9 +16,7 @@ type AuthContextValue = {
   isRestoring: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
-  assignRole: (userId: string, role: Role, action: 'assign' | 'revoke') => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -48,27 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setSession(await authClient.login({ email, password }));
   }, []);
-  const register = useCallback(async (email: string, password: string, displayName?: string) => {
-    await authClient.register({ email, password, displayName });
-  }, []);
   const logout = useCallback(async () => {
-    const token = session?.accessToken;
     setSession(null);
-    if (token) {
-      try {
-        await authClient.logout(token);
-      } catch {
-        /* local session remains cleared */
-      }
+    try {
+      await authClient.logout();
+    } catch {
+      /* local session remains cleared */
     }
-  }, [session?.accessToken]);
-  const assignRole = useCallback(
-    async (userId: string, role: Role, action: 'assign' | 'revoke') => {
-      if (!session) throw new Error('You need to sign in again.');
-      await authClient.assignRole(session.accessToken, userId, role, action);
-    },
-    [session],
-  );
+  }, []);
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -76,11 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
       isAuthenticated: Boolean(session),
       login,
-      register,
       logout,
-      assignRole,
     }),
-    [assignRole, isRestoring, login, logout, register, session],
+    [isRestoring, login, logout, session],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

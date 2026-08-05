@@ -102,7 +102,9 @@ class ResilienceExecutor:
                 self.circuit.failure()
                 if retry_class in {RetryClass.NONE, RetryClass.RECONCILIATION_ONLY} or attempt >= attempts:
                     raise
-                delay = self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, self.base_delay)
+                delay = self.base_delay * (2 ** (attempt - 1)) + random.uniform(  # nosec B311
+                    0, self.base_delay
+                )
                 if time.monotonic() + delay >= context.deadline_monotonic:
                     break
                 await asyncio.sleep(delay)

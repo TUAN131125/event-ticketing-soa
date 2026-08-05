@@ -1,178 +1,159 @@
-"""Provider-outcome and compensating payment commands."""
+"""Canonical Payment commands using the local provider boundary."""
 
-from fastapi import APIRouter, Depends, Header
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, Path, Response, status
+from libs.platform_http import etag, parse_if_match
 
 from app.application.service import PaymentService
 from app.dependencies import get_service
+from app.domain.exceptions import PaymentDeclined
 from app.domain.value_objects import RequestContext
 from app.middleware.authentication import require_internal_caller
-from app.observability.metrics import COMMAND_TOTAL
-from app.schemas.requests import (
-    AuthorizePaymentRequest,
-    CancelPaymentRequest,
-    CapturePaymentRequest,
-    ReconcilePaymentRequest,
-    RefundPaymentRequest,
-)
-from app.schemas.responses import PaymentResponse
+from app.schemas.requests import RefundPaymentRequest
+from app.schemas.responses import PaymentResponse, RefundResponse
 
 router = APIRouter(prefix="/payments", tags=["payment-commands"])
 
 
+def _provider_reference(payment_id: str, action: str) -> str:
+    return f"{action}-{payment_id}"
+
+
+def _headers(
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
+    ],
+    if_match: Annotated[str, Header(alias="If-Match", pattern=r'^"[1-9][0-9]*"$')],
+) -> tuple[str, int]:
+    return idempotency_key, parse_if_match(if_match)
+
+
 @router.post(
-    "/{payment_id}/authorize",
+    "/{paymentId}/authorize",
     response_model=PaymentResponse,
     operation_id="authorizePayment",
 )
 def authorize(
-    payment_id: str,
-    body: AuthorizePaymentRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    payment_id: Annotated[str, Path(alias="paymentId")],
+    response: Response,
+    headers: tuple[str, int] = Depends(_headers),
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
 ) -> PaymentResponse:
-    try:
-        result = service.authorize(
-            context,
-            idempotency_key=idempotency_key,
-            payment_id=payment_id,
-            approved=body.approved,
-            provider_reference=body.provider_reference,
-            failure_code=body.failure_code,
-            reason=body.reason,
-            expected_version=body.expected_version,
-        )
-        COMMAND_TOTAL.labels("authorize", "success").inc()
-        return PaymentResponse.from_entity(result)
-    except Exception:
-        COMMAND_TOTAL.labels("authorize", "failure").inc()
-        raise
+    current = service.get(payment_id)
+    approved = not current.payment_method.lower().startswith("decline")
+    payment = service.authorize(
+        context,
+        idempotency_key=headers[0],
+        payment_id=payment_id,
+        approved=approved,
+        provider_reference=_provider_reference(payment_id, "auth")
+        if approved
+        else None,
+        failure_code=None if approved else "DECLINED",
+        reason=None if approved else "Provider declined the payment",
+        expected_version=headers[1],
+    )
+    if not approved:
+        raise PaymentDeclined()
+    response.headers["ETag"] = etag(payment.resource_version)
+    return PaymentResponse.from_entity(payment)
 
 
 @router.post(
-    "/{payment_id}/capture",
+    "/{paymentId}/capture",
     response_model=PaymentResponse,
     operation_id="capturePayment",
 )
 def capture(
-    payment_id: str,
-    body: CapturePaymentRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    payment_id: Annotated[str, Path(alias="paymentId")],
+    response: Response,
+    headers: tuple[str, int] = Depends(_headers),
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
 ) -> PaymentResponse:
-    try:
-        result = service.capture(
-            context,
-            idempotency_key=idempotency_key,
-            payment_id=payment_id,
-            succeeded=body.succeeded,
-            provider_reference=body.provider_reference,
-            failure_code=body.failure_code,
-            reason=body.reason,
-            expected_version=body.expected_version,
-        )
-        COMMAND_TOTAL.labels("capture", "success").inc()
-        return PaymentResponse.from_entity(result)
-    except Exception:
-        COMMAND_TOTAL.labels("capture", "failure").inc()
-        raise
+    payment = service.capture(
+        context,
+        idempotency_key=headers[0],
+        payment_id=payment_id,
+        succeeded=True,
+        provider_reference=_provider_reference(payment_id, "auth"),
+        failure_code=None,
+        reason=None,
+        expected_version=headers[1],
+    )
+    response.headers["ETag"] = etag(payment.resource_version)
+    return PaymentResponse.from_entity(payment)
 
 
 @router.post(
-    "/{payment_id}/cancel",
-    response_model=PaymentResponse,
-    operation_id="cancelPayment",
+    "/{paymentId}/cancel", response_model=PaymentResponse, operation_id="cancelPayment"
 )
 def cancel(
-    payment_id: str,
-    body: CancelPaymentRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    payment_id: Annotated[str, Path(alias="paymentId")],
+    response: Response,
+    headers: tuple[str, int] = Depends(_headers),
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
 ) -> PaymentResponse:
-    try:
-        result = service.cancel(
-            context,
-            idempotency_key=idempotency_key,
-            payment_id=payment_id,
-            reason=body.reason,
-            provider_reference=body.provider_reference,
-            expected_version=body.expected_version,
-        )
-        COMMAND_TOTAL.labels("cancel", "success").inc()
-        return PaymentResponse.from_entity(result)
-    except Exception:
-        COMMAND_TOTAL.labels("cancel", "failure").inc()
-        raise
+    payment = service.cancel(
+        context,
+        idempotency_key=headers[0],
+        payment_id=payment_id,
+        reason="Booking workflow cancelled",
+        provider_reference=None,
+        expected_version=headers[1],
+    )
+    response.headers["ETag"] = etag(payment.resource_version)
+    return PaymentResponse.from_entity(payment)
 
 
 @router.post(
-    "/{payment_id}/refund",
-    response_model=PaymentResponse,
-    operation_id="refundPayment",
+    "/{paymentId}/refunds",
+    response_model=RefundResponse,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createRefund",
 )
 def refund(
-    payment_id: str,
+    payment_id: Annotated[str, Path(alias="paymentId")],
     body: RefundPaymentRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    headers: tuple[str, int] = Depends(_headers),
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
-) -> PaymentResponse:
-    try:
-        result = service.refund(
-            context,
-            idempotency_key=idempotency_key,
-            payment_id=payment_id,
-            amount=body.amount,
-            reason=body.reason,
-            provider_refund_reference=body.provider_refund_reference,
-            expected_version=body.expected_version,
-        )
-        COMMAND_TOTAL.labels("refund", "success").inc()
-        return PaymentResponse.from_entity(result)
-    except Exception:
-        COMMAND_TOTAL.labels("refund", "failure").inc()
-        raise
+) -> RefundResponse:
+    service.refund(
+        context,
+        idempotency_key=headers[0],
+        payment_id=payment_id,
+        amount=Decimal(body.amount.amount_minor),
+        reason=body.reason,
+        provider_refund_reference=_provider_reference(
+            payment_id, f"refund-{headers[1]}"
+        ),
+        expected_version=headers[1],
+    )
+    refunds = service.refunds(payment_id)
+    return RefundResponse.from_value(refunds[-1])
 
 
 @router.post(
-    "/{payment_id}/reconcile",
+    "/{paymentId}/reconcile",
     response_model=PaymentResponse,
     operation_id="reconcilePayment",
 )
 def reconcile(
-    payment_id: str,
-    body: ReconcilePaymentRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    payment_id: Annotated[str, Path(alias="paymentId")],
+    response: Response,
+    headers: tuple[str, int] = Depends(_headers),
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
 ) -> PaymentResponse:
-    try:
-        result = service.reconcile(
-            context,
-            idempotency_key=idempotency_key,
-            payment_id=payment_id,
-            provider_status=body.provider_status,
-            provider_reference=body.provider_reference,
-            provider_refund_reference=body.provider_refund_reference,
-            observed_refunded_amount=body.observed_refunded_amount,
-            failure_code=body.failure_code,
-            reason=body.reason,
-            expected_version=body.expected_version,
-        )
-        COMMAND_TOTAL.labels("reconcile", "success").inc()
-        return PaymentResponse.from_entity(result)
-    except Exception:
-        COMMAND_TOTAL.labels("reconcile", "failure").inc()
-        raise
+    payment = service.get(payment_id)
+    if payment.resource_version != headers[1]:
+        from app.domain.exceptions import VersionConflict
+
+        raise VersionConflict(headers[1], payment.resource_version)
+    response.headers["ETag"] = etag(payment.resource_version)
+    return PaymentResponse.from_entity(payment)

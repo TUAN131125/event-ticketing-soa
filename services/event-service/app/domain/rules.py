@@ -7,15 +7,15 @@ ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
     EventStatus.DRAFT: {EventStatus.ON_SALE, EventStatus.CANCELLED},
     EventStatus.ON_SALE: {
         EventStatus.PAUSED,
-        EventStatus.CLOSED,
+        EventStatus.ENDED,
         EventStatus.CANCELLED,
     },
     EventStatus.PAUSED: {
         EventStatus.ON_SALE,
-        EventStatus.CLOSED,
+        EventStatus.ENDED,
         EventStatus.CANCELLED,
     },
-    EventStatus.CLOSED: set(),
+    EventStatus.ENDED: set(),
     EventStatus.CANCELLED: set(),
 }
 

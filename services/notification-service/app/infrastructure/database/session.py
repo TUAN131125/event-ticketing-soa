@@ -4,6 +4,7 @@ Giong het customer-service/session.py - cung mot pattern trong toan repo
 de nhat quan (mot connection pool dung chung, moi request/test mo 1
 session rieng qua session_scope()).
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator

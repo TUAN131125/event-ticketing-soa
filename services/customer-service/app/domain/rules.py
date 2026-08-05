@@ -1,4 +1,5 @@
 """Quy tac nghiep vu thuan cua Customer Service."""
+
 from app.domain.exceptions import DuplicateEmailError
 
 

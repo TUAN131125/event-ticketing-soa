@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:seat="urn:event-ticketing:seat:v1">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <seat:ConfigureInventoryRequest>
+      <seat:context><seat:correlationId>corr-1234567890abcdef</seat:correlationId><seat:idempotencyKey>seed-EV001-v1</seat:idempotencyKey><seat:callerService>seed-local</seat:callerService><seat:schemaVersion>1</seat:schemaVersion></seat:context>
+      <seat:eventId>EV001</seat:eventId>
+      <seat:inventoryVersion>1</seat:inventoryVersion>
+      <seat:seats>
+        <seat:seat><seat:seatId>A12</seat:seatId><seat:section>A</seat:section><seat:rowLabel>1</seat:rowLabel><seat:seatNumber>12</seat:seatNumber><seat:ticketTypeCode>VIP</seat:ticketTypeCode><seat:status>AVAILABLE</seat:status></seat:seat>
+        <seat:seat><seat:seatId>A13</seat:seatId><seat:section>A</seat:section><seat:rowLabel>1</seat:rowLabel><seat:seatNumber>13</seat:seatNumber><seat:ticketTypeCode>VIP</seat:ticketTypeCode></seat:seat>
+      </seat:seats>
+    </seat:ConfigureInventoryRequest>
+  </soapenv:Body>
+</soapenv:Envelope>

@@ -8,7 +8,9 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.adapters.health import ReadinessProbe
 from app.adapters.rest.base import RestClient
 from app.adapters.rest.providers import (
     BookingRestAdapter,
@@ -24,6 +26,7 @@ from app.api.http import install_http_layer
 from app.api.router import create_router
 from app.application.booking import BookingSaga
 from app.application.cancellation import CancellationSaga
+from app.application.health import DatabaseProbe, HealthService
 from app.application.queries import QueryService
 from app.config import Settings
 from app.contract_freeze import verify_contract_freeze
@@ -31,6 +34,7 @@ from app.dependencies import RuntimeContainer, SystemClock
 from app.observability.logging import configure_logging
 from app.persistence.database import Database
 from app.persistence.repositories import SqlRepositories
+from app.ports.providers import HealthProbe
 from app.resilience.policies import (
     Bulkhead,
     CircuitBreaker,
@@ -122,7 +126,7 @@ def build_container(settings: Settings) -> RuntimeContainer:
         http,
         _executor(settings),
         str(settings.seat_provider_xsd_path),
-        _required_value(settings.seat_service_token, "ESB_SEAT_SERVICE_TOKEN"),
+        signer,
         repositories,
     )
     notification_secret = _required_value(
@@ -133,14 +137,7 @@ def build_container(settings: Settings) -> RuntimeContainer:
         rest(settings.notification_service_url, "notification-service"),
         notification_secret,
     )
-    realtime = RealtimeRestAdapter(
-        rest(settings.realtime_service_url, "realtime-status-service"),
-        _required_value(
-            settings.realtime_internal_service_token,
-            "ESB_REALTIME_INTERNAL_SERVICE_TOKEN",
-        ),
-        settings.realtime_caller_service,
-    )
+    realtime = RealtimeRestAdapter(rest(settings.realtime_service_url, "realtime-status-service"))
     saga = BookingSaga(
         customer,
         events,
@@ -155,6 +152,7 @@ def build_container(settings: Settings) -> RuntimeContainer:
         repositories,
         clock,
         settings.idempotent_command_attempts,
+        settings.reconciliation_deadline_seconds,
     )
     cancellation = CancellationSaga(
         bookings,
@@ -191,6 +189,14 @@ def build_container(settings: Settings) -> RuntimeContainer:
         tickets,
         repositories,
         clock,
+        settings.reconciliation_backoff_seconds,
+        max_backoff_seconds=300,
+        lease_seconds=settings.reconciliation_lease_seconds,
+    )
+    health = HealthService(
+        _health_probes(settings, http, database),
+        clock,
+        settings.health_probe_timeout_seconds,
     )
     return RuntimeContainer(
         saga,
@@ -199,11 +205,35 @@ def build_container(settings: Settings) -> RuntimeContainer:
         auth,
         ws,
         bookings,
+        health,
         outbox,
         reconciliation,
         database,
         http,
     )
+
+
+# Booking cannot complete without these; Notification and Realtime only degrade it.
+CRITICAL_DEPENDENCIES = (
+    ("customer-service", "customer_service_url"),
+    ("event-service", "event_service_url"),
+    ("seat-inventory-service", "seat_service_url"),
+    ("booking-service", "booking_service_url"),
+    ("payment-service", "payment_service_url"),
+    ("ticket-service", "ticket_service_url"),
+)
+NONCRITICAL_DEPENDENCIES = (
+    ("notification-service", "notification_service_url"),
+    ("realtime-status-service", "realtime_service_url"),
+)
+
+
+def _health_probes(settings: Settings, http: httpx.AsyncClient, database: Database | None) -> list[HealthProbe]:
+    probes: list[HealthProbe] = [DatabaseProbe(database)]
+    for critical, group in ((True, CRITICAL_DEPENDENCIES), (False, NONCRITICAL_DEPENDENCIES)):
+        for name, attribute in group:
+            probes.append(ReadinessProbe(name, getattr(settings, attribute), http, critical=critical))
+    return probes
 
 
 def create_app(settings: Settings | None = None, container: RuntimeContainer | None = None) -> FastAPI:
@@ -261,11 +291,32 @@ def create_app(settings: Settings | None = None, container: RuntimeContainer | N
         lifespan=lifespan,
     )
     app.state.container = runtime
+    app.state.retry_after_seconds = settings.booking_retry_after_seconds
+    origins = settings.origin_list()
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Idempotency-Key",
+                "If-Match",
+                "traceparent",
+                "X-Correlation-ID",
+            ],
+            # The contract requires clients to read ETag before If-Match, and to poll
+            # Location after a 202 instead of resubmitting. Browsers cannot see either
+            # header unless it is exposed.
+            expose_headers=["ETag", "Location", "Retry-After", "X-Correlation-ID"],
+        )
     install_http_layer(app, settings.request_timeout_seconds)
     app.include_router(create_router())
     generated_openapi = app.openapi
     canonical_responses = {
-        ("get", "/api/events"): {"200"},
+        ("get", "/api/events"): {"200", "500"},
         ("get", "/api/events/{eventId}"): {"200", "404", "503"},
         ("post", "/api/bookings"): {"201", "202", "402", "409", "422", "503"},
         ("get", "/api/bookings/{bookingId}"): {"200", "403", "404"},
@@ -275,6 +326,7 @@ def create_app(settings: Settings | None = None, container: RuntimeContainer | N
             "404",
             "409",
             "503",
+            "412",
         },
         ("get", "/api/health"): {"200", "503"},
         ("get", "/api/traces/{correlationId}"): {"200", "403", "404"},
@@ -286,6 +338,8 @@ def create_app(settings: Settings | None = None, container: RuntimeContainer | N
             "429",
             "503",
         },
+        ("get", "/health/live"): {"200"},
+        ("get", "/health/ready"): {"200", "503"},
     }
 
     def contract_openapi() -> dict[str, Any]:

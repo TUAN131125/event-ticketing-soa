@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 
 def _integer(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -46,7 +48,8 @@ class Settings:
     app_name: str
     app_env: str
     database_url: str
-    service_token: str
+    service_jwt: ServiceJwtValidationSettings
+    provider_hmac_secret: str
     db_pool_size: int
     db_max_overflow: int
     db_pool_timeout_seconds: int
@@ -60,19 +63,17 @@ class Settings:
     @classmethod
     def from_environment(cls) -> Settings:
         app_env = os.getenv("PAYMENT_APP_ENV", "local").strip().lower()
-        service_token = os.getenv("PAYMENT_SERVICE_TOKEN", "").strip()
-        if not service_token:
-            raise ValueError("PAYMENT_SERVICE_TOKEN is required")
-        if app_env == "production" and len(service_token) < 32:
-            raise ValueError(
-                "PAYMENT_SERVICE_TOKEN must be a non-default value of at least "
-                "32 characters in production"
-            )
+        provider_hmac_secret = os.getenv("PAYMENT_PROVIDER_HMAC_SECRET", "").strip()
+        if not provider_hmac_secret:
+            raise ValueError("PAYMENT_PROVIDER_HMAC_SECRET is required")
         return cls(
             app_name="payment-service",
             app_env=app_env,
             database_url=_database_url(),
-            service_token=service_token,
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "PAYMENT", audience="payment-service"
+            ),
+            provider_hmac_secret=provider_hmac_secret,
             db_pool_size=_integer("PAYMENT_DB_POOL_SIZE", 10, 1, 100),
             db_max_overflow=_integer("PAYMENT_DB_MAX_OVERFLOW", 20, 0, 100),
             db_pool_timeout_seconds=_integer(

@@ -6,6 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -22,6 +23,7 @@ from app.middleware.error_handler import install_error_handlers
 from app.middleware.logging import access_log_middleware
 from app.observability.logs import configure_logging
 from app.observability.metrics import BOOKINGS_BY_STATUS
+from app.security.access_decisions import BookingAccessAuthorizer
 
 LOGGER = logging.getLogger("booking.metrics")
 
@@ -29,18 +31,28 @@ LOGGER = logging.getLogger("booking.metrics")
 def create_app(settings: Settings | None = None) -> FastAPI:
     current = settings or get_settings()
     configure_logging(current.log_level)
+    service_jwt_verifier = current.service_jwt.verifier()
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.draining = False
         application.state.settings = current
+        application.state.service_jwt_verifier = service_jwt_verifier
         application.state.booking_service = BookingService(
             current, get_session_factory(current)
+        )
+        application.state.access_http = httpx.Client(timeout=2.0)
+        application.state.booking_access_authorizer = BookingAccessAuthorizer(
+            application.state.booking_service,
+            current.customer_service_url,
+            current.service_jwt_signing.signer(),
+            application.state.access_http,
         )
         try:
             yield
         finally:
             application.state.draining = True
+            application.state.access_http.close()
             dispose_engine(current)
 
     application = FastAPI(

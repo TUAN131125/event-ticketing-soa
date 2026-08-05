@@ -1,18 +1,19 @@
 """Alembic environment for the payment schema."""
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.config import get_settings
 from app.infrastructure.database.models import Base
 
 config = context.config
-settings = get_settings()
 # Alembic stores options in ConfigParser, where percent signs are interpolation
 # markers. Preserve percent-encoded database credentials such as "%40".
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+config.set_main_option(
+    "sqlalchemy.url", os.environ["PAYMENT_DATABASE_URL"].replace("%", "%%")
+)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -38,7 +39,9 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
+        connect_args={
+            "connect_timeout": int(os.getenv("PAYMENT_DB_CONNECT_TIMEOUT_SECONDS", "5"))
+        },
     )
     with connectable.connect() as connection:
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS payment")

@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --requirement requirements.txt
 COPY --chown=booking:booking services/booking-service/alembic.ini ./
 COPY --chown=booking:booking services/booking-service/migrations ./migrations
 COPY --chown=booking:booking services/booking-service/app ./app
+COPY --chown=booking:booking libs ./libs
 COPY --chown=booking:booking services/booking-service/docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod 0555 docker-entrypoint.sh

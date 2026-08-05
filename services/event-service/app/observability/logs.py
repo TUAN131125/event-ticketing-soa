@@ -1,17 +1,19 @@
-"""Cau hinh logging dung chung."""
-import logging
+"""Logging helpers without importing application settings."""
 
-from app.config import get_settings
+import logging
 
 _configured = False
 
 
-def get_logger(name: str) -> logging.Logger:
+def configure_logging(level: str) -> None:
     global _configured
     if not _configured:
         logging.basicConfig(
-            level=get_settings().log_level,
+            level=level,
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
         _configured = True
+
+
+def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)

@@ -1,5 +1,6 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { createQueryClient } from './app/query-client';
 import { AuthProvider } from './app/auth';
 import { RequireAuth } from './app/RequireAuth';
 import { Shell } from './app/Shell';
@@ -15,9 +16,7 @@ import { LoginPage, RegisterPage, AccountPage } from './pages/AuthPages';
 import { NotFoundState } from '@event-ticketing/shared-ui';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
-});
+const queryClient = createQueryClient();
 class GlobalErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError(): { hasError: boolean } {

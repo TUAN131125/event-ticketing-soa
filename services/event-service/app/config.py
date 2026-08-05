@@ -4,11 +4,14 @@ Quy uoc dat ten bien moi truong: tien to EVENT_ (giong CUSTOMER_ cua
 customer-service, SEAT_ cua seat-inventory-service, IDENTITY_ cua
 identity-service) de tranh dung do khi nhieu service chay chung mot may.
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+
+from libs.platform_security import ServiceJwtValidationSettings
 
 
 def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -40,6 +43,7 @@ class Settings:
     db_pool_size: int
     db_max_overflow: int
     sql_echo: bool
+    service_jwt: ServiceJwtValidationSettings
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -57,6 +61,9 @@ class Settings:
             ),
             sql_echo=os.getenv("EVENT_SQL_ECHO", "false").strip().lower()
             in {"1", "true", "yes", "on"},
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "EVENT", audience="event-service"
+            ),
         )
 
 

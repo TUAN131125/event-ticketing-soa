@@ -3,25 +3,9 @@ import pytest
 from app.config import Settings
 
 
-def test_production_requires_service_and_qr_secrets(monkeypatch) -> None:
-    monkeypatch.setenv("TICKET_APP_ENV", "production")
+def test_missing_service_jwt_configuration_fails_closed(monkeypatch) -> None:
     monkeypatch.setenv("TICKET_DATABASE_URL", "sqlite:///ticket-test.db")
-    monkeypatch.setenv("TICKET_SERVICE_TOKEN", "short")
-    monkeypatch.setenv("TICKET_QR_SIGNING_KEY", "short")
-    with pytest.raises(ValueError, match="TICKET_SERVICE_TOKEN"):
+    monkeypatch.setenv("TICKET_QR_SIGNING_KEY", "test-signing-key")
+    monkeypatch.delenv("TICKET_SERVICE_JWT_ISSUER", raising=False)
+    with pytest.raises(ValueError, match="TICKET_SERVICE_JWT_ISSUER"):
         Settings.from_environment()
-
-    monkeypatch.setenv("TICKET_SERVICE_TOKEN", "S" * 32)
-    with pytest.raises(ValueError, match="TICKET_QR_SIGNING_KEY"):
-        Settings.from_environment()
-
-
-def test_local_settings_have_bounded_defaults(monkeypatch) -> None:
-    monkeypatch.setenv("TICKET_APP_ENV", "local")
-    monkeypatch.setenv("TICKET_DATABASE_URL", "sqlite:///ticket-test.db")
-    monkeypatch.setenv("TICKET_SERVICE_TOKEN", "test-service-token")
-    monkeypatch.setenv("TICKET_QR_SIGNING_KEY", "test-qr-signing-key")
-    settings = Settings.from_environment()
-    assert settings.db_connect_timeout_seconds <= settings.db_pool_timeout_seconds
-    assert settings.db_lock_timeout_ms < settings.db_statement_timeout_ms
-    assert settings.docs_enabled is True

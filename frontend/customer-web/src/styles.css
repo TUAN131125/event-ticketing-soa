@@ -29,6 +29,11 @@
 * {
   box-sizing: border-box;
 }
+html {
+  min-width: 320px;
+  background: var(--color-background);
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   min-width: 320px;
@@ -274,6 +279,17 @@ main {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
+.event-grid + .detail-layout {
+  margin-top: 28px;
+}
+.event-grid > .ui-card:not(.event-card) {
+  min-width: 0;
+}
+.event-grid > .ui-card:not(.event-card) h2 {
+  margin: 14px 0 8px;
+  font-size: 1.22rem;
+  letter-spacing: -0.025em;
+}
 .event-card {
   overflow: hidden;
   padding: 0;
@@ -327,17 +343,53 @@ main {
   gap: 32px;
   align-items: start;
 }
+.detail-main {
+  min-width: 0;
+}
+.detail-layout > form.detail-main {
+  display: grid;
+  gap: 18px;
+}
+.detail-layout > .ui-card.detail-main {
+  display: grid;
+  gap: 14px;
+}
+.detail-layout > .ui-card.detail-main > label,
+.detail-layout > form.detail-main .ui-card > label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-text-primary);
+}
+.detail-layout > form.detail-main > h1 {
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+.detail-layout > form.detail-main > .lede {
+  margin: -8px 0 2px;
+}
 .booking-panel {
   position: sticky;
   top: 104px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
 }
 .booking-panel h2 {
-  margin-top: 10px;
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+.booking-panel > p {
+  margin: 0;
+}
+.booking-panel > p:not(.muted) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 .facts {
   display: grid;
   gap: 15px;
-  margin: 22px 0;
+  margin: 4px 0;
 }
 .facts > div {
   display: flex;
@@ -500,9 +552,74 @@ main {
 .muted {
   color: var(--color-text-muted);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
+  line-height: 1.6;
+  margin: 0;
 }
+.muted svg {
+  flex: 0 0 auto;
+  margin-top: 0.18em;
+}
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 13px;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+.notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.notice-information {
+  color: var(--ui-info-700);
+  background: var(--ui-info-50);
+  border-color: #bfdbfe;
+}
+.qr-placeholder {
+  width: min(220px, 100%);
+  aspect-ratio: 1;
+  margin: 28px auto;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--ui-radius-lg);
+  color: var(--color-text-muted);
+  background:
+    linear-gradient(45deg, var(--color-background-subtle) 25%, transparent 25%) 0 0 / 18px 18px,
+    linear-gradient(-45deg, var(--color-background-subtle) 25%, transparent 25%) 0 0 / 18px 18px,
+    linear-gradient(45deg, transparent 75%, var(--color-background-subtle) 75%) 0 0 / 18px 18px,
+    linear-gradient(-45deg, transparent 75%, var(--color-background-subtle) 75%) 0 0 / 18px 18px;
+}
+
+.ui-card > :first-child {
+  margin-top: 0;
+}
+.ui-card > :last-child {
+  margin-bottom: 0;
+}
+.ui-card > .search-bar:last-child {
+  margin-bottom: 0;
+}
+.detail-main.ui-card .event-card-meta {
+  margin-top: 2px;
+}
+.detail-main.ui-card .ui-control {
+  margin-top: 2px;
+}
+.ticket-card {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--ui-space-8);
+}
+.ticket-card h1 {
+  overflow-wrap: anywhere;
+}
+
 .checkout-summary {
   display: grid;
   gap: 4px;
@@ -636,6 +753,9 @@ main {
   .booking-panel {
     position: static;
   }
+  .event-grid + .detail-layout {
+    margin-top: 22px;
+  }
   .auth-page {
     max-width: 600px;
     gap: 20px;
@@ -679,6 +799,24 @@ main {
   }
   .result-card {
     padding: 28px 18px;
+  }
+  .detail-layout,
+  .seat-layout {
+    gap: 20px;
+  }
+  .detail-cover {
+    height: 220px;
+  }
+  .facts > div {
+    flex-direction: column;
+    gap: 5px;
+  }
+  .facts dd {
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .ticket-card {
+    padding: var(--ui-space-6);
   }
   .auth-card {
     padding: var(--ui-space-6);

@@ -11,6 +11,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 
 def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -41,12 +43,18 @@ class Settings:
     db_pool_size: int
     db_max_overflow: int
     sql_echo: bool
+    service_jwt: ServiceJwtValidationSettings
+    webhook_hmac_secret: str
+    webhook_tolerance_seconds: int
 
     @classmethod
     def from_environment(cls) -> Settings:
         database_url = os.getenv("NOTIFICATION_DATABASE_URL", "").strip()
         if not database_url:
             raise ValueError("NOTIFICATION_DATABASE_URL is required")
+        webhook_secret = os.getenv("NOTIFICATION_WEBHOOK_HMAC_SECRET", "").strip()
+        if not webhook_secret:
+            raise ValueError("NOTIFICATION_WEBHOOK_HMAC_SECRET is required")
         return cls(
             app_env=os.getenv("NOTIFICATION_APP_ENV", "local"),
             log_level=os.getenv("NOTIFICATION_LOG_LEVEL", "INFO").upper(),
@@ -60,6 +68,16 @@ class Settings:
             ),
             sql_echo=os.getenv("NOTIFICATION_SQL_ECHO", "false").strip().lower()
             in {"1", "true", "yes", "on"},
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "NOTIFICATION", audience="notification-service"
+            ),
+            webhook_hmac_secret=webhook_secret,
+            webhook_tolerance_seconds=_integer(
+                "NOTIFICATION_WEBHOOK_TOLERANCE_SECONDS",
+                300,
+                minimum=30,
+                maximum=900,
+            ),
         )
 
 

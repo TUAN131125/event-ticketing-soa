@@ -38,7 +38,7 @@ class HeartbeatRunner:
                     except (RuntimeError, OSError):
                         pass
                     return
-                payload = HeartbeatControl(timestamp=datetime.now(UTC)).model_dump(
+                payload = HeartbeatControl(sentAt=datetime.now(UTC)).model_dump(
                     by_alias=True, mode="json"
                 )
                 if not await self._manager.send(connection, payload):

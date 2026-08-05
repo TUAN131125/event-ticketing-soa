@@ -1,4 +1,5 @@
 """Use case: liet ke tat ca su kien."""
+
 from collections.abc import Iterable
 
 from app.domain.entities import Event

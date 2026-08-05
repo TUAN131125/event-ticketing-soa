@@ -79,6 +79,17 @@ class TicketPort(Protocol):
     async def cancel_ticket(self, ticket_id: str, idempotency_key: str, context: RequestContext) -> Mapping[str, Any]: ...
 
 
+class HealthProbe(Protocol):
+    """One dependency the ESB can ask about its own readiness."""
+
+    name: str
+    critical: bool
+
+    async def check(self, timeout_seconds: float) -> None:
+        """Return normally when the dependency is up, raise ProbeFailure otherwise."""
+        ...
+
+
 class NotificationPort(Protocol):
     async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None: ...
 

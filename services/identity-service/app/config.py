@@ -14,9 +14,7 @@ CookieSameSite = Literal["lax", "strict", "none"]
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 _SUPPORTED_SAME_SITE = frozenset({"lax", "strict", "none"})
-_SUPPORTED_LOG_LEVELS = frozenset(
-    {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-)
+_SUPPORTED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
 
 def _integer(
@@ -33,9 +31,7 @@ def _integer(
         raise ValueError(f"{name} must be an integer") from exc
 
     if not minimum <= value <= maximum:
-        raise ValueError(
-            f"{name} must be between {minimum} and {maximum}"
-        )
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
 
     return value
 
@@ -68,15 +64,11 @@ def _non_empty(name: str, default: str) -> str:
 
 def _origins(raw: str) -> tuple[str, ...]:
     values = tuple(
-        value.strip().rstrip("/")
-        for value in raw.split(",")
-        if value.strip()
+        value.strip().rstrip("/") for value in raw.split(",") if value.strip()
     )
 
     if "*" in values:
-        raise ValueError(
-            "IDENTITY_ALLOWED_ORIGINS cannot contain '*' with credentials"
-        )
+        raise ValueError("IDENTITY_ALLOWED_ORIGINS cannot contain '*' with credentials")
 
     return values
 
@@ -120,9 +112,7 @@ def _cookie_same_site() -> CookieSameSite:
     ).casefold()
 
     if value not in _SUPPORTED_SAME_SITE:
-        raise ValueError(
-            "IDENTITY_COOKIE_SAMESITE must be lax, strict or none"
-        )
+        raise ValueError("IDENTITY_COOKIE_SAMESITE must be lax, strict or none")
 
     return cast(CookieSameSite, value)
 
@@ -135,9 +125,7 @@ def _log_level() -> str:
 
     if value not in _SUPPORTED_LOG_LEVELS:
         supported = ", ".join(sorted(_SUPPORTED_LOG_LEVELS))
-        raise ValueError(
-            f"IDENTITY_LOG_LEVEL must be one of: {supported}"
-        )
+        raise ValueError(f"IDENTITY_LOG_LEVEL must be one of: {supported}")
 
     return value
 
@@ -191,28 +179,17 @@ class Settings:
         same_site = _cookie_same_site()
 
         if same_site == "none" and not cookie_secure:
-            raise ValueError(
-                "SameSite=None requires Secure cookies"
-            )
+            raise ValueError("SameSite=None requires Secure cookies")
 
         issuer = _non_empty("IDENTITY_ISSUER", "").rstrip("/")
 
-        allowed_origins = _origins(
-            _non_empty("IDENTITY_ALLOWED_ORIGINS", "")
-        )
+        allowed_origins = _origins(_non_empty("IDENTITY_ALLOWED_ORIGINS", ""))
 
         if app_env == "production" and not cookie_secure:
-            raise ValueError(
-                "Secure refresh cookies are required in production"
-            )
+            raise ValueError("Secure refresh cookies are required in production")
 
-        if (
-            app_env == "production"
-            and not issuer.startswith("https://")
-        ):
-            raise ValueError(
-                "HTTPS issuer is required in production"
-            )
+        if app_env == "production" and not issuer.startswith("https://"):
+            raise ValueError("HTTPS issuer is required in production")
 
         database_url = _database_url("IDENTITY_DATABASE_URL")
 
@@ -229,12 +206,8 @@ class Settings:
                 "IDENTITY_AUDIENCE",
                 "public-esb",
             ),
-            private_key_path=Path(
-                _non_empty("IDENTITY_PRIVATE_KEY_PATH", "")
-            ),
-            public_key_path=Path(
-                _non_empty("IDENTITY_PUBLIC_KEY_PATH", "")
-            ),
+            private_key_path=Path(_non_empty("IDENTITY_PRIVATE_KEY_PATH", "")),
+            public_key_path=Path(_non_empty("IDENTITY_PUBLIC_KEY_PATH", "")),
             openapi_path=Path(_non_empty("IDENTITY_OPENAPI_PATH", "")),
             key_id=_non_empty(
                 "IDENTITY_KEY_ID",

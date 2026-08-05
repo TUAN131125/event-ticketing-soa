@@ -31,13 +31,43 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       }
     } catch (error) {
       const api = error instanceof ApiError ? error : null;
-      setMessage(
-        api?.code === 'ACCOUNT_LOCKED'
-          ? 'Your account is temporarily locked. Try again later.'
-          : api?.code === 'ACCOUNT_DISABLED'
-            ? 'This account has been disabled. Contact support.'
-            : (api?.message ?? 'We could not complete that request. Please try again.'),
-      );
+      // Field-level problems belong on the field. Only a transport failure or a 5xx is
+      // reported as an unavailable service.
+      if (api?.status === 409) {
+        form.setError('email', {
+          type: 'server',
+          message: 'That email is already registered. Sign in instead.',
+        });
+        return;
+      }
+      if (api?.status === 422 || api?.status === 400) {
+        form.setError('email', {
+          type: 'server',
+          message: api.message || 'Check the email and password and try again.',
+        });
+        return;
+      }
+      if (api?.status === 401) {
+        setMessage('That email or password is not correct.');
+        return;
+      }
+      if (api?.code === 'ACCOUNT_LOCKED' || api?.status === 423) {
+        setMessage('Your account is temporarily locked. Try again later.');
+        return;
+      }
+      if (api?.code === 'ACCOUNT_DISABLED' || api?.status === 403) {
+        setMessage('This account has been disabled. Contact support.');
+        return;
+      }
+      if (api?.code === 'CONFIGURATION_ERROR') {
+        setMessage('This build is missing its Identity service URL. Contact an administrator.');
+        return;
+      }
+      if (api && api.status >= 500) {
+        setMessage('The authentication service is temporarily unavailable. Try again shortly.');
+        return;
+      }
+      setMessage(api?.message ?? 'We could not complete that request. Please try again.');
     }
   };
   return (
@@ -122,7 +152,7 @@ export function AccountPage() {
         <p className="eyebrow">Account</p>
         <h1>Your profile</h1>
       </div>
-      <Card>
+      <Card padded>
         <dl className="facts">
           <div>
             <dt>Email</dt>

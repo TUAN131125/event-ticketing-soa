@@ -6,7 +6,7 @@ from app.repositories.interfaces import CustomerRepository
 
 
 def create_customer(
-    repo: CustomerRepository, name: str, email: str, phone: str
+    repo: CustomerRepository, name: str, email: str, phone: str | None
 ) -> Customer:
     existing_emails = {c.email for c in repo.list_all()}
     ensure_email_unique(existing_emails, email)

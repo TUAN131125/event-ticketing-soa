@@ -58,11 +58,13 @@ def validate_optional_identifier(
 
 
 def validate_payment_method(value: str) -> str:
-    normalized = validate_identifier(value, "paymentMethod", max_length=40)
-    if not any(character.isalpha() for character in normalized):
-        raise InvalidRequest(
-            "paymentMethod must be a non-sensitive method category, not card data"
-        )
+    normalized = value.strip()
+    if re.fullmatch(r"\d{13,19}", normalized):
+        raise InvalidRequest("methodToken must not contain raw card data")
+    if not 6 <= len(normalized) <= 200 or any(
+        character.isspace() for character in normalized
+    ):
+        raise InvalidRequest("methodToken must be an opaque 6-200 character token")
     return normalized
 
 

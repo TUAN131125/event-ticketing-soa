@@ -27,31 +27,17 @@ def append(parent: etree._Element, name: str, value: str | int | bool) -> None:
 def append_seat(parent: etree._Element, seat: SeatView) -> None:
     node = element("seat")
     append(node, "seatId", seat.seat_id)
-    append(node, "section", seat.section)
-    append(node, "rowLabel", seat.row_label)
-    append(node, "seatNumber", seat.seat_number)
-    append(node, "ticketType", seat.ticket_type)
-    append(node, "status", seat.status.value)
-    append(node, "resourceVersion", seat.resource_version)
+    append(node, "ticketTypeCode", seat.ticket_type)
     parent.append(node)
 
 
 def append_reservation(parent: etree._Element, value: ReservationView) -> None:
-    node = element("reservation")
-    append(node, "reservationId", value.reservation_id)
-    append(node, "bookingId", value.booking_id)
-    append(node, "eventId", value.event_id)
-    seat_ids = element("seatIds")
-    for seat_id in value.seat_ids:
-        append(seat_ids, "seatId", seat_id)
-    node.append(seat_ids)
-    append(node, "status", value.status.value)
-    append(node, "expiresAt", iso_datetime(value.expires_at))
-    append(node, "extendCount", value.extend_count)
-    append(node, "resourceVersion", value.resource_version)
-    append(node, "createdAt", iso_datetime(value.created_at))
-    append(node, "updatedAt", iso_datetime(value.updated_at))
-    parent.append(node)
+    append(parent, "reservationId", value.reservation_id)
+    append(parent, "bookingId", value.booking_id)
+    append(parent, "eventId", value.event_id)
+    append(parent, "status", value.status.value)
+    append(parent, "expiresAt", iso_datetime(value.expires_at))
+    append(parent, "resourceVersion", value.resource_version)
 
 
 def soap_envelope(content: etree._Element) -> bytes:

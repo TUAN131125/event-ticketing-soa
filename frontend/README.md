@@ -1,28 +1,49 @@
 # Event Ticketing web applications
 
-This directory is an npm workspace containing the customer-facing booking
-application, the administrator console, and the shared accessible design system.
+This npm workspace contains:
+
+- `customer-web`: restored customer booking UI adapted to the current ESB contract.
+- `admin-web`: contract-safe operations console for the public admin/observability capabilities that
+  currently exist.
+- `shared-ui`: shared accessible components, design tokens and the generated ESB, Identity and
+  Realtime contract types.
 
 ## Local development
 
 ```powershell
 cd frontend
-npm install
+npm ci
+npm run generate:contracts
+npm run lint
 npm run typecheck
 npm run test
 npm run build
 ```
 
-Run an application independently with `npm run dev --workspace customer-web`
-or `npm run dev --workspace admin-web`.
+`npm run generate:contracts` regenerates `shared-ui/src/generated/` from `/contracts` and is
+deterministic: running it twice produces no diff. Generated files are never edited by hand.
 
-Copy each app's `.env.example` to `.env.local` and set the public Identity,
-ESB, and realtime URLs for the environment. The applications do not ship a
-mock API and do not call private services directly. ESB/realtime being offline
-is represented by an explicit unavailable state in the UI.
+Run either application independently:
+
+```powershell
+npm run dev --workspace @event-ticketing/customer-web
+npm run dev --workspace @event-ticketing/admin-web
+```
+
+Copy each application's `.env.example` to `.env.local`. The default local ports match the current
+Compose source: Identity `8009`, ESB `8000`, Realtime `8008`, customer web `3000` and admin web
+`3001`.
+
+## Contract rule
+
+HTTP business calls go only to the ESB public API (`8000`), authentication calls only to Identity
+(`8009`) and the booking status stream only to Realtime (`8008`). The frontend never calls the
+private service ports `8001`–`8007`, never invents missing API responses and never treats browser
+state as authoritative.
+
+See `INTEGRATION_STATUS.md` for the exact restored features and the current contract gaps.
 
 ## Production containers
 
-Both apps have a multi-stage Dockerfile that builds the Vite bundle and serves it
-with nginx using SPA fallback. Runtime API URLs are supplied at build time via
-Vite environment variables; do not put secrets in the frontend image.
+Both applications have multi-stage Dockerfiles that build the Vite bundle and serve it with nginx
+SPA fallback. Public URLs are Vite build arguments; no secret may be embedded in a frontend image.

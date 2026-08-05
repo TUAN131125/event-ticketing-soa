@@ -1,86 +1,65 @@
-import { Link } from 'react-router-dom';
-import { CalendarDays, Ticket } from 'lucide-react';
-import { Badge, Card, EmptyState, Skeleton } from '@event-ticketing/shared-ui';
-import { useBookings } from '../app/hooks';
-import { QueryState } from './PageState';
-function formatDate(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
-}
+import { useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, Ticket } from 'lucide-react';
+import { Button, Card, EmptyState, Input } from '@event-ticketing/shared-ui';
+import { recentBookingIds } from '../api/esb-client';
+
 export function MyBookingsPage() {
-  const result = useBookings(true);
-  if (result.isLoading)
-    return (
-      <section className="container page-section">
-        <div className="stack-list">
-          <Skeleton height={86} />
-          <Skeleton height={86} />
+  const navigate = useNavigate();
+  const [bookingId, setBookingId] = useState('');
+  const ids = recentBookingIds();
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (bookingId.trim()) navigate(`/bookings/${encodeURIComponent(bookingId.trim())}`);
+  };
+  return (
+    <section className="container page-section">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Authoritative lookup</p>
+          <h1>My bookings</h1>
+          <p className="lede">
+            The ESB currently exposes lookup by bookingId, not a booking-list operation. IDs below
+            are only recent browser history; each detail page reloads authoritative state from the
+            ESB.
+          </p>
         </div>
-      </section>
-    );
-  if (result.isError)
-    return <QueryState error={result.error} retry={() => void result.refetch()} />;
-  if (!result.data?.items.length)
-    return (
-      <section className="container page-section">
+      </div>
+      <Card padded>
+        <form className="search-bar" onSubmit={submit}>
+          <Search size={18} />
+          <Input
+            aria-label="Booking ID"
+            placeholder="BKG-..."
+            value={bookingId}
+            onChange={(event) => setBookingId(event.target.value)}
+          />
+          <Button type="submit">Look up</Button>
+        </form>
+      </Card>
+      {ids.length ? (
+        <div className="event-grid">
+          {ids.map((id) => (
+            <Card padded key={id}>
+              <Ticket size={22} />
+              <h2>{id}</h2>
+              <Link className="button button-secondary" to={`/bookings/${encodeURIComponent(id)}`}>
+                View current status
+              </Link>
+            </Card>
+          ))}
+        </div>
+      ) : (
         <EmptyState
-          title="No bookings yet"
-          description="Your confirmed tickets will appear here after you book an event."
+          title="No recent booking IDs"
+          description="Create a booking or paste an existing booking ID above."
           action={
             <Link to="/events" className="button button-primary">
               Browse events
             </Link>
           }
         />
-      </section>
-    );
-  return (
-    <section className="container page-section">
-      <div className="page-heading">
-        <p className="eyebrow">Your plans</p>
-        <h1>My bookings</h1>
-        <p className="lede">Keep every ticket and booking status in one place.</p>
-      </div>
-      <div className="stack-list">
-        {result.data.items.map((booking) => (
-          <Card key={booking.bookingId} className="booking-row">
-            <div className="booking-row-icon">
-              <Ticket size={20} />
-            </div>
-            <div className="booking-row-content">
-              <div className="booking-row-head">
-                <h2>
-                  <Link to={`/bookings/${booking.bookingId}`}>
-                    {booking.event?.name || `Booking ${booking.bookingId}`}
-                  </Link>
-                </h2>
-                <Badge
-                  tone={
-                    booking.status === 'CONFIRMED'
-                      ? 'success'
-                      : booking.status === 'CANCELLED'
-                        ? 'danger'
-                        : 'warning'
-                  }
-                >
-                  {booking.status}
-                </Badge>
-              </div>
-              <p>
-                <CalendarDays size={15} />{' '}
-                {formatDate(booking.event?.startsAt ?? booking.createdAt)}{' '}
-                {booking.event?.venue ? ` · ${booking.event.venue}` : ''}
-              </p>
-            </div>
-            <Link to={`/bookings/${booking.bookingId}`} className="button button-secondary">
-              View
-            </Link>
-          </Card>
-        ))}
-      </div>
+      )}
     </section>
   );
 }

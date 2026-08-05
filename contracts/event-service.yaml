@@ -185,6 +185,36 @@ paths:
       - $ref: '#/components/parameters/IfMatch'
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/Traceparent'
+  /events/{eventId}/close:
+    post:
+      summary: Kết thúc sự kiện
+      operationId: closeEvent
+      description: Chuyển sự kiện sang ENDED sau khi hết thời gian diễn ra. Chỉ hợp lệ từ ON_SALE hoặc
+        PAUSED; mọi trạng thái khác trả EVENT_INVALID_TRANSITION.
+      responses:
+        '200':
+          description: Đã kết thúc
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
   /events/{eventId}/cancel:
     post:
       summary: Hủy sự kiện
@@ -343,8 +373,6 @@ components:
       example:
         amountMinor: 250000
         currency: VND
-    PageMeta:
-      $ref: '#/components/schemas/PageMeta'
     EventCreate:
       type: object
       additionalProperties: false

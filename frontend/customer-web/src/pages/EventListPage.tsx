@@ -83,10 +83,10 @@ export function EventListPage() {
           <SlidersHorizontal size={17} /> Search
         </Button>
       </form>
-      {result.isLoading ? (
+      {result.isPending && !result.isError ? (
         <div className="event-grid">
           {[1, 2, 3].map((item) => (
-            <Card key={item}>
+            <Card key={item} padded>
               <Skeleton height={180} />
               <Skeleton width="60%" />
               <Skeleton width="45%" />
@@ -94,7 +94,11 @@ export function EventListPage() {
           ))}
         </div>
       ) : result.isError ? (
-        <QueryState error={result.error} retry={() => void result.refetch()} />
+        <QueryState
+          error={result.error}
+          retry={() => void result.refetch()}
+          serviceName="event service"
+        />
       ) : result.data?.items.length ? (
         <>
           <div className="section-toolbar">

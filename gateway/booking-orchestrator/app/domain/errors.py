@@ -54,3 +54,25 @@ class AmbiguousOutcome(DependencyFailure):
             True,
             {"operation": operation},
         )
+
+
+class CommandNotDispatched(DependencyFailure):
+    """The command was rejected before any byte reached the provider."""
+
+    def __init__(self, operation: str, reason_code: str) -> None:
+        super().__init__(
+            "COMMAND_NOT_DISPATCHED",
+            "The command was not sent to the dependency.",
+            503,
+            True,
+            {"operation": operation, "reasonCode": reason_code},
+        )
+        self.reason_code = reason_code
+
+
+class ProbeFailure(Exception):
+    """A health probe outcome carrying only a stable, public-safe code."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)

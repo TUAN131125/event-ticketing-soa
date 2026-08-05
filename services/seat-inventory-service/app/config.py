@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 
 def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -45,7 +47,7 @@ class Settings:
     app_name: str
     app_env: str
     database_url: str
-    service_token: str
+    service_jwt: ServiceJwtValidationSettings
     soap_public_url: str
     wsdl_path: Path
     xsd_path: Path
@@ -79,7 +81,6 @@ class Settings:
             maximum=max_hold,
         )
         database_url = os.getenv("SEAT_DATABASE_URL", "").strip()
-        service_token = os.getenv("SEAT_SERVICE_TOKEN", "").strip()
         soap_public_url = os.getenv("SEAT_SOAP_PUBLIC_URL", "").strip()
         wsdl_path = os.getenv("SEAT_WSDL_PATH", "").strip()
         missing = next(
@@ -87,7 +88,6 @@ class Settings:
                 name
                 for name, value in (
                     ("SEAT_DATABASE_URL", database_url),
-                    ("SEAT_SERVICE_TOKEN", service_token),
                     ("SEAT_SOAP_PUBLIC_URL", soap_public_url),
                     ("SEAT_WSDL_PATH", wsdl_path),
                 )
@@ -110,7 +110,9 @@ class Settings:
             app_name="seat-inventory-service",
             app_env=os.getenv("SEAT_APP_ENV", "local"),
             database_url=database_url,
-            service_token=service_token,
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "SEAT", audience="seat-inventory-service"
+            ),
             soap_public_url=soap_public_url,
             wsdl_path=Path(wsdl_path),
             xsd_path=get_xsd_path(),

@@ -6,24 +6,15 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.domain.enums import BookingStatus
-from app.domain.exceptions import InvalidRequest, InvalidStateTransition
+from app.domain.exceptions import InvalidRequest
 from app.domain.value_objects import BookingItem
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 CURRENCY = re.compile(r"^[A-Z]{3}$")
-
-ALLOWED_TRANSITIONS: dict[BookingStatus, frozenset[BookingStatus]] = {
-    BookingStatus.PENDING: frozenset(
-        {BookingStatus.CONFIRMED, BookingStatus.FAILED, BookingStatus.CANCELLED}
-    ),
-    BookingStatus.CONFIRMED: frozenset({BookingStatus.CANCELLED}),
-    BookingStatus.FAILED: frozenset(),
-    BookingStatus.CANCELLED: frozenset(),
-}
 
 
 def validate_identifier(value: str, field: str, *, max_length: int = 128) -> str:
@@ -79,7 +70,7 @@ def validate_items(
     normalized: list[BookingItem] = []
     for item in items:
         seat_id = validate_identifier(item.seat_id, "seatId")
-        ticket_type = validate_identifier(item.ticket_type, "ticketType")
+        ticket_type = validate_identifier(item.ticket_type_code, "ticketTypeCode")
         if seat_id in seen:
             raise InvalidRequest(
                 f"Duplicate seatId: {seat_id}", details={"seatId": seat_id}
@@ -89,7 +80,7 @@ def validate_items(
         normalized.append(
             BookingItem(
                 seat_id=seat_id,
-                ticket_type=ticket_type,
+                ticket_type_code=ticket_type,
                 unit_price=unit_price,
             )
         )
@@ -103,11 +94,6 @@ def validate_items(
             },
         )
     return tuple(sorted(normalized, key=lambda item: item.seat_id))
-
-
-def ensure_transition_allowed(current: BookingStatus, target: BookingStatus) -> None:
-    if target not in ALLOWED_TRANSITIONS[current]:
-        raise InvalidStateTransition(current.value, target.value)
 
 
 def canonical_request_hash(payload: Mapping[str, Any]) -> str:
@@ -128,4 +114,9 @@ def advisory_lock_id(scope: str, key: str) -> int:
 def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
         return format(value.normalize(), "f")
+    if isinstance(value, datetime):
+        # Transition evidence carries parsed timestamps (reservationExpiresAt,
+        # verifiedAt). Hash them in a single canonical UTC form so an identical
+        # replay produces an identical request hash.
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     raise TypeError(f"Unsupported value in canonical payload: {type(value)!r}")

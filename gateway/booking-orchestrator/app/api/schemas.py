@@ -69,6 +69,20 @@ class TraceStep(BaseModel):
     errorCode: str | None = None
 
 
+class DependencyHealthStatus(BaseModel):
+    name: str
+    critical: bool
+    status: str
+    latencyMs: int | None = None
+    errorCode: str | None = None
+
+
+class AggregateHealthStatus(BaseModel):
+    status: str
+    checkedAt: datetime
+    dependencies: list[DependencyHealthStatus]
+
+
 class WsTicketRequest(StrictModel):
     bookingId: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
 

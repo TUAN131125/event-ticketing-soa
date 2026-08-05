@@ -24,13 +24,13 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --chown=orchestrator:orchestrator gateway/booking-orchestrator/pyproject.toml gateway/booking-orchestrator/alembic.ini ./
 COPY --chown=orchestrator:orchestrator gateway/booking-orchestrator/alembic ./alembic
 COPY --chown=orchestrator:orchestrator gateway/booking-orchestrator/app ./app
+COPY --chown=orchestrator:orchestrator libs ./libs
 COPY --chown=orchestrator:orchestrator dist/contracts ./contracts
 
 USER orchestrator
 EXPOSE 8000
 
-# The current runtime exposes its DB-backed readiness probe at /api/health.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
 
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log"]

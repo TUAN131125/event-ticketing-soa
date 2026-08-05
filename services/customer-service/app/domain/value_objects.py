@@ -3,6 +3,7 @@
 Pham vi MVP chi can chuan hoa so dien thoai; validate dinh dang email da
 duoc Pydantic (EmailStr) dam nhiem o tang schemas nen khong lam lai o day.
 """
+
 import re
 
 

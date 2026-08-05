@@ -72,7 +72,9 @@ def test_contract_build_emits_sha256_manifest() -> None:
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    output = json.loads((ROOT / "dist/contracts/manifest.json").read_text(encoding="utf-8"))
+    output = json.loads(
+        (ROOT / "dist/contracts/manifest.json").read_text(encoding="utf-8")
+    )
     assert output["runtimeContractCount"] == 11
     assert output["artifactCount"] == 13
     assert len(output["aggregateSha256"]) == 64

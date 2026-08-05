@@ -9,6 +9,7 @@ import httpx
 
 from app.application.booking import BookingSaga
 from app.application.cancellation import CancellationSaga
+from app.application.health import HealthService
 from app.application.queries import QueryService
 from app.domain.models import Principal
 from app.persistence.database import Database
@@ -41,6 +42,7 @@ class RuntimeContainer:
     browser_auth: BrowserAuthenticator
     ws_tickets: TicketIssuer
     bookings: BookingPort
+    health: HealthService
     outbox_worker: OutboxDispatcher | None = None
     reconciliation_worker: ReconciliationWorker | None = None
     database: Database | None = None

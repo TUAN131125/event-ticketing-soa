@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Literal, cast
 
-from fastapi import FastAPI, Header, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from libs.platform_http import HealthStatus, error_envelope
+from libs.platform_security import ServiceAuthenticationError, ServicePrincipal
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -19,29 +22,28 @@ from app import __version__
 from app.broadcast.backends import BroadcastBackend, InMemoryBroadcastBackend, RedisBroadcastBackend
 from app.config import Settings, get_settings
 from app.consumers.booking_status_consumer import StatusEventProcessor
-from app.errors import (
-    Forbidden,
-    InvalidRequest,
-    PublishUnavailable,
-    RequestTooLarge,
-    Unauthenticated,
-)
+from app.errors import InvalidRequest, PublishUnavailable, RequestTooLarge, Unauthenticated
 from app.middleware.http import install_error_handlers, request_context_middleware
 from app.observability.logs import configure_logging
 from app.observability.metrics import BROADCAST_FAILURES, INTERNAL_EVENTS, READINESS
-from app.schemas.messages import EventIngestResponse, RealtimeStatusEvent, ShutdownControl
-from app.security.booking_access import BookingAccessChecker, HttpBookingAccessChecker
+from app.schemas.messages import (
+    ConnectionHealthResponse,
+    EventIngestResponse,
+    RealtimeStatusEvent,
+    ShutdownControl,
+)
 from app.security.ticket_replay import (
     InMemoryTicketReplayStore,
     RedisTicketReplayStore,
     TicketReplayStore,
 )
-from app.security.token_validation import JwksTokenValidator, TokenValidator
 from app.security.ws_ticket import SignedWebSocketTicketValidator, WebSocketTicketValidator
 from app.websocket.connection_manager import ConnectionManager
 from app.websocket.endpoint import CLOSE_SERVER_SHUTDOWN, create_websocket_router
 from app.websocket.heartbeat import HeartbeatRunner
 from app.websocket.subscriptions import HandshakeRateLimiter
+
+service_bearer = HTTPBearer(auto_error=False, scheme_name="ServiceJwt")
 
 
 async def _cleanup_loop(processor: StatusEventProcessor, interval: float) -> None:
@@ -69,21 +71,23 @@ async def _bounded_body(request: Request, limit: int) -> bytes:
     return bytes(body)
 
 
-def _authenticate_internal(settings: Settings, token: str | None, caller: str | None) -> str:
-    if token is None or not secrets.compare_digest(token, settings.internal_service_token):
-        raise Unauthenticated()
-    if caller is None:
-        raise InvalidRequest("X-Caller-Service header is required")
-    if caller not in settings.allowed_internal_callers:
-        raise Forbidden("Caller service is not allowed")
-    return caller
+def _service_principal(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(service_bearer),
+) -> ServicePrincipal:
+    authorization = None if credentials is None else f"Bearer {credentials.credentials}"
+    try:
+        return cast(
+            ServicePrincipal,
+            request.app.state.service_jwt_verifier.verify_authorization(authorization),
+        )
+    except ServiceAuthenticationError as exc:
+        raise Unauthenticated() from exc
 
 
 def create_app(
     settings: Settings | None = None,
     *,
-    token_validator: TokenValidator | None = None,
-    access_checker: BookingAccessChecker | None = None,
     broadcast_backend: BroadcastBackend | None = None,
     ws_ticket_validator: WebSocketTicketValidator | None = None,
     ticket_replay_store: TicketReplayStore | None = None,
@@ -173,8 +177,7 @@ def create_app(
     application.state.connection_manager = manager
     application.state.broadcast_backend = backend
     application.state.event_processor = processor
-    application.state.token_validator = token_validator or JwksTokenValidator(current)
-    application.state.access_checker = access_checker or HttpBookingAccessChecker(current)
+    application.state.service_jwt_verifier = current.service_jwt.verifier()
     application.state.ws_ticket_validator = configured_ticket_validator
     application.state.ticket_replay_store = replay_store
     application.state.handshake_limiter = HandshakeRateLimiter(
@@ -194,8 +197,7 @@ def create_app(
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=[
             "Content-Type",
-            "X-Service-Token",
-            "X-Caller-Service",
+            "Authorization",
             "X-Correlation-ID",
             "traceparent",
         ],
@@ -207,7 +209,9 @@ def create_app(
         "/internal/status-events",
         response_model=EventIngestResponse,
         status_code=202,
+        operation_id="ingestRealtimeStatusEvent",
         tags=["internal"],
+        responses={200: {"model": EventIngestResponse}},
         openapi_extra={
             "requestBody": {
                 "required": True,
@@ -219,10 +223,8 @@ def create_app(
     )
     async def ingest_status_event(
         request: Request,
-        x_service_token: str | None = Header(default=None, alias="X-Service-Token"),
-        x_caller_service: str | None = Header(default=None, alias="X-Caller-Service"),
-    ) -> EventIngestResponse:
-        _authenticate_internal(current, x_service_token, x_caller_service)
+        _principal: ServicePrincipal = Depends(_service_principal),
+    ) -> Response:
         content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
         if content_type != "application/json":
             raise InvalidRequest("Content-Type must be application/json")
@@ -240,47 +242,76 @@ def create_app(
             BROADCAST_FAILURES.labels(backend.name).inc()
             raise PublishUnavailable() from exc
         INTERNAL_EVENTS.labels(result.outcome).inc()
-        return EventIngestResponse(
+        outcome: Literal["ACCEPTED", "DUPLICATE", "STALE"]
+        if result.outcome == "accepted":
+            outcome = "ACCEPTED"
+        elif result.outcome == "duplicate":
+            outcome = "DUPLICATE"
+        else:
+            outcome = "STALE"
+        response = EventIngestResponse(
             correlationId=getattr(request.state, "correlation_id", event.correlation_id),
-            outcome=result.outcome,
-            broadcast=result.broadcast,
-            sequenceGap=result.sequence_gap,
+            outcome=outcome,
+            messageId=event.message_id,
+            bookingId=event.booking_id,
+            sequence=event.sequence,
+        )
+        return JSONResponse(
+            response.model_dump(by_alias=True, mode="json"),
+            status_code=202 if outcome == "ACCEPTED" else 200,
         )
 
-    @application.get("/connections/health", tags=["health"])
-    async def connections_health() -> dict[str, Any]:
+    @application.get(
+        "/connections/health",
+        tags=["health"],
+        operation_id="getConnectionHealth",
+        response_model=ConnectionHealthResponse,
+    )
+    async def connections_health(
+        _principal: ServicePrincipal = Depends(_service_principal),
+    ) -> ConnectionHealthResponse:
         stats = await manager.stats()
-        return {
-            "service": current.app_name,
-            "status": "DRAINING" if application.state.draining else "UP",
-            **stats,
-            "broadcastBackend": backend.name,
-            "redisAvailability": backend.availability(),
-            "ticketReplayAvailability": (
-                "available" if replay_store.available() else "unavailable"
-            ),
-        }
+        return ConnectionHealthResponse(
+            status="DEGRADED" if application.state.draining else "UP",
+            activeConnections=stats["activeConnections"],
+            activeBookingChannels=stats["activeBookingChannels"],
+            broadcastBackend=cast(Literal["memory", "redis"], backend.name),
+            backendAvailable=backend.ready(),
+            draining=application.state.draining,
+        )
 
-    @application.get("/health/live", tags=["health"])
-    async def liveness() -> dict[str, str]:
-        return {"service": current.app_name, "status": "UP", "version": __version__}
+    @application.get(
+        "/health/live",
+        tags=["health"],
+        operation_id="realtimeLiveness",
+        response_model=HealthStatus,
+    )
+    async def liveness() -> HealthStatus:
+        return HealthStatus(service=current.app_name, status="UP", version=__version__)
 
-    @application.get("/health/ready", tags=["health"])
-    async def readiness() -> Response:
+    @application.get(
+        "/health/ready",
+        tags=["health"],
+        operation_id="realtimeReadiness",
+        response_model=HealthStatus,
+    )
+    async def readiness(request: Request) -> Response:
         ready = not application.state.draining and (
             not current.redis_required or (backend.ready() and replay_store.available())
         )
         READINESS.set(1 if ready else 0)
-        return Response(
-            content=json.dumps(
-                {
-                    "service": current.app_name,
-                    "status": "READY" if ready else "NOT_READY",
-                    "version": __version__,
-                }
+        if ready:
+            return JSONResponse(
+                {"service": current.app_name, "status": "READY", "version": __version__}
+            )
+        return JSONResponse(
+            error_envelope(
+                request,
+                code="SERVICE_UNAVAILABLE",
+                message="Realtime dependencies are not ready",
+                retryable=True,
             ),
-            media_type="application/json",
-            status_code=200 if ready else 503,
+            status_code=503,
         )
 
     @application.get("/metrics", include_in_schema=False)

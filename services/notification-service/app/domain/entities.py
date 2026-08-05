@@ -1,44 +1,54 @@
-"""Entity thuan nghiep vu cua Notification Service.
+"""Notification-owned delivery and template entities."""
 
-Khong phu thuoc FastAPI, khong phu thuoc database, khong phu thuoc cach
-gui email that su (do la viec cua app/providers) - day la quy tac cot loi
-cua Clean Architecture, giong het Customer Service/Event Service.
-"""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.domain.enums import DeliveryStatus, NotificationType
+from app.domain.enums import DeliveryStatus
 
 
 @dataclass
 class Delivery:
     id: str
-    type: NotificationType
-    correlation_id: str
-    to_email: str
+    event_id: str
+    channel: str
+    status: DeliveryStatus
+    attempt_count: int
+    last_error_code: str | None
+    to_address: str
     subject: str
     body: str
-    status: DeliveryStatus
     created_at: datetime
+    resource_version: int
 
     @classmethod
     def create(
         cls,
         delivery_id: str,
-        type_: NotificationType,
-        correlation_id: str,
-        to_email: str,
+        event_id: str,
+        to_address: str,
         subject: str,
         body: str,
-        status: DeliveryStatus = DeliveryStatus.SENT,
-    ) -> "Delivery":
+    ) -> Delivery:
         return cls(
             id=delivery_id,
-            type=type_,
-            correlation_id=correlation_id,
-            to_email=to_email,
+            event_id=event_id,
+            channel="EMAIL",
+            status=DeliveryStatus.PENDING,
+            attempt_count=0,
+            last_error_code=None,
+            to_address=to_address,
             subject=subject,
             body=body,
-            status=status,
             created_at=datetime.now(UTC),
+            resource_version=1,
         )
+
+
+@dataclass
+class NotificationTemplate:
+    code: str
+    subject: str
+    body: str
+    resource_version: int

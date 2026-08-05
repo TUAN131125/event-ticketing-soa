@@ -6,6 +6,8 @@ import asyncio
 import hashlib
 import logging
 import time
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -19,13 +21,16 @@ from app.observability.metrics import (
 )
 from app.observability.tracing import bind, reset, safe_id, trace_id
 from app.schemas.messages import (
+    AuthenticatedControl,
     AuthenticateMessage,
     ConnectedControl,
-    PongMessage,
+    HeartbeatAckMessage,
     ProtocolErrorControl,
     ResyncRequiredControl,
+    SubscribeMessage,
+    UnsubscribeMessage,
 )
-from app.security.token_validation import websocket_token
+from app.security.ws_ticket import ValidatedWebSocketTicket
 from app.websocket.subscriptions import ConnectionLimitExceeded
 
 LOGGER = logging.getLogger("realtime.websocket")
@@ -48,15 +53,142 @@ async def _reject(websocket: WebSocket, code: int, reason: str, metric_reason: s
     await websocket.close(code=code, reason=reason)
 
 
+async def _validate_handshake(websocket: WebSocket, state: Any, client_ip: str) -> bool:
+    settings = state.settings
+    if state.draining or state.connection_manager.draining:
+        await _reject(websocket, CLOSE_SERVER_SHUTDOWN, "service is draining", "draining")
+        return False
+    origin = websocket.headers.get("origin")
+    if origin is None or origin.rstrip("/") not in settings.allowed_ws_origins:
+        await _reject(websocket, CLOSE_INVALID_ORIGIN, "origin is not allowed", "origin")
+        return False
+    if not await state.handshake_limiter.allow(client_ip):
+        await _reject(websocket, CLOSE_RATE_LIMITED, "handshake rate limit exceeded", "rate_limit")
+        return False
+    if websocket.headers.get("authorization") or websocket.query_params.get("access_token"):
+        await _reject(
+            websocket,
+            CLOSE_UNAUTHENTICATED,
+            "long-lived credentials are not accepted",
+            "unauthenticated",
+        )
+        return False
+    return True
+
+
+async def _authenticate_ticket(
+    websocket: WebSocket, state: Any, booking_id: str
+) -> ValidatedWebSocketTicket | None:
+    settings = state.settings
+    await websocket.accept()
+    if state.ws_ticket_validator is None:
+        await _reject(
+            websocket,
+            CLOSE_UNAUTHENTICATED,
+            "ticket authentication is unavailable",
+            "unauthenticated",
+        )
+        return None
+    try:
+        raw_auth = await asyncio.wait_for(
+            websocket.receive_text(), timeout=settings.ws_ticket_auth_timeout_seconds
+        )
+    except TimeoutError:
+        await _reject(
+            websocket,
+            CLOSE_AUTHENTICATION_TIMEOUT,
+            "authentication timeout",
+            "authentication_timeout",
+        )
+        return None
+    if len(raw_auth.encode("utf-8")) > settings.max_client_message_bytes:
+        await _reject(websocket, CLOSE_PROTOCOL_ERROR, "invalid authenticate frame", "protocol")
+        return None
+    try:
+        authenticate = AuthenticateMessage.model_validate_json(raw_auth)
+        ticket = cast(
+            ValidatedWebSocketTicket,
+            await state.ws_ticket_validator.validate(authenticate.ticket, booking_id),
+        )
+    except (ValidationError, Unauthenticated):
+        await _reject(
+            websocket,
+            CLOSE_UNAUTHENTICATED,
+            "ticket authentication failed",
+            "unauthenticated",
+        )
+        return None
+    if not await state.ticket_replay_store.consume(ticket.jti, ticket.expires_at):
+        await _reject(websocket, CLOSE_FORBIDDEN, "ticket already used", "ticket_replay")
+        return None
+    return ticket
+
+
+async def _send_resync_if_requested(
+    websocket: WebSocket, state: Any, connection: Any, booking_id: str
+) -> bool:
+    raw_sequence = websocket.query_params.get("lastSequence")
+    if raw_sequence is None:
+        return True
+    try:
+        sequence = int(raw_sequence)
+        if sequence < 0:
+            raise ValueError
+    except ValueError:
+        control = ProtocolErrorControl(
+            code="INVALID_MESSAGE", message="lastSequence must be a non-negative integer"
+        )
+        await state.connection_manager.send(connection, control.model_dump(mode="json"))
+        await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="invalid lastSequence")
+        return False
+    resync = ResyncRequiredControl(
+        bookingId=booking_id,
+        reason="reconnect",
+        authoritativeUrl=state.settings.authoritative_booking_url_template.replace(
+            "{bookingId}", booking_id
+        ),
+        observedSequence=sequence if sequence > 0 else None,
+    )
+    await state.connection_manager.send(connection, resync.model_dump(by_alias=True, mode="json"))
+    return True
+
+
+async def _receive_client_messages(
+    websocket: WebSocket, state: Any, connection: Any, booking_id: str
+) -> None:
+    while not connection.closed:
+        raw = await websocket.receive_text()
+        await state.connection_manager.touch(connection)
+        if len(raw.encode("utf-8")) > state.settings.max_client_message_bytes:
+            control = ProtocolErrorControl(
+                code="MESSAGE_TOO_LARGE",
+                message="Client message exceeds the configured limit",
+            )
+            await state.connection_manager.send(connection, control.model_dump(mode="json"))
+            await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="message too large")
+            return
+        message_type = _client_message_type(raw, booking_id)
+        if message_type == "unsubscribe":
+            await websocket.close(code=1000, reason="unsubscribed")
+            return
+        if message_type is not None:
+            continue
+        control = ProtocolErrorControl(
+            code="INVALID_MESSAGE", message="Only contract client messages are accepted"
+        )
+        await state.connection_manager.send(connection, control.model_dump(mode="json"))
+        await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="invalid message")
+        return
+
+
 def create_websocket_router() -> APIRouter:
     router = APIRouter()
 
-    @router.websocket("/ws/bookings/{booking_id}")
-    async def booking_status(websocket: WebSocket, booking_id: str) -> None:
+    @router.websocket("/ws/bookings/{bookingId}")
+    async def booking_status(websocket: WebSocket, bookingId: str) -> None:  # noqa: N803
         started = time.perf_counter()
         CONNECTION_ATTEMPTS.inc()
         state = websocket.app.state
-        settings = state.settings
         client_ip = websocket.client.host if websocket.client else "unknown"
         correlation_id = safe_id(websocket.headers.get("x-correlation-id"))
         tokens = bind(correlation_id, trace_id(websocket.headers.get("traceparent")))
@@ -64,96 +196,25 @@ def create_websocket_router() -> APIRouter:
         heartbeat_task: asyncio.Task[None] | None = None
         outcome = "rejected"
         try:
-            if state.draining or state.connection_manager.draining:
-                await _reject(websocket, CLOSE_SERVER_SHUTDOWN, "service is draining", "draining")
+            if not await _validate_handshake(websocket, state, client_ip):
                 return
-            origin = websocket.headers.get("origin")
-            if origin is None or origin.rstrip("/") not in settings.allowed_ws_origins:
-                await _reject(websocket, CLOSE_INVALID_ORIGIN, "origin is not allowed", "origin")
+            validated_ticket = await _authenticate_ticket(websocket, state, bookingId)
+            if validated_ticket is None:
                 return
-            if not await state.handshake_limiter.allow(client_ip):
-                await _reject(
-                    websocket, CLOSE_RATE_LIMITED, "handshake rate limit exceeded", "rate_limit"
-                )
-                return
-            token, subprotocol = websocket_token(
-                websocket.headers, websocket.query_params, allow_query=settings.allow_query_token
+            principal_id = validated_ticket.subject
+            await websocket.send_json(
+                AuthenticatedControl(
+                    bookingId=bookingId, authenticatedAt=datetime.now(UTC)
+                ).model_dump(by_alias=True, mode="json")
             )
-            accepted_for_ticket = False
-            if token is not None:
-                try:
-                    principal = await state.token_validator.validate(token)
-                except Unauthenticated:
-                    await _reject(
-                        websocket,
-                        CLOSE_UNAUTHENTICATED,
-                        "authentication failed",
-                        "unauthenticated",
-                    )
-                    return
-                if not await state.access_checker.can_subscribe(
-                    principal, booking_id, correlation_id
-                ):
-                    await _reject(websocket, CLOSE_FORBIDDEN, "booking access denied", "forbidden")
-                    return
-                principal_id = principal.subject
-            else:
-                await websocket.accept()
-                accepted_for_ticket = True
-                if state.ws_ticket_validator is None:
-                    await _reject(
-                        websocket,
-                        CLOSE_UNAUTHENTICATED,
-                        "ticket authentication is unavailable",
-                        "unauthenticated",
-                    )
-                    return
-                try:
-                    raw_auth = await asyncio.wait_for(
-                        websocket.receive_text(), timeout=settings.ws_ticket_auth_timeout_seconds
-                    )
-                except TimeoutError:
-                    await _reject(
-                        websocket,
-                        CLOSE_AUTHENTICATION_TIMEOUT,
-                        "authentication timeout",
-                        "authentication_timeout",
-                    )
-                    return
-                if len(raw_auth.encode("utf-8")) > settings.max_client_message_bytes:
-                    await _reject(
-                        websocket, CLOSE_PROTOCOL_ERROR, "invalid authenticate frame", "protocol"
-                    )
-                    return
-                try:
-                    authenticate = AuthenticateMessage.model_validate_json(raw_auth)
-                    validated_ticket = await state.ws_ticket_validator.validate(
-                        authenticate.ticket, booking_id
-                    )
-                except (ValidationError, Unauthenticated):
-                    await _reject(
-                        websocket,
-                        CLOSE_UNAUTHENTICATED,
-                        "ticket authentication failed",
-                        "unauthenticated",
-                    )
-                    return
-                if not await state.ticket_replay_store.consume(
-                    validated_ticket.jti, validated_ticket.expires_at
-                ):
-                    await _reject(
-                        websocket, CLOSE_FORBIDDEN, "ticket already used", "ticket_replay"
-                    )
-                    return
-                principal_id = validated_ticket.subject
             try:
                 connection = await state.connection_manager.register(
                     websocket,
-                    booking_id=booking_id,
+                    booking_id=bookingId,
                     principal_id=principal_id,
                     client_ip=client_ip,
-                    subprotocol=subprotocol,
-                    accept_socket=not accepted_for_ticket,
+                    subprotocol=None,
+                    accept_socket=False,
                 )
             except ConnectionLimitExceeded as exc:
                 code = CLOSE_SERVER_SHUTDOWN if exc.reason == "draining" else CLOSE_RATE_LIMITED
@@ -164,58 +225,15 @@ def create_websocket_router() -> APIRouter:
             await state.connection_manager.send(
                 connection,
                 ConnectedControl(
-                    bookingId=booking_id,
-                    heartbeatIntervalSeconds=settings.heartbeat_interval_seconds,
+                    bookingId=bookingId,
                 ).model_dump(by_alias=True, mode="json"),
             )
-            last_sequence_raw = websocket.query_params.get("lastSequence")
-            if last_sequence_raw is not None:
-                try:
-                    last_sequence = int(last_sequence_raw)
-                    if last_sequence < 0:
-                        raise ValueError
-                except ValueError:
-                    control = ProtocolErrorControl(
-                        code="INVALID_MESSAGE",
-                        message="lastSequence must be a non-negative integer",
-                    )
-                    await state.connection_manager.send(connection, control.model_dump(mode="json"))
-                    await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="invalid lastSequence")
-                    return
-                resync = ResyncRequiredControl(
-                    bookingId=booking_id,
-                    reason="reconnect_no_replay",
-                    authoritativeUrl=settings.authoritative_booking_url_template.replace(
-                        "{bookingId}", booking_id
-                    ),
-                    observedSequence=last_sequence if last_sequence > 0 else None,
-                )
-                await state.connection_manager.send(
-                    connection, resync.model_dump(by_alias=True, mode="json")
-                )
+            if not await _send_resync_if_requested(websocket, state, connection, bookingId):
+                return
             heartbeat_task = asyncio.create_task(
                 state.heartbeat.run(connection), name=f"heartbeat-{connection.id}"
             )
-            while not connection.closed:
-                raw = await websocket.receive_text()
-                await state.connection_manager.touch(connection)
-                if len(raw.encode("utf-8")) > settings.max_client_message_bytes:
-                    control = ProtocolErrorControl(
-                        code="MESSAGE_TOO_LARGE",
-                        message="Client message exceeds the configured limit",
-                    )
-                    await state.connection_manager.send(connection, control.model_dump(mode="json"))
-                    await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="message too large")
-                    return
-                try:
-                    PongMessage.model_validate_json(raw)
-                except ValidationError:
-                    control = ProtocolErrorControl(
-                        code="INVALID_MESSAGE", message="Only the pong control message is accepted"
-                    )
-                    await state.connection_manager.send(connection, control.model_dump(mode="json"))
-                    await websocket.close(code=CLOSE_PROTOCOL_ERROR, reason="invalid message")
-                    return
+            await _receive_client_messages(websocket, state, connection, bookingId)
         except WebSocketDisconnect:
             DISCONNECTS.labels("client").inc()
         finally:
@@ -231,10 +249,21 @@ def create_websocket_router() -> APIRouter:
                     "operation": "booking_subscription",
                     "outcome": outcome,
                     "durationMs": round((time.perf_counter() - started) * 1000, 2),
-                    "bookingRef": _booking_ref(booking_id),
+                    "bookingRef": _booking_ref(bookingId),
                     "activeConnections": stats["activeConnections"],
                 },
             )
             reset(tokens)
 
     return router
+
+
+def _client_message_type(raw: str, booking_id: str) -> str | None:
+    for model in (HeartbeatAckMessage, SubscribeMessage, UnsubscribeMessage):
+        try:
+            message = model.model_validate_json(raw)
+        except ValidationError:
+            continue
+        message_booking_id = getattr(message, "booking_id", booking_id)
+        return message.type if message_booking_id == booking_id else None
+    return None

@@ -11,6 +11,7 @@ COPY services/realtime-status-service/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --requirement requirements.txt
 
 COPY --chown=realtime:realtime services/realtime-status-service/app ./app
+COPY --chown=realtime:realtime libs ./libs
 
 USER realtime
 EXPOSE 8008

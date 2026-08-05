@@ -6,10 +6,19 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.application.common import RequestContext, prepare_transaction
+from app.application.common import (
+    RequestContext,
+    prepare_transaction,
+    replay_or_lock,
+    save_replay,
+)
 from app.config import Settings
 from app.domain.exceptions import InvalidRequest, InventoryConflict
-from app.domain.rules import advisory_lock_id, validate_identifier
+from app.domain.rules import (
+    advisory_lock_id,
+    canonical_request_hash,
+    validate_identifier,
+)
 from app.domain.seat import SeatStatus
 from app.infrastructure.database.models import InventoryVersionModel, SeatModel
 from app.infrastructure.database.repositories import (
@@ -36,6 +45,27 @@ class ConfigureInventoryResult:
     event_id: str
     inventory_version: int
     seat_count: int
+    replayed: bool = False
+
+
+SCOPE = "ConfigureInventory"
+
+
+def _result_to_payload(result: ConfigureInventoryResult) -> dict[str, int | str]:
+    return {
+        "eventId": result.event_id,
+        "inventoryVersion": result.inventory_version,
+        "seatCount": result.seat_count,
+    }
+
+
+def _result_from_payload(payload: dict[str, object]) -> ConfigureInventoryResult:
+    return ConfigureInventoryResult(
+        event_id=str(payload["eventId"]),
+        inventory_version=int(str(payload["inventoryVersion"])),
+        seat_count=int(str(payload["seatCount"])),
+        replayed=True,
+    )
 
 
 def configure_inventory(
@@ -47,7 +77,7 @@ def configure_inventory(
     inventory_version: int,
     seats: tuple[SeatDefinition, ...],
 ) -> ConfigureInventoryResult:
-    context.validated()
+    context.validated(require_idempotency=True)
     event_id = validate_identifier(event_id, "eventId")
     if inventory_version < 1:
         raise InvalidRequest("inventoryVersion must be at least 1")
@@ -67,9 +97,38 @@ def configure_inventory(
             )
         normalized[seat_id] = definition
 
+    request_hash = canonical_request_hash(
+        {
+            "eventId": event_id,
+            "inventoryVersion": inventory_version,
+            "seats": [
+                [
+                    seat_id,
+                    normalized[seat_id].section,
+                    normalized[seat_id].row_label,
+                    normalized[seat_id].seat_number,
+                    normalized[seat_id].ticket_type,
+                    normalized[seat_id].status.value,
+                ]
+                for seat_id in sorted(normalized)
+            ],
+        }
+    )
+    idempotency_key = context.idempotency_key
+    if idempotency_key is None:
+        raise AssertionError("validated idempotency key is missing")
+
     with session.begin():
         prepare_transaction(session, settings)
-        acquire_advisory_lock(session, advisory_lock_id("ConfigureInventory", event_id))
+        replay = replay_or_lock(
+            session,
+            scope=SCOPE,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        if replay is not None:
+            return _result_from_payload(replay)
+        acquire_advisory_lock(session, advisory_lock_id(SCOPE, event_id))
         version_row = lock_inventory_version(session, event_id)
         now = database_now(session)
         if version_row is None:
@@ -189,8 +248,19 @@ def configure_inventory(
                 resource_version=1,
             )
 
-        return ConfigureInventoryResult(
+        result = ConfigureInventoryResult(
             event_id=event_id,
             inventory_version=inventory_version,
             seat_count=len(normalized),
         )
+        save_replay(
+            session,
+            settings=settings,
+            scope=SCOPE,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            response=_result_to_payload(result),
+            resource_id=event_id,
+            now=now,
+        )
+        return result

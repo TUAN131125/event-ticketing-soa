@@ -108,6 +108,7 @@ class JwtSigner:
                 "iss": self.issuer,
                 "sub": self.subject,
                 "aud": audience,
+                "roles": ["SERVICE"],
                 "iat": now,
                 "exp": now + self.ttl_seconds,
                 "jti": str(uuid4()),

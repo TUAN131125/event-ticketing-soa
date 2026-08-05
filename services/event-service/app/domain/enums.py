@@ -1,10 +1,11 @@
 """Enum trang thai su kien."""
-from enum import Enum
+
+from enum import StrEnum
 
 
-class EventStatus(str, Enum):
+class EventStatus(StrEnum):
     DRAFT = "DRAFT"
     ON_SALE = "ON_SALE"
     PAUSED = "PAUSED"
-    CLOSED = "CLOSED"
+    ENDED = "ENDED"
     CANCELLED = "CANCELLED"

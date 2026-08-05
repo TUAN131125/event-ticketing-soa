@@ -214,11 +214,10 @@ def model_to_entity(model: BookingModel) -> Booking:
         customer_id=model.customer_id,
         event_id=model.event_id,
         reservation_id=model.reservation_id,
-        payment_method=model.payment_method,
         items=tuple(
             BookingItem(
                 seat_id=item.seat_id,
-                ticket_type=item.ticket_type,
+                ticket_type_code=item.ticket_type,
                 unit_price=Decimal(item.unit_price),
             )
             for item in model.items
@@ -231,6 +230,7 @@ def model_to_entity(model: BookingModel) -> Booking:
         created_at=model.created_at,
         updated_at=model.updated_at,
         payment_id=model.payment_id,
+        ticket_ids=tuple(model.ticket_ids),
         failure_code=model.failure_code,
         failure_reason=model.failure_reason,
         cancellation_reason=model.cancellation_reason,
@@ -245,12 +245,13 @@ def entity_to_model(booking: Booking) -> BookingModel:
         customer_id=booking.customer_id,
         event_id=booking.event_id,
         reservation_id=booking.reservation_id,
-        payment_method=booking.payment_method,
+        payment_method=None,
         status=booking.status,
         payment_status=booking.payment_status,
         total_amount=booking.total_amount,
         currency=booking.currency,
         payment_id=booking.payment_id,
+        ticket_ids=list(booking.ticket_ids),
         failure_code=booking.failure_code,
         failure_reason=booking.failure_reason,
         cancellation_reason=booking.cancellation_reason,
@@ -262,7 +263,7 @@ def entity_to_model(booking: Booking) -> BookingModel:
         items=[
             BookingItemModel(
                 seat_id=item.seat_id,
-                ticket_type=item.ticket_type,
+                ticket_type=item.ticket_type_code,
                 unit_price=item.unit_price,
                 created_at=booking.created_at,
             )
@@ -275,6 +276,8 @@ def apply_entity(model: BookingModel, booking: Booking) -> None:
     model.status = booking.status
     model.payment_status = booking.payment_status
     model.payment_id = booking.payment_id
+    model.reservation_id = booking.reservation_id
+    model.ticket_ids = list(booking.ticket_ids)
     model.failure_code = booking.failure_code
     model.failure_reason = booking.failure_reason
     model.cancellation_reason = booking.cancellation_reason

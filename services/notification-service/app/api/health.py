@@ -1,9 +1,33 @@
-"""Health check endpoint."""
-from fastapi import APIRouter
+"""Canonical liveness and readiness probes."""
 
-router = APIRouter()
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
+from libs.platform_http import HealthStatus, error_envelope
+
+from app.infrastructure.database.session import database_ready
+
+router = APIRouter(tags=["health"])
 
 
-@router.get("/health")
-def health():
-    return {"service": "notification-service", "status": "UP"}
+@router.get(
+    "/health/live", operation_id="notificationLiveness", response_model=HealthStatus
+)
+def liveness() -> HealthStatus:
+    return HealthStatus(status="UP")
+
+
+@router.get(
+    "/health/ready", operation_id="notificationReadiness", response_model=HealthStatus
+)
+def readiness(request: Request) -> Response:
+    if database_ready(request.app.state.settings):
+        return JSONResponse({"status": "READY"})
+    return JSONResponse(
+        error_envelope(
+            request,
+            code="SERVICE_UNAVAILABLE",
+            message="Notification database is not ready",
+            retryable=True,
+        ),
+        status_code=503,
+    )

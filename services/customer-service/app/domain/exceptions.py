@@ -11,3 +11,11 @@ class DuplicateEmailError(Exception):
     def __init__(self, email: str):
         self.email = email
         super().__init__(f"Email da ton tai: {email}")
+
+
+class PreconditionFailedError(Exception):
+    """Raised when If-Match does not match the current resource version."""
+
+
+class IdentityMappingConflictError(Exception):
+    """Raised when either side of an identity mapping is already linked."""

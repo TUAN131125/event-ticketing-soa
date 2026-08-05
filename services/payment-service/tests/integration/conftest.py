@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,24 +16,19 @@ from app.infrastructure.database.session import get_engine, get_session_factory
 
 
 @pytest.fixture(scope="session")
-def test_settings() -> Settings:
+def test_settings(payment_settings: Settings) -> Settings:
     url = os.getenv("PAYMENT_TEST_DATABASE_URL")
     if not url:
         pytest.skip("PAYMENT_TEST_DATABASE_URL is not configured")
-    return Settings(
-        app_name="payment-service",
-        app_env="test",
+    return replace(
+        payment_settings,
         database_url=url,
-        service_token="test-service-token",
         db_pool_size=10,
         db_max_overflow=10,
         db_pool_timeout_seconds=3,
         db_connect_timeout_seconds=3,
         db_lock_timeout_ms=3_000,
         db_statement_timeout_ms=10_000,
-        idempotency_ttl_seconds=3_600,
-        log_level="WARNING",
-        docs_enabled=True,
     )
 
 

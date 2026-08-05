@@ -89,20 +89,25 @@ def booking_to_payload(booking: Booking) -> dict[str, Any]:
         "customerId": booking.customer_id,
         "eventId": booking.event_id,
         "reservationId": booking.reservation_id,
-        "paymentMethod": booking.payment_method,
         "items": [
             {
                 "seatId": item.seat_id,
-                "ticketType": item.ticket_type,
-                "unitPrice": str(item.unit_price),
+                "ticketTypeCode": item.ticket_type_code,
+                "unitPrice": {
+                    "amountMinor": int(item.unit_price),
+                    "currency": booking.currency,
+                },
             }
             for item in booking.items
         ],
-        "totalAmount": str(booking.total_amount),
-        "currency": booking.currency,
+        "total": {
+            "amountMinor": int(booking.total_amount),
+            "currency": booking.currency,
+        },
         "status": booking.status.value,
         "paymentStatus": booking.payment_status.value,
         "paymentId": booking.payment_id,
+        "ticketIds": list(booking.ticket_ids),
         "failureCode": booking.failure_code,
         "failureReason": booking.failure_reason,
         "cancellationReason": booking.cancellation_reason,
@@ -123,21 +128,21 @@ def booking_from_payload(payload: dict[str, Any]) -> Booking:
         booking_id=str(payload["bookingId"]),
         customer_id=str(payload["customerId"]),
         event_id=str(payload["eventId"]),
-        reservation_id=str(payload["reservationId"]),
-        payment_method=str(payload["paymentMethod"]),
+        reservation_id=_optional_text(payload.get("reservationId")),
         items=tuple(
             BookingItem(
                 seat_id=str(item["seatId"]),
-                ticket_type=str(item["ticketType"]),
-                unit_price=Decimal(str(item["unitPrice"])),
+                ticket_type_code=str(item["ticketTypeCode"]),
+                unit_price=Decimal(str(item["unitPrice"]["amountMinor"])),
             )
             for item in payload["items"]
         ),
-        total_amount=Decimal(str(payload["totalAmount"])),
-        currency=str(payload["currency"]),
+        total_amount=Decimal(str(payload["total"]["amountMinor"])),
+        currency=str(payload["total"]["currency"]),
         status=BookingStatus(str(payload["status"])),
         payment_status=PaymentStatus(str(payload["paymentStatus"])),
         payment_id=_optional_text(payload.get("paymentId")),
+        ticket_ids=tuple(str(item) for item in payload.get("ticketIds", [])),
         failure_code=_optional_text(payload.get("failureCode")),
         failure_reason=_optional_text(payload.get("failureReason")),
         cancellation_reason=_optional_text(payload.get("cancellationReason")),
@@ -159,8 +164,10 @@ def event_payload(booking: Booking) -> dict[str, Any]:
         "status": booking.status.value,
         "paymentStatus": booking.payment_status.value,
         "paymentId": booking.payment_id,
-        "totalAmount": str(booking.total_amount),
-        "currency": booking.currency,
+        "total": {
+            "amountMinor": int(booking.total_amount),
+            "currency": booking.currency,
+        },
         "resourceVersion": booking.resource_version,
         "occurredAt": booking.updated_at.isoformat(),
     }
