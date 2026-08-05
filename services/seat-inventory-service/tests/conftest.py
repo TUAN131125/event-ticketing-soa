@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -9,6 +10,9 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from libs.platform_security import ServiceJwtSigningSettings
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -32,6 +36,28 @@ DEFAULT_TEST_DATABASE_URL = (
     "postgresql+psycopg://seat_inventory:seat_inventory"
     "@localhost:55432/seat_inventory_test"
 )
+TEST_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+TEST_PRIVATE_PEM = TEST_PRIVATE_KEY.private_bytes(
+    serialization.Encoding.PEM,
+    serialization.PrivateFormat.PKCS8,
+    serialization.NoEncryption(),
+)
+TEST_PUBLIC_PEM = TEST_PRIVATE_KEY.public_key().public_bytes(
+    serialization.Encoding.PEM,
+    serialization.PublicFormat.SubjectPublicKeyInfo,
+)
+
+
+def service_authorization() -> str:
+    signer = ServiceJwtSigningSettings(
+        None,
+        base64.b64encode(TEST_PRIVATE_PEM).decode(),
+        "test-internal",
+        "booking-orchestrator",
+        "test-key",
+        60,
+    ).signer()
+    return f"Bearer {signer.issue('seat-inventory-service')}"
 
 
 @pytest.fixture(scope="session")
@@ -39,7 +65,11 @@ def test_settings() -> Iterator[Settings]:
     os.environ["SEAT_DATABASE_URL"] = os.getenv(
         "SEAT_TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL
     )
-    os.environ["SEAT_SERVICE_TOKEN"] = "test-service-token"
+    os.environ["SEAT_SERVICE_JWT_PUBLIC_KEY_BASE64"] = base64.b64encode(
+        TEST_PUBLIC_PEM
+    ).decode()
+    os.environ["SEAT_SERVICE_JWT_ISSUER"] = "test-internal"
+    os.environ["SEAT_ALLOWED_SERVICE_SUBJECTS"] = "booking-orchestrator"
     os.environ["SEAT_SOAP_PUBLIC_URL"] = "http://testserver/soap"
     os.environ["SEAT_WSDL_PATH"] = str(REPOSITORY_CONTRACTS / "seat-inventory.wsdl")
     os.environ["SEAT_XSD_PATH"] = str(REPOSITORY_CONTRACTS / "seat-inventory.xsd")
@@ -101,7 +131,7 @@ def context(
         idempotency_key=idempotency_key,
         caller_service="pytest",
         actor_id="TEST-ACTOR",
-        schema_version="1.0",
+        schema_version="1",
     )
 
 
@@ -128,7 +158,10 @@ def create_inventory(
         configure_inventory(
             session,
             settings,
-            context(f"CONFIG-{event_id}"),
+            context(
+                f"CONFIG-{event_id}",
+                idempotency_key=f"CONFIG-{event_id}-v1-{seat_count}",
+            ),
             event_id=event_id,
             inventory_version=1,
             seats=definitions,

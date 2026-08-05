@@ -5,16 +5,19 @@ from enum import StrEnum
 
 class BookingStatus(StrEnum):
     PENDING = "PENDING"
+    SEAT_RESERVED = "SEAT_RESERVED"
+    PAYMENT_PROCESSING = "PAYMENT_PROCESSING"
     CONFIRMED = "CONFIRMED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    COMPENSATION_PENDING = "COMPENSATION_PENDING"
 
 
 class PaymentStatus(StrEnum):
     PENDING = "PENDING"
-    SUCCEEDED = "SUCCEEDED"
+    CAPTURED = "CAPTURED"
     FAILED = "FAILED"
-    REFUNDED = "REFUNDED"
+    UNKNOWN = "UNKNOWN"
 
 
 class BookingEventType(StrEnum):

@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pyyaml==6.0.3 jsonschema==4.23.0 lxml==6.1.0
+      - run: python contracts/scripts/validate_contracts.py
+      - run: python contracts/scripts/build_contracts.py
+
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - services/identity-service
+          - services/customer-service
+          - services/event-service
+          - services/seat-inventory-service
+          - services/booking-service
+          - services/payment-service
+          - services/ticket-service
+          - services/notification-service
+          - services/realtime-status-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ${{ matrix.component }}/requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+        working-directory: ${{ matrix.component }}
+      - run: python -m ruff format --check app tests
+        working-directory: ${{ matrix.component }}
+      - run: python -m ruff check app tests
+        working-directory: ${{ matrix.component }}
+      - run: python -m mypy app
+        working-directory: ${{ matrix.component }}
+        env:
+          MYPYPATH: ${{ github.workspace }}
+      - run: python -m compileall -q app migrations
+        working-directory: ${{ matrix.component }}
+      - run: python -m pytest -q
+        working-directory: ${{ matrix.component }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  esb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: gateway/booking-orchestrator/requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+        working-directory: gateway/booking-orchestrator
+      - run: python -m ruff format --check app
+        working-directory: gateway/booking-orchestrator
+      - run: python -m ruff check app
+        working-directory: gateway/booking-orchestrator
+      - run: python -m mypy app
+        working-directory: gateway/booking-orchestrator
+        env:
+          MYPYPATH: ${{ github.workspace }}
+      - run: python -m compileall -q app migrations
+        working-directory: gateway/booking-orchestrator
+      # tests/integration/esb drives the ESB application with fake providers, so it runs
+      # here and never inside the end-to-end gate.
+      - run: python -m pytest -q tests/unit/esb tests/contracts tests/consumer/esb tests/integration/esb
+        env:
+          PYTHONPATH: ${{ github.workspace }}/gateway/booking-orchestrator:${{ github.workspace }}
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install bandit==1.8.6 pip-audit==2.9.0
+      - run: bandit -q -r gateway services libs -x '*/tests/*,*/migrations/*'
+      - name: Audit Python dependency inputs
+        shell: bash
+        run: |
+          set -eu
+          find gateway services -name requirements.txt -print0 | while IFS= read -r -d '' file; do
+            python -m pip_audit -r "$file"
+          done
+      - run: npm ci && npm audit --audit-level=high
+        working-directory: frontend
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python,javascript-typescript
+      - uses: github/codeql-action/analyze@v3
+
+  integration:
+    needs: [contracts, backend, esb, frontend]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/integration.yml
+
+  final-gate:
+    if: always()
+    needs: [contracts, backend, esb, frontend, security, codeql, integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gate
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        shell: bash
+        run: |
+          set -eu
+          for result in $RESULTS; do
+            test "$result" = success
+          done

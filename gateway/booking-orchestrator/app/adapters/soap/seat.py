@@ -18,9 +18,10 @@ from app.domain.errors import (
 from app.domain.models import RequestContext
 from app.ports.repositories import TraceRepository
 from app.resilience.policies import ResilienceExecutor, RetryClass
+from app.security.jwt import JwtSigner
 
 SOAP = "http://schemas.xmlsoap.org/soap/envelope/"
-NS = "urn:event-ticketing:seat-inventory:v1"
+NS = "urn:event-ticketing:seat:v1"
 logger = logging.getLogger(__name__)
 
 
@@ -39,12 +40,12 @@ class SeatSoapAdapter:
         http: httpx.AsyncClient,
         resilience: ResilienceExecutor,
         xsd_path: str,
-        service_token: str | None = None,
+        signer: JwtSigner,
         traces: TraceRepository | None = None,
     ) -> None:
         self.endpoint, self.http, self.resilience = endpoint, http, resilience
         self.schema = etree.XMLSchema(etree.parse(xsd_path))
-        self.service_token = service_token
+        self.signer = signer
         self.traces = traces
 
     async def check_availability(self, event_id: str, seat_ids: Sequence[str], context: RequestContext) -> Mapping[str, Any]:
@@ -114,14 +115,6 @@ class SeatSoapAdapter:
         retry: RetryClass,
         ambiguous: bool = False,
     ) -> Mapping[str, Any]:
-        service_token = self.service_token
-        if not service_token:
-            raise DependencyFailure(
-                "SEAT_AUTH_CONFIGURATION_INVALID",
-                "Seat provider credential is not configured.",
-                503,
-                False,
-            )
         request = self._request_element(operation, payload, idempotency_key, context)
         try:
             self.schema.assertValid(request)
@@ -145,7 +138,7 @@ class SeatSoapAdapter:
                     headers={
                         "Content-Type": "text/xml; charset=utf-8",
                         "SOAPAction": f"{NS}/{operation}",
-                        "X-Service-Token": service_token,
+                        "Authorization": (f"Bearer {self.signer.service_token('seat-inventory-service')}"),
                     },
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
@@ -216,19 +209,22 @@ class SeatSoapAdapter:
         root = etree.Element(etree.QName(NS, f"{operation}Request"), nsmap={"tns": NS})
         ctx = etree.SubElement(root, etree.QName(NS, "context"))
         self._text(ctx, "correlationId", context.correlation_id)
+        if context.trace_id:
+            self._text(ctx, "traceparent", context.trace_id)
         if idempotency_key:
             self._text(ctx, "idempotencyKey", idempotency_key)
         self._text(ctx, "callerService", "booking-orchestrator")
-        self._text(ctx, "schemaVersion", "1.0")
+        self._text(ctx, "schemaVersion", "1")
         source = {k: v for k, v in payload.items() if k != "requestContext"}
         for key, value in source.items():
             if key == "seatIds":
                 wrapper = etree.SubElement(root, etree.QName(NS, "seatIds"))
                 for seat in value:
                     seat_id = seat.get("seatId") if isinstance(seat, Mapping) else seat
-                    self._text(wrapper, "seatId", str(seat_id))
-            elif key == "ttlSeconds":
-                self._text(root, "holdSeconds", str(value))
+                    ticket_type = seat.get("ticketTypeCode", "STANDARD") if isinstance(seat, Mapping) else "STANDARD"
+                    seat_node = etree.SubElement(wrapper, etree.QName(NS, "seat"))
+                    self._text(seat_node, "seatId", str(seat_id))
+                    self._text(seat_node, "ticketTypeCode", str(ticket_type))
             else:
                 self._text(root, key, str(value))
         return root
@@ -251,7 +247,7 @@ class SeatSoapAdapter:
             ) from exc
         fault = root.find(f".//{{{SOAP}}}Fault")
         if fault is not None:
-            detail = fault.find(f".//{{{NS}}}SeatInventoryFault")
+            detail = fault.find(f".//{{{NS}}}SeatServiceFault")
             code = detail.findtext(f"{{{NS}}}code") if detail is not None else "SEAT_INVENTORY_FAULT"
             message = detail.findtext(f"{{{NS}}}message") if detail is not None else "Seat operation failed."
             retryable = detail.findtext(f"{{{NS}}}retryable") == "true" if detail is not None else False
@@ -267,28 +263,18 @@ class SeatSoapAdapter:
         try:
             self.schema.assertValid(response)
             if operation == "CheckAvailability":
+                unavailable = response.findtext(f"{{{NS}}}unavailableSeatId")
                 return {
-                    "correlationId": self._required(response, "correlationId"),
-                    "eventId": self._required(response, "eventId"),
                     "available": self._required(response, "available") == "true",
-                    "availableSeatIds": self._seat_id_list(response, "availableSeatIds"),
-                    "unavailableSeatIds": self._seat_id_list(response, "unavailableSeatIds"),
-                    "checkedAt": self._required(response, "checkedAt"),
+                    "unavailableSeatIds": [unavailable] if unavailable else [],
                 }
-            reservation = response.find(f"{{{NS}}}reservation")
-            if reservation is None:
-                raise ValueError("reservation is missing")
             return {
-                "reservationId": self._required(reservation, "reservationId"),
-                "bookingId": self._required(reservation, "bookingId"),
-                "eventId": self._required(reservation, "eventId"),
-                "seatIds": self._seat_id_list(reservation, "seatIds"),
-                "status": self._required(reservation, "status"),
-                "expiresAt": self._required(reservation, "expiresAt"),
-                "extendCount": int(self._required(reservation, "extendCount")),
-                "resourceVersion": int(self._required(reservation, "resourceVersion")),
-                "createdAt": self._required(reservation, "createdAt"),
-                "updatedAt": self._required(reservation, "updatedAt"),
+                "reservationId": self._required(response, "reservationId"),
+                "bookingId": self._required(response, "bookingId"),
+                "eventId": self._required(response, "eventId"),
+                "status": self._required(response, "status"),
+                "expiresAt": self._required(response, "expiresAt"),
+                "resourceVersion": int(self._required(response, "resourceVersion")),
             }
         except (etree.DocumentInvalid, TypeError, ValueError) as exc:
             raise DependencyFailure(
@@ -304,10 +290,3 @@ class SeatSoapAdapter:
         if value is None or value == "":
             raise ValueError(f"{name} is missing")
         return value
-
-    @staticmethod
-    def _seat_id_list(parent: etree._Element, name: str) -> list[str]:
-        wrapper = parent.find(f"{{{NS}}}{name}")
-        if wrapper is None:
-            raise ValueError(f"{name} is missing")
-        return [value for node in wrapper.findall(f"{{{NS}}}seatId") if (value := node.text)]

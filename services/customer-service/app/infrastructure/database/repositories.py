@@ -16,10 +16,15 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.domain.entities import Customer
+from app.domain.entities import Customer, IdentityMapping
 from app.domain.enums import CustomerStatus
 from app.domain.exceptions import DuplicateEmailError
-from app.infrastructure.database.models import CustomerModel, customer_id_seq
+from app.infrastructure.database.models import (
+    CustomerConsentModel,
+    CustomerModel,
+    IdentityMappingModel,
+    customer_id_seq,
+)
 from app.infrastructure.database.session import session_scope
 from app.repositories.interfaces import CustomerRepository
 
@@ -30,6 +35,8 @@ class InMemoryCustomerRepository(CustomerRepository):
     def __init__(self) -> None:
         self._data: dict[str, Customer] = {}
         self._next = 1
+        self._mappings: dict[str, IdentityMapping] = {}
+        self._consents: dict[tuple[str, str], bool] = {}
         seed = Customer.create("C001", "Nguyen Van An", "an@example.com", "0901234567")
         self._data[seed.id] = seed
         self._next = 2
@@ -46,6 +53,9 @@ class InMemoryCustomerRepository(CustomerRepository):
                 return c
         return None
 
+    def get_by_phone(self, phone: str) -> Customer | None:
+        return next((item for item in self._data.values() if item.phone == phone), None)
+
     def update(self, customer: Customer) -> None:
         self._data[customer.id] = customer
 
@@ -57,6 +67,27 @@ class InMemoryCustomerRepository(CustomerRepository):
         self._next += 1
         return customer_id
 
+    def save_consent(self, customer_id: str, channel: str, granted: bool) -> None:
+        self._consents[(customer_id, channel)] = granted
+
+    def get_identity_mapping(self, identity_subject: str) -> IdentityMapping | None:
+        return self._mappings.get(identity_subject)
+
+    def get_identity_mapping_by_customer(
+        self, customer_id: str
+    ) -> IdentityMapping | None:
+        return next(
+            (
+                item
+                for item in self._mappings.values()
+                if item.customer_id == customer_id
+            ),
+            None,
+        )
+
+    def save_identity_mapping(self, mapping: IdentityMapping) -> None:
+        self._mappings[mapping.identity_subject] = mapping
+
 
 def _to_entity(row: CustomerModel) -> Customer:
     return Customer(
@@ -66,6 +97,8 @@ def _to_entity(row: CustomerModel) -> Customer:
         phone=row.phone,
         status=CustomerStatus(row.status),
         created_at=row.created_at,
+        updated_at=row.updated_at,
+        resource_version=row.resource_version,
     )
 
 
@@ -90,6 +123,8 @@ class PostgresCustomerRepository(CustomerRepository):
                         phone=customer.phone,
                         status=customer.status.value,
                         created_at=customer.created_at,
+                        updated_at=customer.updated_at,
+                        resource_version=customer.resource_version,
                     )
                 )
         except IntegrityError as exc:
@@ -104,6 +139,13 @@ class PostgresCustomerRepository(CustomerRepository):
         with session_scope() as session:
             stmt = select(CustomerModel).where(CustomerModel.email.ilike(email))
             row = session.execute(stmt).scalar_one_or_none()
+            return _to_entity(row) if row is not None else None
+
+    def get_by_phone(self, phone: str) -> Customer | None:
+        with session_scope() as session:
+            row = session.execute(
+                select(CustomerModel).where(CustomerModel.phone == phone)
+            ).scalar_one_or_none()
             return _to_entity(row) if row is not None else None
 
     def update(self, customer: Customer) -> None:
@@ -122,6 +164,8 @@ class PostgresCustomerRepository(CustomerRepository):
                             phone=customer.phone,
                             status=customer.status.value,
                             created_at=customer.created_at,
+                            updated_at=customer.updated_at,
+                            resource_version=customer.resource_version,
                         )
                     )
                     return
@@ -129,6 +173,8 @@ class PostgresCustomerRepository(CustomerRepository):
                 row.email = customer.email
                 row.phone = customer.phone
                 row.status = customer.status.value
+                row.updated_at = customer.updated_at
+                row.resource_version = customer.resource_version
         except IntegrityError as exc:
             raise DuplicateEmailError(customer.email) from exc
 
@@ -146,3 +192,69 @@ class PostgresCustomerRepository(CustomerRepository):
                 select(customer_id_seq.next_value())
             ).scalar_one()
             return f"C{next_value:03d}"
+
+    def save_consent(self, customer_id: str, channel: str, granted: bool) -> None:
+        with session_scope() as session:
+            row = session.get(CustomerConsentModel, (customer_id, channel))
+            if row is None:
+                session.add(
+                    CustomerConsentModel(
+                        customer_id=customer_id, channel=channel, granted=granted
+                    )
+                )
+            else:
+                row.granted = granted
+
+    def get_identity_mapping(self, identity_subject: str) -> IdentityMapping | None:
+        with session_scope() as session:
+            row = session.get(IdentityMappingModel, identity_subject)
+            return _mapping_to_entity(row) if row is not None else None
+
+    def get_identity_mapping_by_customer(
+        self, customer_id: str
+    ) -> IdentityMapping | None:
+        with session_scope() as session:
+            row = session.execute(
+                select(IdentityMappingModel).where(
+                    IdentityMappingModel.customer_id == customer_id
+                )
+            ).scalar_one_or_none()
+            return _mapping_to_entity(row) if row is not None else None
+
+    def save_identity_mapping(self, mapping: IdentityMapping) -> None:
+        try:
+            with session_scope() as session:
+                row = session.get(IdentityMappingModel, mapping.identity_subject)
+                if row is None:
+                    session.add(
+                        IdentityMappingModel(
+                            identity_subject=mapping.identity_subject,
+                            customer_id=mapping.customer_id,
+                            status=mapping.status,
+                            resource_version=mapping.resource_version,
+                            linked_at=mapping.linked_at,
+                            updated_at=mapping.updated_at,
+                        )
+                    )
+                else:
+                    row.customer_id = mapping.customer_id
+                    row.status = mapping.status
+                    row.resource_version = mapping.resource_version
+                    row.updated_at = mapping.updated_at
+        except IntegrityError as exc:
+            from app.domain.exceptions import IdentityMappingConflictError
+
+            raise IdentityMappingConflictError(
+                "Identity mapping already exists"
+            ) from exc
+
+
+def _mapping_to_entity(row: IdentityMappingModel) -> IdentityMapping:
+    return IdentityMapping(
+        identity_subject=row.identity_subject,
+        customer_id=row.customer_id,
+        status=row.status,
+        resource_version=row.resource_version,
+        linked_at=row.linked_at,
+        updated_at=row.updated_at,
+    )

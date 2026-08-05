@@ -1,20 +1,23 @@
 """Moi truong Alembic cho schema "customer" (tach rieng khoi cac
 service khac, giong seat-inventory-service)."""
+
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.config import get_settings
 from app.infrastructure.database.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+config.set_main_option(
+    "sqlalchemy.url", os.environ["CUSTOMER_DATABASE_URL"].replace("%", "%%")
+)
 target_metadata = Base.metadata
 
 

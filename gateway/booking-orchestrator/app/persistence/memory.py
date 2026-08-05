@@ -20,6 +20,7 @@ class InMemoryRepositories:
     def __init__(self) -> None:
         self.workflows: dict[str, WorkflowEvidence] = {}
         self.steps: list[dict[str, Any]] = []
+        self.abandoned: dict[str, dict[str, Any]] = {}
         self.idempotency: dict[tuple[str, str, str], dict[str, Any]] = {}
         self.traces: list[dict[str, Any]] = []
         self.outbox: dict[str, dict[str, Any]] = {}
@@ -115,7 +116,7 @@ class InMemoryRepositories:
     async def due_outbox(self, now: datetime, limit: int) -> Sequence[Mapping[str, Any]]:
         return [item for item in self.outbox.values() if item["state"] == "PENDING"][:limit]
 
-    async def due_jobs(self, now: datetime, limit: int) -> Sequence[Mapping[str, Any]]:
+    async def due_jobs(self, now: datetime, limit: int, lease_until: datetime | None = None) -> Sequence[Mapping[str, Any]]:
         return list(self.jobs.values())[:limit]
 
     async def delivered(self, message_id: str) -> None:
@@ -134,6 +135,7 @@ class InMemoryRepositories:
         kind: str,
         payload: Mapping[str, Any],
         idempotency_key: str,
+        deadline: datetime | None = None,
     ) -> None:
         for job in self.jobs.values():
             if job["workflowId"] == workflow_id and job["kind"] == kind and job["idempotencyKey"] == idempotency_key:
@@ -147,6 +149,8 @@ class InMemoryRepositories:
             "payload": dict(payload),
             "idempotencyKey": idempotency_key,
             "attempts": 0,
+            "deadlineAt": deadline,
+            "extensionCount": 0,
         }
 
     async def complete_job(self, job_id: str) -> None:
@@ -158,3 +162,10 @@ class InMemoryRepositories:
             evidence=dict(evidence),
             attempts=self.jobs[job_id]["attempts"] + 1,
         )
+        if "extensionCount" in evidence:
+            self.jobs[job_id]["extensionCount"] = int(str(evidence["extensionCount"]))
+
+    async def abandon_job(self, job_id: str, evidence: Mapping[str, Any]) -> None:
+        job = self.jobs.pop(job_id, None)
+        if job is not None:
+            self.abandoned[job_id] = {**job, "evidence": dict(evidence)}

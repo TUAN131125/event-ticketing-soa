@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.domain.errors import IdempotencyConflict
 from app.domain.models import (
@@ -237,18 +237,31 @@ class SqlRepositories:
                 for r in rows
             ]
 
-    async def due_jobs(self, now: datetime, limit: int) -> Sequence[Mapping[str, Any]]:
-        async with self.database.sessions() as session:
-            jobs = (
-                await session.scalars(
-                    select(ReconciliationRow)
-                    .where(
-                        ReconciliationRow.state == "PENDING",
-                        ReconciliationRow.next_attempt_at <= now,
-                    )
-                    .limit(limit)
+    async def due_jobs(self, now: datetime, limit: int, lease_until: datetime | None = None) -> Sequence[Mapping[str, Any]]:
+        """Claim due jobs under a row lease so replicas never share one job.
+
+        The row lock skips whatever another worker already holds, and the claimed rows
+        get a `locked_until` lease so a crashed worker's jobs become claimable again.
+        """
+        async with self.database.sessions.begin() as session:
+            statement = (
+                select(ReconciliationRow)
+                .where(
+                    ReconciliationRow.state == "PENDING",
+                    ReconciliationRow.next_attempt_at <= now,
+                    or_(
+                        ReconciliationRow.locked_until.is_(None),
+                        ReconciliationRow.locked_until <= now,
+                    ),
                 )
-            ).all()
+                .order_by(ReconciliationRow.next_attempt_at)
+                .limit(limit)
+            )
+            if session.bind is not None and session.bind.dialect.name == "postgresql":
+                statement = statement.with_for_update(skip_locked=True)
+            jobs = (await session.scalars(statement)).all()
+            for row in jobs:
+                row.locked_until = lease_until
             return [
                 {
                     "jobId": r.id,
@@ -257,6 +270,8 @@ class SqlRepositories:
                     "payload": r.payload,
                     "idempotencyKey": r.idempotency_key,
                     "attempts": r.attempts,
+                    "deadlineAt": r.deadline_at,
+                    "extensionCount": r.extension_count,
                 }
                 for r in jobs
             ]
@@ -281,6 +296,7 @@ class SqlRepositories:
         kind: str,
         payload: Mapping[str, Any],
         idempotency_key: str,
+        deadline: datetime | None = None,
     ) -> None:
         async with self.database.sessions.begin() as session:
             existing = await session.scalar(
@@ -303,6 +319,7 @@ class SqlRepositories:
                     kind=kind,
                     payload=dict(payload),
                     idempotency_key=idempotency_key,
+                    deadline_at=deadline,
                 )
             )
 
@@ -311,6 +328,7 @@ class SqlRepositories:
             row = await session.get(ReconciliationRow, job_id, with_for_update=True)
             if row:
                 row.state = "COMPLETED"
+                row.locked_until = None
 
     async def reschedule_job(self, job_id: str, next_attempt_at: datetime, evidence: Mapping[str, Any]) -> None:
         async with self.database.sessions.begin() as session:
@@ -318,6 +336,17 @@ class SqlRepositories:
             if row:
                 row.attempts += 1
                 row.next_attempt_at = next_attempt_at
+                row.last_evidence = dict(evidence)
+                row.locked_until = None
+                if "extensionCount" in evidence:
+                    row.extension_count = int(str(evidence["extensionCount"]))
+
+    async def abandon_job(self, job_id: str, evidence: Mapping[str, Any]) -> None:
+        async with self.database.sessions.begin() as session:
+            row = await session.get(ReconciliationRow, job_id, with_for_update=True)
+            if row:
+                row.state = "ABANDONED"
+                row.locked_until = None
                 row.last_evidence = dict(evidence)
 
     @staticmethod

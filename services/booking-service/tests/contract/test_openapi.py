@@ -1,49 +1,44 @@
+from pathlib import Path
+
+from libs.contract_testing import assert_openapi_conformance
+
 from app.config import Settings
 from app.main import create_app
 
 EXPECTED_OPERATIONS = {
     "createBooking",
-    "listBookings",
     "getBooking",
-    "confirmBooking",
-    "failBooking",
-    "cancelBooking",
+    "listCustomerBookings",
+    "bookingReservation",
+    "bookingPaymentStarted",
+    "bookingPaymentResult",
+    "bookingTickets",
+    "bookingConfirm",
+    "bookingFail",
+    "bookingCancel",
+    "decideBookingResourceAccess",
 }
-def settings() -> Settings:
-    return Settings(
-        app_name="booking-service",
-        app_env="test",
-        database_url="postgresql+psycopg://booking:booking@localhost:5437/booking",
-        service_token="test-service-token",
-        db_pool_size=1,
-        db_max_overflow=0,
-        db_pool_timeout_seconds=1,
-        db_connect_timeout_seconds=1,
-        db_lock_timeout_ms=1_000,
-        db_statement_timeout_ms=5_000,
-        idempotency_ttl_seconds=3_600,
-        log_level="WARNING",
-        docs_enabled=True,
-    )
 
 
-def test_openapi_has_unique_operation_ids_and_closed_request_models() -> None:
-    schema = create_app(settings()).openapi()
-    operation_ids: list[str] = []
-    for path in schema["paths"].values():
-        for operation in path.values():
-            if isinstance(operation, dict) and "operationId" in operation:
-                operation_ids.append(operation["operationId"])
-    assert len(operation_ids) == len(set(operation_ids))
+def test_openapi_matches_canonical_operations(booking_settings: Settings) -> None:
+    schema = create_app(booking_settings).openapi()
+    operation_ids = {
+        operation["operationId"]
+        for path in schema["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    }
     assert EXPECTED_OPERATIONS.issubset(operation_ids)
-    service_token = schema["components"]["securitySchemes"]["serviceToken"]
-    assert service_token == {
-        "type": "apiKey",
-        "description": "Internal shared secret. Never forward a customer token here.",
-        "in": "header",
-        "name": "X-Service-Token",
+    assert schema["components"]["securitySchemes"]["ServiceJwt"] == {
+        "type": "http",
+        "scheme": "bearer",
     }
     assert (
         schema["components"]["schemas"]["CreateBookingRequest"]["additionalProperties"]
         is False
     )
+
+
+def test_provider_matches_canonical_contract(booking_settings: Settings) -> None:
+    canonical = Path(__file__).parents[4] / "contracts" / "booking-service.yaml"
+    assert_openapi_conformance(create_app(booking_settings).openapi(), canonical)

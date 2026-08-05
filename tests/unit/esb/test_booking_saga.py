@@ -99,7 +99,11 @@ async def test_reserve_timeout_replays_same_key_and_payload_without_get_reservat
     providers = FakeProviders()
     providers.reserve_outcomes = [
         AmbiguousOutcome("ReserveSeats"),
-        {"reservationId": "RES-1", "resourceVersion": 1},
+        {
+            "reservationId": "RES-1",
+            "resourceVersion": 1,
+            "expiresAt": "2026-08-05T10:10:00Z",
+        },
     ]
     saga, providers, _, command = build_booking(providers)
     result = await saga.execute(command, request_context())
@@ -178,6 +182,25 @@ async def test_payment_failed_releases_seat_and_never_issues_ticket() -> None:
     assert result.status_code == 402
     assert "ReleaseSeats" in call_names(providers)
     assert "issueTickets" not in call_names(providers)
+    assert next(iter(repositories.workflows.values())).phase == WorkflowPhase.FAILED
+
+
+@pytest.mark.asyncio
+async def test_declined_payment_business_fault_still_releases_and_fails_the_booking() -> (
+    None
+):
+    """Payment Service signals a decline with a 402 fault, not a FAILED status body."""
+    providers = FakeProviders()
+    providers.payment_outcomes["authorizePayment"] = BusinessFault(
+        "PAYMENT_DECLINED", "Payment was declined.", 402, False
+    )
+    saga, providers, repositories, command = build_booking(providers)
+    result = await saga.execute(command, request_context())
+    names = call_names(providers)
+    assert result.status_code == 402
+    assert names.index("ReleaseSeats") < names.index("bookingFail")
+    assert "issueTickets" not in names
+    assert "ConfirmSeats" not in names
     assert next(iter(repositories.workflows.values())).phase == WorkflowPhase.FAILED
 
 

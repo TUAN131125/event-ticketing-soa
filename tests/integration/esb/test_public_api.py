@@ -7,6 +7,7 @@ import pytest
 import yaml
 from alembic import command
 from alembic.config import Config
+from app.application.health import HealthService
 from app.application.queries import QueryService
 from app.config import Settings
 from app.dependencies import RuntimeContainer
@@ -16,7 +17,7 @@ from app.persistence.memory import InMemoryRepositories
 from app.security.jwt import WebSocketTicketIssuer
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fakes import FakeProviders
+from fakes import FakeClock, FakeProviders
 from fastapi.testclient import TestClient
 
 GATEWAY_ROOT = Path(__file__).resolve().parents[3] / "gateway" / "booking-orchestrator"
@@ -47,8 +48,24 @@ class BookingStub:
         )
 
 
+class ReconcilingBookingStub:
+    """Mirrors the saga's 202 result while the payment outcome is unknown."""
+
+    async def execute(self, command, context):
+        return OperationResult(
+            202,
+            {
+                "bookingId": "BK-1",
+                "status": "PAYMENT_PROCESSING",
+                "total": {"amountMinor": 100000, "currency": "VND"},
+                "correlationId": context.correlation_id,
+            },
+        )
+
+
 class CancellationStub:
-    async def execute(self, booking_id, idempotency_key, context):
+    async def execute(self, booking_id, idempotency_key, context, *, expected_version):
+        assert expected_version >= 1
         return OperationResult(
             200,
             {
@@ -96,6 +113,7 @@ def api() -> tuple[TestClient, FakeProviders, str]:
             key, "booking-orchestrator", "realtime-status-service", "ws-1", 45
         ),
         providers,
+        HealthService([], FakeClock(), 1.0),
     )
     app = create_app(
         Settings(
@@ -135,13 +153,21 @@ def test_all_eight_public_routes_execute_with_controlled_test_doubles(api) -> No
         client.get("/api/bookings/BK-1", headers=auth()),
         client.post(
             "/api/bookings/BK-1/cancel",
-            headers={**auth(), "Idempotency-Key": "cancel-key-001"},
+            headers={
+                **auth(),
+                "Idempotency-Key": "cancel-key-001",
+                "If-Match": '"1"',
+            },
         ),
         client.get("/api/health"),
         client.get(f"/api/traces/{correlation}", headers=auth()),
         client.post(
             "/api/realtime/ws-tickets",
-            headers={**auth(), "X-Correlation-ID": correlation},
+            headers={
+                **auth(),
+                "X-Correlation-ID": correlation,
+                "Idempotency-Key": "ws-ticket-key-001",
+            },
             json={"bookingId": "BK-1"},
         ),
     ]
@@ -157,6 +183,33 @@ def test_all_eight_public_routes_execute_with_controlled_test_doubles(api) -> No
     ]
     assert responses[2].json()["status"] == "CONFIRMED"
     assert responses[4].json()["status"] == "CANCELLED"
+
+
+def test_reconciling_booking_returns_202_with_location_and_retry_after(api) -> None:
+    """A 202 must tell the browser where to poll instead of resubmitting."""
+    client, providers, _ = api
+    client.app.state.container.booking_saga = ReconcilingBookingStub()
+    response = client.post(
+        "/api/bookings",
+        headers={
+            **auth(),
+            "Idempotency-Key": "booking-key-202",
+            "X-Correlation-ID": "CORRELATION-0202",
+        },
+        json={
+            "customerId": "UNTRUSTED",
+            "eventId": "EVT-1",
+            "seatIds": ["SEAT-1"],
+            "paymentMethodToken": "method-token",
+        },
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["bookingId"] == "BK-1"
+    assert body["status"] == "PAYMENT_PROCESSING"
+    assert body["correlationId"] == "CORRELATION-0202"
+    assert response.headers["Location"] == "/api/bookings/BK-1"
+    assert int(response.headers["Retry-After"]) >= 1
 
 
 def test_protected_routes_fail_closed_and_errors_use_common_envelope(api) -> None:
@@ -190,7 +243,11 @@ def test_ws_ticket_is_only_issued_after_access_decision_and_never_uses_query(
     client, providers, key = api
     response = client.post(
         "/api/realtime/ws-tickets",
-        headers={**auth(), "X-Correlation-ID": "CORRELATION-0001"},
+        headers={
+            **auth(),
+            "X-Correlation-ID": "CORRELATION-0001",
+            "Idempotency-Key": "ws-ticket-key-002",
+        },
         json={"bookingId": "BK-1"},
     )
     assert response.status_code == 201
@@ -219,9 +276,7 @@ def test_generated_runtime_openapi_matches_canonical_routes_security_headers_and
     generated = client.get("/openapi.json").json()
     root = Path(__file__).resolve().parents[3]
     canonical = yaml.safe_load(
-        (root / "contracts" / "esb-public-api.yaml").read_text(
-            encoding="utf-8"
-        )
+        (root / "contracts" / "esb-public-api.yaml").read_text(encoding="utf-8")
     )
     expected = {}
     for path, path_item in canonical["paths"].items():
@@ -241,27 +296,23 @@ def test_generated_runtime_openapi_matches_canonical_routes_security_headers_and
         assert set(runtime["responses"]) == set(operation["responses"])
         expected_security = operation.get("security", canonical.get("security", []))
         assert runtime.get("security", []) == expected_security
-        required_headers = set()
+        # Compare on the wire name and requiredness the canonical component declares,
+        # so a renamed or re-referenced component cannot silently pass.
+        expected_headers = set()
         for parameter in operation.get("parameters", []):
             reference = parameter.get("$ref", "")
-            if reference.startswith("#/components/parameters/"):
-                component_name = reference.split("/")[-1]
-                component = canonical["components"]["parameters"][component_name]
-                required_headers.add((component_name, component.get("required", False)))
+            if not reference.startswith("#/components/parameters/"):
+                continue
+            component = canonical["components"]["parameters"][reference.split("/")[-1]]
+            if component.get("in") != "header":
+                continue
+            expected_headers.add((component["name"], component.get("required", False)))
         runtime_headers = {
             (parameter["name"], parameter.get("required", False))
             for parameter in runtime.get("parameters", [])
             if parameter["in"] == "header"
         }
-        translated = {
-            ("Idempotency-Key", required)
-            if name == "IdempotencyKey"
-            else ("X-Correlation-ID", required)
-            if name in {"CorrelationId", "RequiredCorrelationId"}
-            else ("traceparent", required)
-            for name, required in required_headers
-        }
-        assert translated <= runtime_headers
+        assert expected_headers <= runtime_headers, key
 
 
 def test_real_composition_root_starts_with_sql_persistence_and_clean_shutdown(
@@ -284,18 +335,30 @@ def test_real_composition_root_starts_with_sql_persistence_and_clean_shutdown(
         customer_service_url="http://customer.test",
         event_service_url="http://event.test",
         seat_service_url="http://seat.test/soap",
-        seat_service_token="seat-test-token",
         booking_service_url="http://booking.test",
         payment_service_url="http://payment.test",
         ticket_service_url="http://ticket.test",
         notification_service_url="http://notification.test",
         realtime_service_url="http://realtime.test",
-        realtime_internal_service_token="realtime-test-token",
         outbox_poll_seconds=0.01,
         reconciliation_poll_seconds=0.01,
     )
     app = create_app(settings)
     with TestClient(app) as client:
+        # Readiness reflects only the ESB, so it stays green without providers.
+        readiness = client.get("/health/ready")
+        assert readiness.status_code == 200
+        assert readiness.json() == {"status": "READY"}
+
+        # Aggregate health fans out; with no provider running it must report DOWN
+        # and must not leak provider URLs or exception text.
         response = client.get("/api/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "UP"}
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "DOWN"
+        assert {item["name"] for item in body["dependencies"]} >= {
+            "seat-inventory-service",
+            "payment-service",
+        }
+        assert "http://" not in response.text
+        assert "Traceback" not in response.text

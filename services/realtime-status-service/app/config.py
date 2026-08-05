@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from libs.platform_security import ServiceJwtValidationSettings
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -58,28 +58,12 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
 class Settings:
     host: str
     allowed_ws_origins: tuple[str, ...]
-    jwt_issuer: str
-    jwt_audience: str
-    jwks_url: str
-    internal_service_token: str
-    booking_authorization_url: str
-    booking_service_token: str
+    service_jwt: ServiceJwtValidationSettings
     app_name: str = "realtime-status-service"
     app_env: Literal["local", "test", "development", "staging", "production"] = "local"
     port: int = 8008
     log_level: str = "INFO"
     docs_enabled: bool = True
-    jwt_algorithm: str = "RS256"
-    jwks_timeout_seconds: float = 2.0
-    jwks_cache_ttl_seconds: int = 300
-    allowed_internal_callers: tuple[str, ...] = (
-        "booking-orchestrator",
-        "booking-service",
-        "payment-service",
-        "ticket-service",
-    )
-    booking_client_timeout_seconds: float = 2.0
-    admin_roles: tuple[str, ...] = ("ADMIN",)
     redis_url: str | None = None
     redis_required: bool = False
     redis_channel: str = "realtime.booking-status.v1"
@@ -99,8 +83,6 @@ class Settings:
     sequence_max_entries: int = 10000
     cleanup_interval_seconds: float = 30.0
     graceful_shutdown_timeout_seconds: float = 10.0
-    allow_query_token: bool = False
-    insecure_auth_bypass: bool = False
     authoritative_booking_url_template: str = "/api/bookings/{bookingId}"
     ws_ticket_public_key_path: Path | None = None
     ws_ticket_issuer: str = "booking-orchestrator"
@@ -115,12 +97,8 @@ class Settings:
             raise ValueError("idle timeout must be greater than heartbeat interval")
         if self.redis_required and not self.redis_url:
             raise ValueError("REALTIME_REDIS_REQUIRED requires REALTIME_REDIS_URL")
-        if "{bookingId}" not in self.booking_authorization_url:
-            raise ValueError("REALTIME_BOOKING_AUTHORIZATION_URL must contain {bookingId}")
         if "{bookingId}" not in self.authoritative_booking_url_template:
             raise ValueError("REALTIME_AUTHORITATIVE_BOOKING_URL_TEMPLATE must contain {bookingId}")
-        if self.jwt_algorithm != "RS256":
-            raise ValueError("Only RS256 is supported by the repository Identity contract")
         if not 1 <= self.ws_ticket_max_ttl_seconds <= 60:
             raise ValueError("REALTIME_WS_TICKET_MAX_TTL_SECONDS must be between 1 and 60")
         if self.app_env == "production":
@@ -128,20 +106,6 @@ class Settings:
                 raise ValueError("Wildcard WebSocket Origin is forbidden in production")
             if any(not origin.startswith("https://") for origin in self.allowed_ws_origins):
                 raise ValueError("Production WebSocket origins must use HTTPS")
-            if not self.jwt_issuer or not self.jwt_audience or not self.jwks_url:
-                raise ValueError("JWT issuer, audience and JWKS URL are required")
-            if not self.jwt_issuer.startswith("https://") or not self.jwks_url.startswith(
-                "https://"
-            ):
-                raise ValueError("Production JWT issuer and JWKS URL must use HTTPS")
-            if len(self.internal_service_token) < 32 or len(self.booking_service_token) < 32:
-                raise ValueError("Production service tokens must be at least 32 characters")
-            if self.internal_service_token == self.booking_service_token:
-                raise ValueError(
-                    "Inbound and Booking service credentials must be distinct in production"
-                )
-            if self.allow_query_token or self.insecure_auth_bypass:
-                raise ValueError("Development authentication modes are forbidden in production")
             if self.ws_ticket_public_key_path is None:
                 raise ValueError("Production WebSocket ticket public key is required")
             try:
@@ -150,13 +114,6 @@ class Settings:
                 raise ValueError("Production WebSocket ticket public key is invalid") from exc
             if not isinstance(key, RSAPublicKey):
                 raise ValueError("Production WebSocket ticket public key must be RSA")
-        for url_name, url in (
-            ("JWKS", self.jwks_url),
-            ("Booking authorization", self.booking_authorization_url),
-        ):
-            parsed = urlsplit(url.replace("{bookingId}", "sample"))
-            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-                raise ValueError(f"{url_name} URL must be HTTP(S)")
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -168,12 +125,6 @@ class Settings:
             for name in (
                 "REALTIME_HOST",
                 "REALTIME_ALLOWED_WS_ORIGINS",
-                "REALTIME_JWT_ISSUER",
-                "REALTIME_JWT_AUDIENCE",
-                "REALTIME_JWKS_URL",
-                "REALTIME_INTERNAL_SERVICE_TOKEN",
-                "REALTIME_BOOKING_AUTHORIZATION_URL",
-                "REALTIME_BOOKING_SERVICE_TOKEN",
             )
         }
         missing = next((name for name, value in required.items() if not value), None)
@@ -190,25 +141,13 @@ class Settings:
                 "REALTIME_ALLOWED_WS_ORIGINS",
                 required["REALTIME_ALLOWED_WS_ORIGINS"],
             ),
-            jwt_issuer=required["REALTIME_JWT_ISSUER"].rstrip("/"),
-            jwt_audience=required["REALTIME_JWT_AUDIENCE"],
-            jwks_url=required["REALTIME_JWKS_URL"],
-            jwt_algorithm=os.getenv("REALTIME_JWT_ALGORITHM", "RS256"),
-            jwks_timeout_seconds=_float("REALTIME_JWKS_TIMEOUT_SECONDS", 2, 0.1, 30),
-            jwks_cache_ttl_seconds=_int("REALTIME_JWKS_CACHE_TTL_SECONDS", 300, 10, 86400),
-            internal_service_token=required["REALTIME_INTERNAL_SERVICE_TOKEN"],
-            allowed_internal_callers=_csv(
-                "REALTIME_ALLOWED_INTERNAL_CALLERS",
-                "booking-orchestrator,booking-service,payment-service,ticket-service",
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "REALTIME",
+                audience="realtime-status-service",
+                default_allowed_subjects=(
+                    "booking-orchestrator,booking-service,payment-service,ticket-service"
+                ),
             ),
-            booking_authorization_url=required[
-                "REALTIME_BOOKING_AUTHORIZATION_URL"
-            ],
-            booking_service_token=required["REALTIME_BOOKING_SERVICE_TOKEN"],
-            booking_client_timeout_seconds=_float(
-                "REALTIME_BOOKING_CLIENT_TIMEOUT_SECONDS", 2, 0.1, 30
-            ),
-            admin_roles=_csv("REALTIME_ADMIN_ROLES", "ADMIN"),
             redis_url=redis,
             redis_required=_bool("REALTIME_REDIS_REQUIRED", False),
             redis_channel=os.getenv("REALTIME_REDIS_CHANNEL", "realtime.booking-status.v1"),
@@ -232,8 +171,6 @@ class Settings:
             graceful_shutdown_timeout_seconds=_float(
                 "REALTIME_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS", 10, 0.1, 120
             ),
-            allow_query_token=_bool("REALTIME_ALLOW_QUERY_TOKEN", False),
-            insecure_auth_bypass=_bool("REALTIME_INSECURE_AUTH_BYPASS", False),
             authoritative_booking_url_template=os.getenv(
                 "REALTIME_AUTHORITATIVE_BOOKING_URL_TEMPLATE", "/api/bookings/{bookingId}"
             ),

@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.commands.cancel_booking import cancel_booking
-from app.application.commands.confirm_booking import confirm_booking
 from app.application.commands.create_booking import create_booking
-from app.application.commands.fail_booking import fail_booking
 from app.application.commands.get_booking import get_booking
 from app.application.commands.list_bookings import list_bookings
+from app.application.commands.transition_booking import transition_booking
 from app.config import Settings
 from app.domain.entities import Booking
-from app.domain.enums import BookingStatus, PaymentStatus
+from app.domain.enums import BookingStatus
 from app.domain.value_objects import BookingItem, BookingPage, RequestContext
 from app.resilience.retry import execute_database_operation
 
@@ -39,10 +37,7 @@ class BookingService:
         idempotency_key: str,
         customer_id: str,
         event_id: str,
-        reservation_id: str,
-        payment_method: str,
         items: tuple[BookingItem, ...],
-        total_amount: Decimal,
         currency: str,
     ) -> Booking:
         return self._execute(
@@ -53,78 +48,31 @@ class BookingService:
                 idempotency_key=idempotency_key,
                 customer_id=customer_id,
                 event_id=event_id,
-                reservation_id=reservation_id,
-                payment_method=payment_method,
                 items=items,
-                total_amount=total_amount,
                 currency=currency,
             )
         )
 
-    def confirm(
+    def transition(
         self,
         context: RequestContext,
         *,
+        operation: str,
         idempotency_key: str,
         booking_id: str,
-        payment_id: str,
+        payload: dict[str, Any],
         expected_version: int,
     ) -> Booking:
         return self._execute(
-            lambda session: confirm_booking(
+            lambda session: transition_booking(
                 session,
                 self.settings,
                 context,
+                operation=operation,
                 idempotency_key=idempotency_key,
                 booking_id=booking_id,
-                payment_id=payment_id,
+                payload=payload,
                 expected_version=expected_version,
-            )
-        )
-
-    def fail(
-        self,
-        context: RequestContext,
-        *,
-        idempotency_key: str,
-        booking_id: str,
-        failure_code: str,
-        reason: str,
-        expected_version: int,
-    ) -> Booking:
-        return self._execute(
-            lambda session: fail_booking(
-                session,
-                self.settings,
-                context,
-                idempotency_key=idempotency_key,
-                booking_id=booking_id,
-                failure_code=failure_code,
-                reason=reason,
-                expected_version=expected_version,
-            )
-        )
-
-    def cancel(
-        self,
-        context: RequestContext,
-        *,
-        idempotency_key: str,
-        booking_id: str,
-        reason: str,
-        expected_version: int,
-        payment_status: PaymentStatus | None,
-    ) -> Booking:
-        return self._execute(
-            lambda session: cancel_booking(
-                session,
-                self.settings,
-                context,
-                idempotency_key=idempotency_key,
-                booking_id=booking_id,
-                reason=reason,
-                expected_version=expected_version,
-                payment_status=payment_status,
             )
         )
 

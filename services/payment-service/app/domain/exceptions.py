@@ -39,6 +39,14 @@ class PaymentNotFound(PaymentError):
         )
 
 
+class PaymentDeclined(PaymentError):
+    code = "PAYMENT_DECLINED"
+    http_status = 402
+
+    def __init__(self) -> None:
+        super().__init__("Payment was declined by the provider")
+
+
 class InvalidStateTransition(PaymentError):
     code = "INVALID_STATE_TRANSITION"
     http_status = 409

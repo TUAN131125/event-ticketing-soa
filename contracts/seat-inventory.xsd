@@ -9,6 +9,9 @@
   <xs:complexType name="RequestContext"><xs:sequence><xs:element name="correlationId" type="xs:string"/><xs:element name="traceparent" type="xs:string" minOccurs="0"/><xs:element name="idempotencyKey" type="xs:string" minOccurs="0"/><xs:element name="callerService" type="xs:string"/><xs:element name="schemaVersion" type="xs:positiveInteger"/></xs:sequence></xs:complexType>
   <xs:complexType name="SeatRef"><xs:sequence><xs:element name="seatId" type="xs:string"/><xs:element name="ticketTypeCode" type="xs:string"/></xs:sequence></xs:complexType>
   <xs:complexType name="SeatRefList"><xs:sequence><xs:element name="seat" type="tns:SeatRef" minOccurs="1" maxOccurs="10"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatDefinition"><xs:sequence><xs:element name="seatId" type="xs:string"/><xs:element name="section" type="xs:string"/><xs:element name="rowLabel" type="xs:string"/><xs:element name="seatNumber" type="xs:string"/><xs:element name="ticketTypeCode" type="xs:string"/><xs:element name="status" type="tns:ConfigurableSeatStatus" minOccurs="0"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatDefinitionList"><xs:sequence><xs:element name="seat" type="tns:SeatDefinition" minOccurs="1" maxOccurs="20000"/></xs:sequence></xs:complexType>
+  <xs:simpleType name="ConfigurableSeatStatus"><xs:restriction base="xs:string"><xs:enumeration value="AVAILABLE"/><xs:enumeration value="BLOCKED"/></xs:restriction></xs:simpleType>
   <xs:complexType name="ReservationView"><xs:sequence><xs:element name="reservationId" type="xs:string"/><xs:element name="bookingId" type="xs:string"/><xs:element name="eventId" type="xs:string"/><xs:element name="status" type="tns:ReservationStatus"/><xs:element name="expiresAt" type="tns:UtcDateTime"/><xs:element name="resourceVersion" type="xs:positiveInteger"/></xs:sequence></xs:complexType>
   <xs:complexType name="FaultDetail"><xs:sequence><xs:element name="code" type="xs:string"/><xs:element name="message" type="xs:string"/><xs:element name="correlationId" type="xs:string"/><xs:element name="traceparent" type="xs:string" minOccurs="0"/><xs:element name="retryable" type="xs:boolean"/></xs:sequence></xs:complexType>
   <xs:element name="SeatServiceFault" type="tns:FaultDetail"/>
@@ -29,4 +32,8 @@
   <xs:element name="ReleaseSeatsResponse" type="tns:ReservationView"/>
   <xs:element name="ExpireReservationsRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="cutoffTime" type="tns:UtcDateTime"/></xs:sequence></xs:complexType></xs:element>
   <xs:element name="ExpireReservationsResponse"><xs:complexType><xs:sequence><xs:element name="expiredCount" type="xs:nonNegativeInteger"/></xs:sequence></xs:complexType></xs:element>
+
+  <xs:element name="ConfigureInventoryRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="eventId" type="xs:string"/><xs:element name="inventoryVersion" type="xs:positiveInteger"/><xs:element name="seats" type="tns:SeatDefinitionList"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ConfigureInventoryResponse"><xs:complexType><xs:sequence><xs:element name="eventId" type="xs:string"/><xs:element name="inventoryVersion" type="xs:positiveInteger"/><xs:element name="configuredSeatCount" type="xs:nonNegativeInteger"/><xs:element name="status" type="tns:InventoryConfigurationStatus"/></xs:sequence></xs:complexType></xs:element>
+  <xs:simpleType name="InventoryConfigurationStatus"><xs:restriction base="xs:string"><xs:enumeration value="CONFIGURED"/><xs:enumeration value="REPLAYED"/></xs:restriction></xs:simpleType>
 </xs:schema>

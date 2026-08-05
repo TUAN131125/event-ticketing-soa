@@ -50,6 +50,8 @@ def execute_database_operation[T](
             sqlstate = postgres_sqlstate(exc)
             if sqlstate in RETRYABLE_SQLSTATES and attempt < max_retries:
                 attempt += 1
-                time.sleep(0.025 * attempt + random.uniform(0.0, 0.025))
+                time.sleep(
+                    0.025 * attempt + random.uniform(0.0, 0.025)  # nosec B311
+                )
                 continue
             raise DependencyUnavailable() from exc

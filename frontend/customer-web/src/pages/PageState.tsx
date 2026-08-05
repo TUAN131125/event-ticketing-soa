@@ -22,10 +22,13 @@ export function QueryState({
   error,
   retry,
   notFound = false,
+  serviceName = 'booking service',
 }: {
   error: unknown;
   retry: () => void;
   notFound?: boolean;
+  /** Named so an unreachable service is reported as the one actually being called. */
+  serviceName?: string;
 }) {
   const api = error instanceof ApiError ? error : null;
   if (notFound || api?.status === 404 || api?.code === 'NOT_FOUND')
@@ -54,11 +57,13 @@ export function QueryState({
         description="This content is only available to the account that made the booking."
       />
     );
-  if (api?.status === 503 || api?.retryable || api?.code === 'SERVICE_UNAVAILABLE')
+  // Only a transport failure or a 5xx is an unavailable service. A 4xx is a request
+  // problem and a configuration defect is not a service outage.
+  if ((api && api.status >= 500) || api?.code === 'SERVICE_UNAVAILABLE')
     return (
       <ServiceUnavailableState
-        title="Event services are unavailable"
-        description="We could not reach the booking service. Try again in a moment."
+        title={`Could not reach the ${serviceName}`}
+        description={`We could not reach the ${serviceName}. Try again in a moment.`}
         action={
           <Button onClick={retry}>
             <RefreshCw size={16} /> Retry

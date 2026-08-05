@@ -1,13 +1,12 @@
-"""Cac enum thuoc domain cua Notification Service."""
-from enum import Enum
+"""Canonical Notification delivery enums."""
+
+from enum import StrEnum
 
 
-class NotificationType(str, Enum):
-    BOOKING_CONFIRMED = "booking.confirmed"
-    BOOKING_FAILED = "booking.failed"
-    EVENT_CHANGED = "event.changed"
-
-
-class DeliveryStatus(str, Enum):
-    SENT = "SENT"
-    FAILED = "FAILED"
+class DeliveryStatus(StrEnum):
+    PENDING = "PENDING"
+    SENDING = "SENDING"
+    DELIVERED = "DELIVERED"
+    RETRY_PENDING = "RETRY_PENDING"
+    DEAD_LETTER = "DEAD_LETTER"
+    CANCELLED = "CANCELLED"

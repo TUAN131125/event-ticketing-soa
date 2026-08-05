@@ -33,28 +33,17 @@ class BookingModel(Base):
     __tablename__ = "bookings"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING','CONFIRMED','FAILED','CANCELLED')",
+            "status IN ('PENDING','SEAT_RESERVED','PAYMENT_PROCESSING','CONFIRMED',"
+            "'FAILED','CANCELLED','COMPENSATION_PENDING')",
             name="ck_booking_status",
         ),
         CheckConstraint(
-            "payment_status IN ('PENDING','SUCCEEDED','FAILED','REFUNDED')",
+            "payment_status IN ('PENDING','CAPTURED','FAILED','UNKNOWN')",
             name="ck_booking_payment_status",
         ),
         CheckConstraint("total_amount >= 0", name="ck_booking_total_amount"),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="ck_booking_currency"),
         CheckConstraint("resource_version >= 1", name="ck_booking_version"),
-        CheckConstraint(
-            "(status = 'PENDING' AND payment_status = 'PENDING' "
-            "AND payment_id IS NULL) OR "
-            "(status = 'CONFIRMED' AND payment_status = 'SUCCEEDED' "
-            "AND payment_id IS NOT NULL AND confirmed_at IS NOT NULL) OR "
-            "(status = 'FAILED' AND payment_status = 'FAILED' "
-            "AND failure_code IS NOT NULL AND failure_reason IS NOT NULL) OR "
-            "(status = 'CANCELLED' AND cancellation_reason IS NOT NULL "
-            "AND cancelled_at IS NOT NULL "
-            "AND payment_status IN ('PENDING','FAILED','REFUNDED'))",
-            name="ck_booking_state_consistency",
-        ),
         UniqueConstraint("reservation_id", name="uq_booking_reservation"),
         Index("ix_booking_customer_created", "customer_id", "created_at"),
         Index("ix_booking_event_status", "event_id", "status"),
@@ -65,13 +54,14 @@ class BookingModel(Base):
     booking_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     customer_id: Mapped[str] = mapped_column(String(128), nullable=False)
     event_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    reservation_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    payment_method: Mapped[str] = mapped_column(String(40), nullable=False)
+    reservation_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    payment_method: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     payment_status: Mapped[str] = mapped_column(String(20), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    ticket_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     failure_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

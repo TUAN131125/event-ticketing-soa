@@ -1,94 +1,82 @@
-"""Unit test cho use case (application layer), dung InMemoryDeliveryRepository
-+ MockEmailProvider de chay nhanh, khong can PostgreSQL. Test hanh vi
-nghiep vu thuan tuy - KHONG test SQL/DB (xem tests/integration cho phan do).
-"""
-import pytest
+from __future__ import annotations
 
-from app.application.commands.handle_booking_confirmed import handle_booking_confirmed
-from app.application.commands.handle_booking_failed import handle_booking_failed
-from app.application.queries.list_deliveries import list_deliveries
+import json
+from datetime import UTC, datetime
+
+from fastapi.testclient import TestClient
+from libs.platform_security import sign_hmac_request
+
+from app.config import Settings
+from app.dependencies import get_provider, get_repository
 from app.infrastructure.database.repositories import InMemoryDeliveryRepository
-from app.providers.mock_provider import MockEmailProvider
+from app.main import create_app
 
 
-@pytest.fixture
-def repo() -> InMemoryDeliveryRepository:
-    return InMemoryDeliveryRepository()
+class RecordingProvider:
+    def __init__(self) -> None:
+        self.recipients: list[str] = []
+
+    def send(self, to: str, subject: str, body: str) -> None:
+        del subject, body
+        self.recipients.append(to)
 
 
-@pytest.fixture
-def provider() -> MockEmailProvider:
-    return MockEmailProvider()
+def _body() -> bytes:
+    return json.dumps(
+        {
+            "eventId": "evt-webhook-1",
+            "eventType": "booking.confirmed",
+            "schemaVersion": 1,
+            "occurredAt": "2026-08-05T03:00:00Z",
+            "correlationId": "corr-notification-1",
+            "aggregateId": "BKG-1",
+            "data": {"customerEmail": "customer@example.com"},
+        },
+        separators=(",", ":"),
+    ).encode()
 
 
-def _confirmed_payload(correlation_id: str = "corr-1") -> dict:
-    return {
-        "event": "booking.confirmed",
-        "correlationId": correlation_id,
-        "bookingId": "BK001",
-        "customerEmail": "an@example.com",
-        "ticketIds": ["T001", "T002"],
+def test_webhook_hmac_accepts_once_and_rejects_replay(
+    notification_settings: Settings,
+) -> None:
+    repo = InMemoryDeliveryRepository()
+    provider = RecordingProvider()
+    app = create_app(notification_settings)
+    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_provider] = lambda: provider
+    body = _body()
+    timestamp = datetime.now(UTC).isoformat()
+    signature = sign_hmac_request(
+        notification_settings.webhook_hmac_secret, timestamp, body
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "X-Webhook-Timestamp": timestamp,
+        "X-Webhook-Signature": f"sha256={signature}",
     }
+    with TestClient(app) as client:
+        accepted = client.post("/webhooks/events", content=body, headers=headers)
+        replay = client.post("/webhooks/events", content=body, headers=headers)
+    assert accepted.status_code == 202
+    assert replay.status_code == 401
+    assert provider.recipients == ["customer@example.com"]
+    assert repo.get_by_event_id("evt-webhook-1") is not None
 
 
-def _failed_payload(correlation_id: str = "corr-2") -> dict:
-    return {
-        "event": "booking.failed",
-        "correlationId": correlation_id,
-        "bookingId": "BK002",
-        "customerEmail": "an@example.com",
-        "reason": "Het cho",
-    }
-
-
-def test_booking_confirmed_sends_email_and_records_delivery(repo, provider) -> None:
-    status = handle_booking_confirmed(repo, provider, _confirmed_payload())
-
-    assert status == "SENT"
-    assert len(provider.sent) == 1
-    assert provider.sent[0]["to"] == "an@example.com"
-    deliveries = list(list_deliveries(repo))
-    assert len(deliveries) == 1
-    assert deliveries[0].correlation_id == "corr-1"
-
-
-def test_booking_confirmed_duplicate_correlation_id_is_ignored(repo, provider) -> None:
-    handle_booking_confirmed(repo, provider, _confirmed_payload("corr-dup"))
-    status = handle_booking_confirmed(repo, provider, _confirmed_payload("corr-dup"))
-
-    assert status == "DUPLICATE_IGNORED"
-    assert len(provider.sent) == 1  # khong gui lan 2
-    assert len(list(list_deliveries(repo))) == 1
-
-
-def test_booking_failed_sends_email_and_records_delivery(repo, provider) -> None:
-    status = handle_booking_failed(repo, provider, _failed_payload())
-
-    assert status == "SENT"
-    assert len(provider.sent) == 1
-    deliveries = list(list_deliveries(repo))
-    assert deliveries[0].type.value == "booking.failed"
-
-
-def test_booking_failed_duplicate_correlation_id_is_ignored(repo, provider) -> None:
-    handle_booking_failed(repo, provider, _failed_payload("corr-dup-2"))
-    status = handle_booking_failed(repo, provider, _failed_payload("corr-dup-2"))
-
-    assert status == "DUPLICATE_IGNORED"
-    assert len(provider.sent) == 1
-
-
-def test_booking_failed_uses_unknown_when_email_missing(repo, provider) -> None:
-    payload = _failed_payload("corr-3")
-    payload["customerEmail"] = ""
-    handle_booking_failed(repo, provider, payload)
-
-    assert provider.sent[0]["to"] == "unknown"
-
-
-def test_list_deliveries_returns_all_records(repo, provider) -> None:
-    handle_booking_confirmed(repo, provider, _confirmed_payload("corr-a"))
-    handle_booking_failed(repo, provider, _failed_payload("corr-b"))
-
-    deliveries = list(list_deliveries(repo))
-    assert {d.correlation_id for d in deliveries} == {"corr-a", "corr-b"}
+def test_webhook_rejects_missing_and_invalid_signature(
+    notification_settings: Settings,
+) -> None:
+    app = create_app(notification_settings)
+    with TestClient(app) as client:
+        missing = client.post("/webhooks/events", content=_body())
+        invalid = client.post(
+            "/webhooks/events",
+            content=_body(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Webhook-Timestamp": datetime.now(UTC).isoformat(),
+                "X-Webhook-Signature": "sha256=invalid",
+            },
+        )
+    assert missing.status_code == 401
+    assert invalid.status_code == 401

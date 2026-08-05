@@ -1,0 +1,46 @@
+name: Build images
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: identity, context: ., dockerfile: services/identity-service/Dockerfile}
+          - {name: customer, context: ., dockerfile: services/customer-service/Dockerfile}
+          - {name: event, context: ., dockerfile: services/event-service/Dockerfile}
+          - {name: seat, context: ., dockerfile: services/seat-inventory-service/Dockerfile}
+          - {name: booking, context: ., dockerfile: services/booking-service/Dockerfile}
+          - {name: payment, context: ., dockerfile: services/payment-service/Dockerfile}
+          - {name: ticket, context: ., dockerfile: services/ticket-service/Dockerfile}
+          - {name: notification, context: ., dockerfile: services/notification-service/Dockerfile}
+          - {name: realtime, context: ., dockerfile: services/realtime-status-service/Dockerfile}
+          - {name: orchestrator, context: ., dockerfile: gateway/booking-orchestrator/Dockerfile}
+          - {name: customer-web, context: ./frontend, dockerfile: frontend/customer-web/Dockerfile}
+          - {name: admin-web, context: ./frontend, dockerfile: frontend/admin-web/Dockerfile}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pyyaml==6.0.3 jsonschema==4.23.0 lxml==6.1.0
+      - run: python contracts/scripts/build_contracts.py
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: event-ticketing/${{ matrix.name }}:${{ github.event.workflow_run.head_sha || github.sha }}

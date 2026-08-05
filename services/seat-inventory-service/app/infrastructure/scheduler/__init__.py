@@ -22,7 +22,7 @@ def run_expiry_once(settings: Settings) -> ExpiryResult:
     context = RequestContext(
         correlation_id=new_correlation_id(),
         caller_service="seat-expiry-worker",
-        schema_version="1.0",
+        schema_version="1",
     )
     return execute_database_operation(
         settings,

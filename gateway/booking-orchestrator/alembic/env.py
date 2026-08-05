@@ -13,7 +13,10 @@ from app.persistence.models import Base
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", os.getenv("ESB_DATABASE_URL", config.get_main_option("sqlalchemy.url")))
+database_url = os.getenv("ESB_DATABASE_URL", config.get_main_option("sqlalchemy.url") or "").strip()
+if not database_url:
+    raise RuntimeError("ESB_DATABASE_URL is required for migrations")
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

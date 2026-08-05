@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
+from libs.platform_security import HmacRequestVerifier
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app import __version__
@@ -36,11 +37,15 @@ STATUS_NAMES = (
 def create_app(settings: Settings | None = None) -> FastAPI:
     current = settings or get_settings()
     configure_logging(current.log_level)
+    service_jwt_verifier = current.service_jwt.verifier()
+    provider_hmac_verifier = HmacRequestVerifier(current.provider_hmac_secret)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.draining = False
         application.state.settings = current
+        application.state.service_jwt_verifier = service_jwt_verifier
+        application.state.provider_hmac_verifier = provider_hmac_verifier
         application.state.payment_service = PaymentService(
             current, get_session_factory(current)
         )

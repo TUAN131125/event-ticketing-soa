@@ -1,0 +1,79 @@
+name: Integration
+
+# Reusable workflow. It is the single end-to-end gate and is invoked only by ci.yml so
+# the same stack is never brought up twice for one commit.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install end-to-end client dependencies
+        run: python -m pip install pyyaml==6.0.3 jsonschema==4.23.0 lxml==6.1.0 pytest==8.4.1 httpx==0.28.1 "PyJWT[crypto]==2.13.0"
+
+      - name: Build runtime contracts
+        run: python contracts/scripts/build_contracts.py
+
+      - name: Generate local signing keys
+        run: sh scripts/generate-local-keys.sh
+
+      - name: Validate Compose definition
+        run: docker compose config --quiet
+
+      # `up --wait` starts PostgreSQL, runs every one-shot migration job and blocks until
+      # each service reports its own /health/ready healthcheck.
+      - name: Start PostgreSQL, run migrations and start the stack
+        run: docker compose --profile all up --build --wait
+
+      # Both profiles are required: seed-local depends on the event and seat services,
+      # which only exist in the `all` profile.
+      - name: Provision the demo Event and seat map through canonical contracts
+        run: docker compose --profile all --profile seed run --rm seed-local
+
+      - name: Wait for the ESB aggregate health to report every provider ready
+        run: |
+          set -eu
+          deadline=$(( $(date +%s) + 180 ))
+          until curl -fsS http://localhost:8000/api/health > /dev/null; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "ESB aggregate health did not become ready within 180s" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Integration scenarios over HTTP and SOAP
+        run: python -m pytest -q tests/integration --ignore=tests/integration/esb
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Fault-injection scenarios
+        run: python -m pytest -q tests/fault_injection
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Container readiness
+        run: docker compose --profile all ps --format json | python scripts/check_compose_health.py
+
+      - name: Collect Compose state
+        if: always()
+        run: docker compose --profile all ps
+
+      - name: Collect Compose logs
+        if: always()
+        run: docker compose --profile all logs --no-color --tail 500
+
+      - name: Tear down containers and volumes
+        if: always()
+        run: docker compose --profile all down --volumes --remove-orphans

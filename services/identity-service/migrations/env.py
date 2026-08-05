@@ -11,12 +11,12 @@ The database URL is selected from:
 
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from app.config import get_settings
 from app.infrastructure.database.models import Base
 
 config = context.config
@@ -37,8 +37,7 @@ def get_database_target() -> str:
     if target not in allowed_targets:
         allowed = ", ".join(sorted(allowed_targets))
         raise ValueError(
-            f"Invalid Alembic database target: {target!r}. "
-            f"Allowed values: {allowed}."
+            f"Invalid Alembic database target: {target!r}. Allowed values: {allowed}."
         )
 
     return target
@@ -46,23 +45,14 @@ def get_database_target() -> str:
 
 def get_database_url() -> str:
     """Resolve the database URL for the selected target."""
-    settings = get_settings()
     target = get_database_target()
-
-    if target == "test":
-        database_url = settings.test_database_url
-    else:
-        database_url = settings.database_url
+    variable_name = (
+        "IDENTITY_TEST_DATABASE_URL" if target == "test" else "IDENTITY_DATABASE_URL"
+    )
+    database_url = os.getenv(variable_name, "").strip()
 
     if not database_url:
-        variable_name = (
-            "IDENTITY_TEST_DATABASE_URL"
-            if target == "test"
-            else "IDENTITY_DATABASE_URL"
-        )
-        raise RuntimeError(
-            f"Database URL is empty. Configure {variable_name}."
-        )
+        raise RuntimeError(f"Database URL is empty. Configure {variable_name}.")
 
     return database_url
 

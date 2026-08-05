@@ -27,15 +27,17 @@ class RequestContext:
     caller_service: str
     idempotency_key: str | None = None
     actor_id: str | None = None
-    schema_version: str = "1.0"
+    schema_version: str = "1"
 
     def validated(self, *, require_idempotency: bool = False) -> RequestContext:
         validate_identifier(self.correlation_id, "correlationId")
         validate_identifier(self.caller_service, "callerService")
         if self.actor_id:
             validate_identifier(self.actor_id, "actorId")
-        if self.schema_version != "1.0":
-            raise InvalidRequest("schemaVersion must be 1.0")
+        # seat-inventory.xsd types schemaVersion as xs:positiveInteger, so the
+        # canonical wire value is "1".
+        if self.schema_version != "1":
+            raise InvalidRequest("schemaVersion must be 1")
         if require_idempotency and not self.idempotency_key:
             raise InvalidRequest("idempotencyKey is required for this operation")
         if self.idempotency_key:

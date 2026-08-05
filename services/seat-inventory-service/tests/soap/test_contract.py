@@ -18,6 +18,7 @@ EXPECTED_OPERATIONS = {
     "ConfirmSeats",
     "ReleaseSeats",
     "ExpireReservations",
+    "ConfigureInventory",
 }
 
 
@@ -25,7 +26,7 @@ def test_xsd_compiles_offline() -> None:
     assert isinstance(get_schema(), etree.XMLSchema)
 
 
-def test_wsdl_exposes_exactly_eight_operations() -> None:
+def test_wsdl_exposes_every_canonical_operation() -> None:
     client = Client(str(CONTRACTS / "seat-inventory.wsdl"))
     service = next(iter(client.wsdl.services.values()))
     port = next(iter(service.ports.values()))
@@ -37,10 +38,11 @@ def test_every_example_request_validates_against_contract() -> None:
     examples = sorted(
         path for path in example_dir.glob("*.xml") if path.name != "soap-fault.xml"
     )
-    assert len(examples) == 8
+    assert len(examples) == len(EXPECTED_OPERATIONS)
     names = {
-        etree.QName(parse_soap(path.read_bytes(), 262_144))
-        .localname.removesuffix("Request")
+        etree.QName(parse_soap(path.read_bytes(), 262_144)).localname.removesuffix(
+            "Request"
+        )
         for path in examples
     }
     assert names == EXPECTED_OPERATIONS

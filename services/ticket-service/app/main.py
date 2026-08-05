@@ -28,11 +28,13 @@ STATUS_NAMES = ("VALID", "CHECKED_IN", "CANCELLED")
 def create_app(settings: Settings | None = None) -> FastAPI:
     current = settings or get_settings()
     configure_logging(current.log_level)
+    service_jwt_verifier = current.service_jwt.verifier()
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.draining = False
         application.state.settings = current
+        application.state.service_jwt_verifier = service_jwt_verifier
         application.state.ticket_service = TicketService(
             current, get_session_factory(current)
         )

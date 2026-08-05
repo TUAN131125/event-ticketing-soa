@@ -3,19 +3,9 @@ import pytest
 from app.config import Settings
 
 
-def test_production_rejects_default_service_token(monkeypatch) -> None:
-    monkeypatch.setenv("PAYMENT_APP_ENV", "production")
+def test_missing_service_jwt_configuration_fails_closed(monkeypatch) -> None:
     monkeypatch.setenv("PAYMENT_DATABASE_URL", "sqlite:///payment-test.db")
-    monkeypatch.setenv("PAYMENT_SERVICE_TOKEN", "local-development-token")
-    with pytest.raises(ValueError, match="PAYMENT_SERVICE_TOKEN"):
+    monkeypatch.setenv("PAYMENT_PROVIDER_HMAC_SECRET", "test-hmac")
+    monkeypatch.delenv("PAYMENT_SERVICE_JWT_ISSUER", raising=False)
+    with pytest.raises(ValueError, match="PAYMENT_SERVICE_JWT_ISSUER"):
         Settings.from_environment()
-
-
-def test_local_settings_have_bounded_defaults(monkeypatch) -> None:
-    monkeypatch.setenv("PAYMENT_APP_ENV", "local")
-    monkeypatch.setenv("PAYMENT_DATABASE_URL", "sqlite:///payment-test.db")
-    monkeypatch.setenv("PAYMENT_SERVICE_TOKEN", "test-service-token")
-    settings = Settings.from_environment()
-    assert settings.db_connect_timeout_seconds <= settings.db_pool_timeout_seconds
-    assert settings.db_lock_timeout_ms < settings.db_statement_timeout_ms
-    assert settings.docs_enabled is True

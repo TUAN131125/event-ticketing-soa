@@ -1,4 +1,5 @@
 """Use case: lay thong tin 1 khach hang theo id."""
+
 from app.domain.entities import Customer
 from app.domain.exceptions import CustomerNotFoundError
 from app.repositories.interfaces import CustomerRepository

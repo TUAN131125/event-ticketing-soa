@@ -7,6 +7,10 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./esb-contract": "./src/generated/esb-public-api.ts",
+    "./identity-contract": "./src/generated/identity-service.ts",
+    "./realtime-contract": "./src/generated/realtime-service.ts",
+    "./realtime-messages": "./src/generated/realtime-messages.ts",
     "./styles.css": "./src/styles/tokens.css"
   },
   "peerDependencies": {

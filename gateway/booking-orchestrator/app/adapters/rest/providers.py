@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
+from libs.platform_security import sign_hmac_request
+
 from app.adapters.rest.base import RestClient
 from app.contract_freeze import EXPECTED_CATALOG_SHA, EXPECTED_FREEZE_ID
-from app.domain.errors import DependencyFailure
 from app.domain.models import Money, RequestContext
 from app.resilience.policies import RetryClass
 
@@ -78,9 +77,15 @@ class BookingRestAdapter:
 
     def __init__(self, client: RestClient) -> None:
         self.client = client
+        self._versions: dict[str, int] = {}
 
-    async def create_booking(self, payload: Mapping[str, Any], idempotency_key: str, context: RequestContext) -> Mapping[str, Any]:
-        return await self.client.request(
+    async def create_booking(
+        self,
+        payload: Mapping[str, Any],
+        idempotency_key: str,
+        context: RequestContext,
+    ) -> Mapping[str, Any]:
+        result = await self.client.request(
             "POST",
             "/bookings",
             context,
@@ -89,9 +94,19 @@ class BookingRestAdapter:
             retry_class=RetryClass.IDEMPOTENT_COMMAND,
             ambiguous_command=True,
         )
+        self._remember(result)
+        return result
 
     async def get_booking(self, booking_id: str, context: RequestContext) -> Mapping[str, Any]:
-        return await self.client.request("GET", f"/bookings/{booking_id}", context, retry_class=RetryClass.SAFE_READ)
+        result = await self.client.request(
+            "GET",
+            f"/bookings/{booking_id}",
+            context,
+            retry_class=RetryClass.SAFE_READ,
+        )
+        self._remember(result)
+        self._versions.setdefault(booking_id, int(result.get("resourceVersion", 1)))
+        return result
 
     async def decide_access(self, booking_id: str, context: RequestContext) -> Mapping[str, Any]:
         return await self.client.request(
@@ -122,15 +137,26 @@ class BookingRestAdapter:
             "bookingFail": "fail",
             "bookingCancel": "cancel",
         }[operation]
-        return await self.client.request(
+        if booking_id not in self._versions:
+            await self.get_booking(booking_id, context)
+        result = await self.client.request(
             "POST",
             f"/bookings/{booking_id}/{suffix}",
             context,
             json_body=payload,
             idempotency_key=idempotency_key,
+            extra_headers={"If-Match": f'"{self._versions[booking_id]}"'},
             retry_class=RetryClass.IDEMPOTENT_COMMAND,
             ambiguous_command=True,
         )
+        self._remember(result)
+        return result
+
+    def _remember(self, booking: Mapping[str, Any]) -> None:
+        booking_id = booking.get("bookingId")
+        version = booking.get("resourceVersion")
+        if isinstance(booking_id, str) and isinstance(version, int):
+            self._versions[booking_id] = version
 
 
 class PaymentRestAdapter:
@@ -143,6 +169,7 @@ class PaymentRestAdapter:
 
     def __init__(self, client: RestClient) -> None:
         self.client = client
+        self._versions: dict[str, int] = {}
 
     async def create_payment(
         self,
@@ -152,7 +179,7 @@ class PaymentRestAdapter:
         idempotency_key: str,
         context: RequestContext,
     ) -> Mapping[str, Any]:
-        return await self.client.request(
+        result = await self.client.request(
             "POST",
             "/payments",
             context,
@@ -164,9 +191,14 @@ class PaymentRestAdapter:
             idempotency_key=idempotency_key,
             retry_class=RetryClass.IDEMPOTENT_COMMAND,
         )
+        self._remember(result)
+        return result
 
     async def get_payment(self, payment_id: str, context: RequestContext) -> Mapping[str, Any]:
-        return await self.client.request("GET", f"/payments/{payment_id}", context, retry_class=RetryClass.SAFE_READ)
+        result = await self.client.request("GET", f"/payments/{payment_id}", context, retry_class=RetryClass.SAFE_READ)
+        self._remember(result)
+        self._versions.setdefault(payment_id, int(result.get("resourceVersion", 1)))
+        return result
 
     async def command(
         self,
@@ -185,15 +217,26 @@ class PaymentRestAdapter:
         }[operation]
         ambiguous = operation in {"authorizePayment", "capturePayment"}
         retry = RetryClass.RECONCILIATION_ONLY if ambiguous else RetryClass.IDEMPOTENT_COMMAND
-        return await self.client.request(
+        if payment_id not in self._versions:
+            await self.get_payment(payment_id, context)
+        result = await self.client.request(
             "POST",
             f"/payments/{payment_id}/{suffix}",
             context,
             json_body=payload or None,
             idempotency_key=idempotency_key,
+            extra_headers={"If-Match": f'"{self._versions[payment_id]}"'},
             retry_class=retry,
             ambiguous_command=ambiguous,
         )
+        self._remember(result)
+        return result
+
+    def _remember(self, payment: Mapping[str, Any]) -> None:
+        payment_id = payment.get("paymentId")
+        version = payment.get("resourceVersion")
+        if isinstance(payment_id, str) and isinstance(version, int):
+            self._versions[payment_id] = version
 
 
 class TicketRestAdapter:
@@ -206,9 +249,15 @@ class TicketRestAdapter:
 
     def __init__(self, client: RestClient) -> None:
         self.client = client
+        self._versions: dict[str, int] = {}
 
-    async def issue_tickets(self, payload: Mapping[str, Any], idempotency_key: str, context: RequestContext) -> Sequence[Mapping[str, Any]]:
-        return await self.client.request(
+    async def issue_tickets(
+        self,
+        payload: Mapping[str, Any],
+        idempotency_key: str,
+        context: RequestContext,
+    ) -> Sequence[Mapping[str, Any]]:
+        result = await self.client.request(
             "POST",
             "/tickets:issue",
             context,
@@ -216,23 +265,42 @@ class TicketRestAdapter:
             idempotency_key=idempotency_key,
             retry_class=RetryClass.IDEMPOTENT_COMMAND,
         )
+        for ticket in result:
+            self._remember(ticket)
+        return result
 
     async def list_booking_tickets(self, booking_id: str, context: RequestContext) -> Sequence[Mapping[str, Any]]:
-        return await self.client.request(
+        result = await self.client.request(
             "GET",
             f"/bookings/{booking_id}/tickets",
             context,
             retry_class=RetryClass.SAFE_READ,
         )
+        for ticket in result:
+            self._remember(ticket)
+        return result
 
     async def cancel_ticket(self, ticket_id: str, idempotency_key: str, context: RequestContext) -> Mapping[str, Any]:
-        return await self.client.request(
+        if ticket_id not in self._versions:
+            ticket = await self.client.request("GET", f"/tickets/{ticket_id}", context, retry_class=RetryClass.SAFE_READ)
+            self._remember(ticket)
+            self._versions.setdefault(ticket_id, int(ticket.get("resourceVersion", 1)))
+        result = await self.client.request(
             "POST",
             f"/tickets/{ticket_id}/cancel",
             context,
             idempotency_key=idempotency_key,
+            extra_headers={"If-Match": f'"{self._versions[ticket_id]}"'},
             retry_class=RetryClass.IDEMPOTENT_COMMAND,
         )
+        self._remember(result)
+        return result
+
+    def _remember(self, ticket: Mapping[str, Any]) -> None:
+        ticket_id = ticket.get("ticketId")
+        version = ticket.get("resourceVersion")
+        if isinstance(ticket_id, str) and isinstance(version, int):
+            self._versions[ticket_id] = version
 
 
 class NotificationRestAdapter:
@@ -247,7 +315,7 @@ class NotificationRestAdapter:
         self.client, self.secret = client, secret.encode()
 
     async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None:
-        timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+        timestamp = datetime.now(timezone.utc).isoformat()
         body = {
             "eventId": message_id,
             "eventType": "booking.confirmed",
@@ -258,7 +326,7 @@ class NotificationRestAdapter:
             "data": dict(payload),
         }
         raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
-        signature = hmac.new(self.secret, timestamp.encode() + b"." + raw, hashlib.sha256).hexdigest()
+        signature = sign_hmac_request(self.secret, timestamp, raw)
         await self.client.request(
             "POST",
             "/webhooks/events",
@@ -268,7 +336,7 @@ class NotificationRestAdapter:
             extra_headers={
                 "Content-Type": "application/json",
                 "X-Webhook-Timestamp": timestamp,
-                "X-Webhook-Signature": signature,
+                "X-Webhook-Signature": f"sha256={signature}",
             },
         )
 
@@ -281,19 +349,10 @@ class RealtimeRestAdapter:
         EXPECTED_CATALOG_SHA,
     )
 
-    def __init__(self, client: RestClient, service_token: str | None, caller_service: str = "booking-orchestrator") -> None:
+    def __init__(self, client: RestClient) -> None:
         self.client = client
-        self.service_token = service_token
-        self.caller_service = caller_service
 
     async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None:
-        if not self.service_token:
-            raise DependencyFailure(
-                "REALTIME_AUTH_CONFIGURATION_INVALID",
-                "Realtime internal credential is not configured.",
-                503,
-                False,
-            )
         body = {
             "messageId": message_id,
             "bookingId": payload["bookingId"],
@@ -309,8 +368,4 @@ class RealtimeRestAdapter:
             context,
             json_body=body,
             retry_class=RetryClass.SIDE_EFFECT,
-            extra_headers={
-                "X-Service-Token": self.service_token,
-                "X-Caller-Service": self.caller_service,
-            },
         )

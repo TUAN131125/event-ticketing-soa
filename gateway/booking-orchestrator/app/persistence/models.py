@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -98,7 +98,10 @@ class OutboxRow(Base):
 
 class ReconciliationRow(Base):
     __tablename__ = "reconciliation_job"
-    __table_args__ = (UniqueConstraint("workflow_id", "kind", "idempotency_key", name="uq_reconciliation_scope"),)
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "kind", "idempotency_key", name="uq_reconciliation_scope"),
+        Index("ix_reconciliation_claimable", "state", "next_attempt_at", "locked_until"),
+    )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workflow_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     kind: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -108,3 +111,8 @@ class ReconciliationRow(Base):
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     state: Mapped[str] = mapped_column(String(30), default="PENDING")
     last_evidence: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Bounds how long the job may keep retrying without inventing an outcome.
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Lease held by the worker replica currently processing this job.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extension_count: Mapped[int] = mapped_column(Integer, default=0)

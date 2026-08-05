@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from app.domain.errors import AmbiguousOutcome, BusinessFault, DependencyFailure
+from app.domain.errors import (
+    AmbiguousOutcome,
+    BusinessFault,
+    CommandNotDispatched,
+    DependencyFailure,
+)
 from app.domain.idempotency import (
     normalized_request_hash,
     request_fingerprint,
@@ -38,6 +44,10 @@ from app.ports.repositories import (
     WorkflowRepository,
 )
 
+# Provider error codes that mean "the payment did not go through", as opposed to a
+# transport or state problem the saga must not swallow.
+DECLINED_PAYMENT_CODES = frozenset({"PAYMENT_DECLINED", "PAYMENT_FAILED"})
+
 
 class BookingSaga:
     def __init__(
@@ -55,6 +65,7 @@ class BookingSaga:
         reconciliation: ReconciliationRepository,
         clock: Clock,
         reserve_replay_limit: int = 2,
+        reconciliation_deadline_seconds: int = 900,
     ) -> None:
         self.customer = customer
         self.events = events
@@ -69,6 +80,7 @@ class BookingSaga:
         self.reconciliation = reconciliation
         self.clock = clock
         self.reserve_replay_limit = max(1, reserve_replay_limit)
+        self.reconciliation_deadline_seconds = reconciliation_deadline_seconds
 
     async def execute(self, command: PlaceBookingCommand, context: RequestContext) -> OperationResult:
         request_payload = {
@@ -109,6 +121,27 @@ class BookingSaga:
         )
         await self.workflows.create(workflow)
 
+        event, ticket_type, amount = await self._load_authoritative_sale(command, workflow, context)
+        reservation = await self._create_and_reserve(command, workflow, event, ticket_type, context)
+        if reservation is None:
+            result = self._booking_result(workflow, WorkflowPhase.PENDING)
+            await self._complete(command, context, result)
+            return result
+        await self._record_reservation(workflow, reservation, context)
+
+        payment_result = await self._take_payment(command, workflow, amount, context)
+        if payment_result is not None:
+            return payment_result
+
+        await self._issue_and_confirm(command, workflow, context)
+        return await self._complete_success(command, workflow, context)
+
+    async def _load_authoritative_sale(
+        self,
+        command: PlaceBookingCommand,
+        workflow: WorkflowEvidence,
+        context: RequestContext,
+    ) -> tuple[Mapping[str, Any], str, Money]:
         mapping = await self.customer.resolve_mapping(context.principal.subject, context)
         if mapping.get("status") != "ACTIVE" or not mapping.get("customerId"):
             raise BusinessFault(
@@ -121,7 +154,6 @@ class BookingSaga:
         customer = await self.customer.get_customer(workflow.customer_id, context)
         if customer.get("status") != "ACTIVE":
             raise BusinessFault("CUSTOMER_INACTIVE", "Customer is inactive.", 403, False)
-
         event = await self.events.get_event(command.event_id, context)
         eligibility = await self.events.get_sale_eligibility(command.event_id, context)
         if not eligibility.get("eligible") or event.get("status") != "ON_SALE":
@@ -135,11 +167,19 @@ class BookingSaga:
                 "ticketTypeCode": ticket_type,
             }
         )
+        return event, ticket_type, amount
 
+    async def _create_and_reserve(
+        self,
+        command: PlaceBookingCommand,
+        workflow: WorkflowEvidence,
+        event: Mapping[str, Any],
+        ticket_type: str,
+        context: RequestContext,
+    ) -> Mapping[str, Any] | None:
         availability = await self.seats.check_availability(command.event_id, command.seat_ids, context)
         if not availability.get("available"):
             raise BusinessFault("SEAT_UNAVAILABLE", "One or more seats are unavailable.", 409, False)
-
         items = [
             {
                 "seatId": seat_id,
@@ -165,7 +205,6 @@ class BookingSaga:
             "PENDING",
             {"bookingId": workflow.booking_id},
         )
-
         reserve_payload = {
             "bookingId": workflow.booking_id,
             "eventId": command.event_id,
@@ -177,72 +216,112 @@ class BookingSaga:
                 "schemaVersion": 1,
             },
         }
-        reserve_key = step_key(workflow.workflow_id, "ReserveSeats")
-        reservation = await self._reserve_with_same_request(workflow, reserve_payload, reserve_key, context)
-        if reservation is None:
-            result = self._booking_result(workflow, WorkflowPhase.PENDING)
-            await self._complete(command, context, result)
-            return result
+        return await self._reserve_with_same_request(
+            workflow,
+            reserve_payload,
+            step_key(workflow.workflow_id, "ReserveSeats"),
+            context,
+        )
 
+    async def _record_reservation(
+        self,
+        workflow: WorkflowEvidence,
+        reservation: Mapping[str, Any],
+        context: RequestContext,
+    ) -> None:
         workflow.reservation_id = str(reservation["reservationId"])
         workflow.reservation_version = int(reservation.get("resourceVersion", 1))
+        booking_id = workflow.booking_id
+        reservation_id = workflow.reservation_id
+        if booking_id is None:
+            raise RuntimeError("Booking identifier is missing after creation")
         workflow.phase = WorkflowPhase.SEAT_RESERVED
         await self._save_step(
             workflow,
             "ReserveSeats",
             "seat-inventory-service",
             "ACTIVE",
-            {"reservationId": workflow.reservation_id},
+            {"reservationId": reservation_id},
         )
-
         try:
             await self.bookings.transition(
                 "bookingReservation",
-                workflow.booking_id,
+                booking_id,
                 {
-                    "reservationId": workflow.reservation_id,
-                    "evidence": {"seatStatus": "ACTIVE"},
+                    "reservationId": reservation_id,
+                    "evidence": {
+                        "providerReference": reservation_id,
+                        "reservationExpiresAt": reservation["expiresAt"],
+                    },
                 },
                 step_key(workflow.workflow_id, "bookingReservation"),
                 context,
             )
-        except Exception:  # noqa: BLE001 -- any release failure means durable compensation remains pending
+        except Exception:  # noqa: BLE001 -- failure must leave durable compensation evidence
             released = await self._release(workflow, "BOOKING_RESERVATION_EVIDENCE_FAILED", context)
             await self._fail_booking(workflow, "RESERVATION_EVIDENCE_FAILED", released, context)
             raise
 
-        payment = await self.payments.create_payment(
-            workflow.booking_id,
-            amount,
-            command.payment_method_token,
-            step_key(workflow.workflow_id, "createPayment"),
-            context,
-        )
+    async def _take_payment(
+        self,
+        command: PlaceBookingCommand,
+        workflow: WorkflowEvidence,
+        amount: Money,
+        context: RequestContext,
+    ) -> OperationResult | None:
+        booking_id = workflow.booking_id
+        if booking_id is None:
+            raise RuntimeError("Booking identifier is missing before payment")
+        create_key = step_key(workflow.workflow_id, "createPayment")
+        try:
+            payment = await self.payments.create_payment(
+                booking_id,
+                amount,
+                command.payment_method_token,
+                create_key,
+                context,
+            )
+        except CommandNotDispatched:
+            # No payment can exist, so compensation is safe and immediate.
+            return await self._payment_not_dispatched(workflow, command, "createPayment", context)
+        except AmbiguousOutcome:
+            # A payment may exist under create_key; only reconciliation may decide.
+            return await self._payment_unknown(workflow, command, context, create_key=create_key)
+        except DependencyFailure:
+            # Dispatched but unanswered, including a deadline that expired mid-flight.
+            return await self._payment_unknown(workflow, command, context, create_key=create_key)
         workflow.payment_id = str(payment["paymentId"])
+        payment_id = workflow.payment_id
         workflow.phase = WorkflowPhase.PAYMENT_PROCESSING
         await self.bookings.transition(
             "bookingPaymentStarted",
-            workflow.booking_id,
-            {"paymentId": workflow.payment_id},
+            booking_id,
+            {"paymentId": payment_id},
             step_key(workflow.workflow_id, "bookingPaymentStarted"),
             context,
         )
-
         authorization = await self._payment_command("authorizePayment", workflow, context)
+        if authorization is PaymentOutcome.NOT_DISPATCHED:
+            return await self._payment_not_dispatched(workflow, command, "authorizePayment", context)
         if authorization in {PaymentOutcome.FAILED, PaymentOutcome.DECLINED}:
             return await self._payment_failed(workflow, command, context)
-        if authorization == PaymentOutcome.UNKNOWN:
+        if authorization is PaymentOutcome.UNKNOWN:
             return await self._payment_unknown(workflow, command, context)
-
         capture = await self._payment_command("capturePayment", workflow, context)
+        if capture is PaymentOutcome.NOT_DISPATCHED:
+            # Authorized but never captured: the outcome is known, so release directly.
+            return await self._payment_not_dispatched(workflow, command, "capturePayment", context)
         workflow.payment_status = capture
         await self.bookings.transition(
             "bookingPaymentResult",
-            workflow.booking_id,
+            booking_id,
             {
-                "paymentId": workflow.payment_id,
+                "paymentId": payment_id,
                 "paymentStatus": capture.value,
-                "evidence": {"verified": True},
+                "evidence": {
+                    "providerReference": payment_id,
+                    "verifiedAt": datetime.now(UTC).isoformat(),
+                },
             },
             step_key(workflow.workflow_id, "bookingPaymentResult"),
             context,
@@ -251,11 +330,23 @@ class BookingSaga:
             return await self._payment_failed(workflow, command, context)
         if capture != PaymentOutcome.CAPTURED:
             return await self._payment_unknown(workflow, command, context)
+        return None
 
+    async def _issue_and_confirm(
+        self,
+        command: PlaceBookingCommand,
+        workflow: WorkflowEvidence,
+        context: RequestContext,
+    ) -> None:
+        booking_id = workflow.booking_id
+        reservation_id = workflow.reservation_id
+        payment_id = workflow.payment_id
+        if booking_id is None or reservation_id is None or payment_id is None:
+            raise RuntimeError("Confirmed booking evidence is incomplete")
         try:
             issued = await self.tickets.issue_tickets(
                 {
-                    "bookingId": workflow.booking_id,
+                    "bookingId": booking_id,
                     "eventId": command.event_id,
                     "customerId": workflow.customer_id,
                     "items": [{"seatId": value} for value in command.seat_ids],
@@ -266,32 +357,36 @@ class BookingSaga:
             workflow.ticket_ids = [str(ticket["ticketId"]) for ticket in issued]
             await self.bookings.transition(
                 "bookingTickets",
-                workflow.booking_id,
+                booking_id,
                 {
                     "ticketIds": workflow.ticket_ids,
-                    "evidence": {"ticketStatus": "ISSUED"},
+                    "evidence": {
+                        "providerReference": workflow.ticket_ids[0],
+                        "ticketsIssued": True,
+                    },
                 },
                 step_key(workflow.workflow_id, "bookingTickets"),
                 context,
             )
             confirmed_seat = await self.seats.confirm_seats(
-                workflow.reservation_id,
+                reservation_id,
                 workflow.reservation_version or 1,
                 step_key(workflow.workflow_id, "ConfirmSeats"),
                 context,
             )
             await self.bookings.transition(
                 "bookingConfirm",
-                workflow.booking_id,
+                booking_id,
                 {
-                    "reservationId": workflow.reservation_id,
-                    "paymentId": workflow.payment_id,
+                    "reservationId": reservation_id,
+                    "paymentId": payment_id,
                     "paymentStatus": "CAPTURED",
                     "ticketIds": workflow.ticket_ids,
                     "evidence": {
                         "paymentCaptured": True,
                         "seatConfirmed": confirmed_seat.get("status") == "CONFIRMED",
                         "ticketsIssued": True,
+                        "verifiedAt": datetime.now(UTC).isoformat(),
                     },
                 },
                 step_key(workflow.workflow_id, "bookingConfirm"),
@@ -314,6 +409,12 @@ class BookingSaga:
             await self._fail_booking(workflow, "AFTER_CAPTURE_FAILURE", False, context)
             raise DependencyFailure("AFTER_CAPTURE_FAILURE", "Booking compensation is pending.", 503, True) from exc
 
+    async def _complete_success(
+        self,
+        command: PlaceBookingCommand,
+        workflow: WorkflowEvidence,
+        context: RequestContext,
+    ) -> OperationResult:
         workflow.phase = WorkflowPhase.CONFIRMED
         await self.outbox.commit_with_outbox(
             workflow,
@@ -386,7 +487,20 @@ class BookingSaga:
                 context,
             )
             return PaymentOutcome(str(response.get("status", "UNKNOWN")))
+        except CommandNotDispatched:
+            # Rejected before any byte was sent, so no payment state can exist.
+            return PaymentOutcome.NOT_DISPATCHED
         except AmbiguousOutcome:
+            return PaymentOutcome.UNKNOWN
+        except BusinessFault as fault:
+            # Payment Service reports a decline as a 402 business fault. Letting it
+            # escape would abort the saga before compensation, leaving the seat held
+            # and the booking un-failed, so it is folded back into the outcome.
+            if fault.status_code == 402 or fault.code in DECLINED_PAYMENT_CODES:
+                return PaymentOutcome.DECLINED
+            raise
+        except DependencyFailure:
+            # Dispatched, but the transport or an ambiguous 5xx hid the result.
             return PaymentOutcome.UNKNOWN
 
     async def _payment_failed(
@@ -406,11 +520,42 @@ class BookingSaga:
         await self._complete(command, context, result)
         return result
 
+    async def _payment_not_dispatched(
+        self,
+        workflow: WorkflowEvidence,
+        command: PlaceBookingCommand,
+        operation: str,
+        context: RequestContext,
+    ) -> OperationResult:
+        """The command never left the ESB: release the seat now, never reconcile."""
+        workflow.payment_status = PaymentOutcome.NOT_DISPATCHED
+        released = await self._release(workflow, "PAYMENT_NOT_DISPATCHED", context)
+        await self._fail_booking(workflow, "PAYMENT_NOT_DISPATCHED", released, context)
+        workflow.phase = WorkflowPhase.FAILED if released else WorkflowPhase.COMPENSATION_PENDING
+        workflow.evidence = {
+            **dict(workflow.evidence),
+            "paymentDispatch": {"operation": operation, "dispatched": False},
+        }
+        await self.workflows.save(workflow)
+        result = OperationResult(
+            503,
+            self._error(
+                "PAYMENT_NOT_DISPATCHED",
+                "The payment command was not sent; no payment was created.",
+                context,
+                True,
+            ),
+        )
+        await self._complete(command, context, result)
+        return result
+
     async def _payment_unknown(
         self,
         workflow: WorkflowEvidence,
         command: PlaceBookingCommand,
         context: RequestContext,
+        *,
+        create_key: str | None = None,
     ) -> OperationResult:
         workflow.payment_status = PaymentOutcome.UNKNOWN
         workflow.phase = WorkflowPhase.PAYMENT_PROCESSING
@@ -418,8 +563,15 @@ class BookingSaga:
         await self.reconciliation.schedule(
             workflow.workflow_id,
             "PAYMENT_UNKNOWN",
-            {"paymentId": workflow.payment_id, "bookingId": workflow.booking_id},
+            {
+                "paymentId": workflow.payment_id,
+                "bookingId": workflow.booking_id,
+                "createIdempotencyKey": create_key,
+                "amount": workflow.total.as_wire() if workflow.total else None,
+                "methodToken": command.payment_method_token,
+            },
             step_key(workflow.workflow_id, "reconcilePayment"),
+            deadline=self.clock.now() + timedelta(seconds=self.reconciliation_deadline_seconds),
         )
         result = self._booking_result(workflow, WorkflowPhase.PAYMENT_PROCESSING, 202)
         await self._complete(command, context, result)
@@ -455,7 +607,10 @@ class BookingSaga:
             {
                 "reasonCode": reason,
                 "compensationStatus": state,
-                "evidence": dict(workflow.evidence),
+                "evidence": {
+                    "compensationCompleted": compensation_complete,
+                    "verifiedAt": datetime.now(UTC).isoformat(),
+                },
             },
             step_key(workflow.workflow_id, f"bookingFail:{reason}"),
             context,

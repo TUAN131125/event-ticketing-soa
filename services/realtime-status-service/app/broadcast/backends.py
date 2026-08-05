@@ -200,7 +200,7 @@ class RedisBroadcastBackend:
             ):
                 self._available = False
                 self._subscribed.clear()
-                delay = min(backoff, 5.0) + random.random() * 0.1  # noqa: S311 - jitter is not security-sensitive
+                delay = min(backoff, 5.0) + random.random() * 0.1  # noqa: S311  # nosec B311
                 await asyncio.sleep(delay)
                 backoff = min(backoff * 2, 5.0)
             finally:

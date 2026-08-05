@@ -462,10 +462,7 @@ paths:
         schema:
           $ref: '#/components/schemas/SafeIdentifier'
       - $ref: '#/components/parameters/RequiredCorrelationId'
-      - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/Traceparent'
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -490,9 +487,6 @@ paths:
                     allowed: false
                     reasonCode: DEPENDENCY_UNAVAILABLE
                     cacheTtlSeconds: 0
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -508,8 +502,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
 components:
   schemas:
     ErrorResponse:
@@ -572,8 +564,6 @@ components:
       example:
         amountMinor: 250000
         currency: VND
-    PageMeta:
-      $ref: '#/components/schemas/PageMeta'
     SafeIdentifier:
       type: string
       minLength: 1

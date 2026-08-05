@@ -1,8 +1,27 @@
-"""Xac thuc request - chua trien khai trong MVP, xem ghi chu tuong tu
-o Customer Service. Diem mo rong: chi Admin moi duoc goi cac endpoint
-tao/sua/doi trang thai su kien."""
-from fastapi import Request
+"""Service JWT authentication for protected Event API calls."""
+
+from typing import Annotated, cast
+
+from fastapi import HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from libs.platform_security import ServiceAuthenticationError, ServicePrincipal
+
+SERVICE_JWT = HTTPBearer(auto_error=False, scheme_name="ServiceJwt")
 
 
-async def verify_internal_caller(request: Request) -> bool:
-    return True
+def require_service_principal(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(SERVICE_JWT)],
+) -> ServicePrincipal:
+    authorization = (
+        f"Bearer {credentials.credentials}" if credentials is not None else None
+    )
+    try:
+        return cast(
+            ServicePrincipal,
+            request.app.state.service_jwt_verifier.verify_authorization(authorization),
+        )
+    except ServiceAuthenticationError as exc:
+        raise HTTPException(
+            status_code=401, detail="Service authentication failed"
+        ) from exc

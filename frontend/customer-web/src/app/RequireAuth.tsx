@@ -1,8 +1,9 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { ForbiddenState, Spinner } from '@event-ticketing/shared-ui';
+import type { Role } from '../api/auth-client';
 import { useAuth } from './auth';
 
-export function RequireAuth({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
+export function RequireAuth({ children, roles }: { children: React.ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading)

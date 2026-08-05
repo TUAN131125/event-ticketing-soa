@@ -77,6 +77,10 @@ async def test_rest_provider_adapters_use_canonical_paths_and_audience_bound_ser
         )
         assert claims["sub"] == "booking-orchestrator"
         assert claims["jti"]
+        if request.url.path.endswith("/access-decisions"):
+            assert "Idempotency-Key" not in request.headers
+            assert "If-Match" not in request.headers
+            assert request.headers["X-Correlation-ID"]
         calls.append((request.method, request.url.path, audience))
         if request.url.path in {"/events", "/tickets:issue", "/bookings/BK-1/tickets"}:
             return httpx.Response(200, json=[])
@@ -129,6 +133,7 @@ async def test_rest_provider_adapters_use_canonical_paths_and_audience_bound_ser
         ("POST", "/payments/PAY-1/reconcile"),
         ("POST", "/tickets:issue"),
         ("GET", "/bookings/BK-1/tickets"),
+        ("GET", "/tickets/TKT-1"),
         ("POST", "/tickets/TKT-1/cancel"),
     }
     await http.aclose()
@@ -164,9 +169,7 @@ async def test_side_effect_adapters_send_signed_raw_notification_and_internal_re
             http,
             token_signer,
             executor(),
-        ),
-        "realtime-internal-secret",
-        "booking-orchestrator",
+        )
     )
     context = request_context()
     payload = {"bookingId": "BK-1", "status": "CONFIRMED", "sequence": 3}
@@ -181,17 +184,12 @@ async def test_side_effect_adapters_send_signed_raw_notification_and_internal_re
         hashlib.sha256,
     ).hexdigest()
     assert hmac.compare_digest(
-        notification_request.headers["X-Webhook-Signature"], expected
+        notification_request.headers["X-Webhook-Signature"], f"sha256={expected}"
     )
     assert json.loads(notification_request.content)["eventId"] == "MSG-NOTIFY-1"
     realtime_body = json.loads(seen["/internal/status-events"].content)
     assert (
-        seen["/internal/status-events"].headers["X-Service-Token"]
-        == "realtime-internal-secret"
-    )
-    assert (
-        seen["/internal/status-events"].headers["X-Caller-Service"]
-        == "booking-orchestrator"
+        seen["/internal/status-events"].headers["Authorization"].startswith("Bearer ")
     )
     assert (
         seen["/internal/status-events"].headers["X-Correlation-ID"]

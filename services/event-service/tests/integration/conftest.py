@@ -1,8 +1,8 @@
-"""Fixture dung chung cho integration test - can PostgreSQL that dang
-chay (vi du qua `docker compose up postgres` hoac Laragon). Doc
-EVENT_DATABASE_URL tu bien moi truong, mac dinh trung voi
-root compose.yaml/.env.example."""
+"""PostgreSQL integration fixture enabled only by an explicit test URL."""
+
 from __future__ import annotations
+
+import os
 
 import pytest
 from sqlalchemy import text
@@ -14,6 +14,10 @@ from app.infrastructure.database.session import dispose_engine, get_engine
 
 @pytest.fixture
 def postgres_repo():
+    url = os.getenv("EVENT_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("EVENT_TEST_DATABASE_URL is not configured")
+    os.environ["EVENT_DATABASE_URL"] = url
     reset_settings_cache()
     dispose_engine()
     engine = get_engine()

@@ -42,9 +42,7 @@ class SessionManagementUseCase:
         self._tokens = token_service
         self._session_issuer = session_issuer
 
-    def refresh(
-        self, raw_refresh_token: str, context: RequestContext
-    ) -> LoginOutcome:
+    def refresh(self, raw_refresh_token: str, context: RequestContext) -> LoginOutcome:
         token_hash = self._tokens.hash_refresh_token(raw_refresh_token)
         pending_error: IdentityError | None = None
         outcome: LoginOutcome | None = None
@@ -53,9 +51,7 @@ class SessionManagementUseCase:
             refresh_sessions = RefreshSessionRepository(session)
             users = UserRepository(session)
             audit = AuditRepository(session)
-            current = refresh_sessions.find_by_token_hash(
-                token_hash, for_update=True
-            )
+            current = refresh_sessions.find_by_token_hash(token_hash, for_update=True)
             now = database_now(session)
 
             if current is None:

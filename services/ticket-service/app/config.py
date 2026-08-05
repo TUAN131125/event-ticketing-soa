@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 
 def _integer(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -46,7 +48,7 @@ class Settings:
     app_name: str
     app_env: str
     database_url: str
-    service_token: str
+    service_jwt: ServiceJwtValidationSettings
     qr_signing_key: str
     db_pool_size: int
     db_max_overflow: int
@@ -61,18 +63,10 @@ class Settings:
     @classmethod
     def from_environment(cls) -> Settings:
         app_env = os.getenv("TICKET_APP_ENV", "local").strip().lower()
-        service_token = os.getenv("TICKET_SERVICE_TOKEN", "").strip()
         qr_signing_key = os.getenv("TICKET_QR_SIGNING_KEY", "").strip()
-        if not service_token:
-            raise ValueError("TICKET_SERVICE_TOKEN is required")
         if not qr_signing_key:
             raise ValueError("TICKET_QR_SIGNING_KEY is required")
         if app_env == "production":
-            if len(service_token) < 32:
-                raise ValueError(
-                    "TICKET_SERVICE_TOKEN must be a non-default value of at least "
-                    "32 characters in production"
-                )
             if len(qr_signing_key) < 32:
                 raise ValueError(
                     "TICKET_QR_SIGNING_KEY must be a non-default value of at least "
@@ -82,7 +76,9 @@ class Settings:
             app_name="ticket-service",
             app_env=app_env,
             database_url=_database_url(),
-            service_token=service_token,
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "TICKET", audience="ticket-service"
+            ),
             qr_signing_key=qr_signing_key,
             db_pool_size=_integer("TICKET_DB_POOL_SIZE", 10, 1, 100),
             db_max_overflow=_integer("TICKET_DB_MAX_OVERFLOW", 20, 0, 100),

@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir --requirement requirements.txt
 COPY --chown=seat:seat services/seat-inventory-service/alembic.ini ./
 COPY --chown=seat:seat services/seat-inventory-service/migrations ./migrations
 COPY --chown=seat:seat services/seat-inventory-service/app ./app
+COPY --chown=seat:seat libs ./libs
 COPY --chown=seat:seat services/seat-inventory-service/docker-entrypoint.sh ./docker-entrypoint.sh
 COPY --chown=seat:seat dist/contracts/seat-inventory.wsdl ./contracts/seat-inventory.wsdl
 COPY --chown=seat:seat dist/contracts/seat-inventory.xsd ./contracts/seat-inventory.xsd

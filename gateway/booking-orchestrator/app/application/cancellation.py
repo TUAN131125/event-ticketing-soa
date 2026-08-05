@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 
-from app.domain.errors import AccessDenied
+from app.domain.errors import AccessDenied, BusinessFault
 from app.domain.idempotency import normalized_request_hash, step_key
 from app.domain.models import (
     Money,
@@ -48,7 +49,13 @@ class CancellationSaga:
             clock,
         )
 
-    async def execute(self, booking_id: str, idempotency_key: str, context: RequestContext) -> OperationResult:
+    async def execute(
+        self,
+        booking_id: str,
+        idempotency_key: str,
+        context: RequestContext,
+        expected_version: int | None = None,
+    ) -> OperationResult:
         request_hash = normalized_request_hash({"bookingId": booking_id})
         claim = await self.idempotency.claim(
             "publicCancelBooking",
@@ -68,6 +75,14 @@ class CancellationSaga:
         if not decision.get("allowed"):
             raise AccessDenied()
         booking = await self.bookings.get_booking(booking_id, context)
+        if expected_version is not None and booking.get("resourceVersion") != expected_version:
+            raise BusinessFault(
+                "PRECONDITION_FAILED",
+                "The booking resource version does not match If-Match.",
+                412,
+                False,
+                {"currentVersion": booking.get("resourceVersion")},
+            )
         if booking.get("status") == "CANCELLED":
             result = self._result(booking, context, "CANCELLED")
             await self.idempotency.complete(
@@ -151,7 +166,10 @@ class CancellationSaga:
             {
                 "reasonCode": "USER_REQUEST",
                 "compensationStatus": compensation_status,
-                "evidence": {"verified": True},
+                "evidence": {
+                    "compensationCompleted": complete,
+                    "verifiedAt": datetime.now(UTC).isoformat(),
+                },
             },
             step_key(workflow.workflow_id, "bookingCancel"),
             context,

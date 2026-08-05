@@ -1,5 +1,6 @@
 """Provider THAT dang dung trong MVP: in email ra log/console thay vi
 gui that. Du de demo va kiem tra noi dung, khong can cau hinh SMTP."""
+
 from app.observability.logs import get_logger
 
 logger = get_logger("notification.console_provider")

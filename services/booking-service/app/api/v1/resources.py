@@ -1,87 +1,92 @@
-"""Internal booking resource and query endpoints."""
+"""Canonical Booking resource and customer-history endpoints."""
 
-from __future__ import annotations
+from decimal import Decimal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Path, Response, status
+from libs.platform_http import etag
 
 from app.application.service import BookingService
 from app.dependencies import get_service
-from app.domain.enums import BookingStatus
 from app.domain.value_objects import BookingItem, RequestContext
 from app.middleware.authentication import require_internal_caller
-from app.observability.metrics import COMMAND_TOTAL
 from app.schemas.requests import CreateBookingRequest
-from app.schemas.responses import BookingPageResponse, BookingResponse
+from app.schemas.responses import BookingResponse
 
-router = APIRouter(prefix="/bookings", tags=["bookings"])
+router = APIRouter(tags=["bookings"])
 
 
 @router.post(
-    "",
+    "/bookings",
     response_model=BookingResponse,
     status_code=status.HTTP_201_CREATED,
     operation_id="createBooking",
 )
 def create(
     body: CreateBookingRequest,
-    idempotency_key: str = Header(
-        alias="Idempotency-Key", min_length=1, max_length=128
-    ),
+    response: Response,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
+    ],
     context: RequestContext = Depends(require_internal_caller),
     service: BookingService = Depends(get_service),
 ) -> BookingResponse:
-    try:
-        booking = service.create(
-            context,
-            idempotency_key=idempotency_key,
-            customer_id=body.customer_id,
-            event_id=body.event_id,
-            reservation_id=body.reservation_id,
-            payment_method=body.payment_method,
-            items=tuple(
-                BookingItem(
-                    seat_id=item.seat_id,
-                    ticket_type=item.ticket_type,
-                    unit_price=item.unit_price,
-                )
-                for item in body.items
-            ),
-            total_amount=body.total_amount,
-            currency=body.currency,
-        )
-        COMMAND_TOTAL.labels("create", "success").inc()
-        return BookingResponse.from_entity(booking)
-    except Exception:
-        COMMAND_TOTAL.labels("create", "failure").inc()
-        raise
+    currencies = {item.unit_price.currency for item in body.items}
+    if len(currencies) != 1:
+        from app.domain.exceptions import InvalidRequest
 
-
-@router.get("", response_model=BookingPageResponse, operation_id="listBookings")
-def list_all(
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
-    customer_id: str | None = Query(default=None, alias="customerId"),
-    event_id: str | None = Query(default=None, alias="eventId"),
-    booking_status: BookingStatus | None = Query(default=None, alias="status"),
-    search: str | None = Query(default=None, min_length=1, max_length=128),
-    _context: RequestContext = Depends(require_internal_caller),
-    service: BookingService = Depends(get_service),
-) -> BookingPageResponse:
-    result = service.list(
-        page=page,
-        page_size=page_size,
-        customer_id=customer_id,
-        event_id=event_id,
-        status=booking_status,
-        search=search,
+        raise InvalidRequest("All booking items must use the same currency")
+    booking = service.create(
+        context,
+        idempotency_key=idempotency_key,
+        customer_id=body.customer_id,
+        event_id=body.event_id,
+        items=tuple(
+            BookingItem(
+                seat_id=item.seat_id,
+                ticket_type_code=item.ticket_type_code,
+                unit_price=Decimal(item.unit_price.amount_minor),
+            )
+            for item in body.items
+        ),
+        currency=currencies.pop(),
     )
-    return BookingPageResponse.from_page(result)
+    response.headers["ETag"] = etag(booking.resource_version)
+    return BookingResponse.from_entity(booking)
 
 
-@router.get("/{booking_id}", response_model=BookingResponse, operation_id="getBooking")
+@router.get(
+    "/bookings/{bookingId}",
+    response_model=BookingResponse,
+    operation_id="getBooking",
+)
 def get(
-    booking_id: str,
-    _context: RequestContext = Depends(require_internal_caller),
+    booking_id: Annotated[str, Path(alias="bookingId")],
+    response: Response,
+    context: RequestContext = Depends(require_internal_caller),
     service: BookingService = Depends(get_service),
 ) -> BookingResponse:
-    return BookingResponse.from_entity(service.get(booking_id))
+    booking = service.get(booking_id)
+    response.headers["ETag"] = etag(booking.resource_version)
+    return BookingResponse.from_entity(booking)
+
+
+@router.get(
+    "/customers/{customerId}/bookings",
+    response_model=list[BookingResponse],
+    operation_id="listCustomerBookings",
+)
+def history(
+    customer_id: Annotated[str, Path(alias="customerId")],
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> list[BookingResponse]:
+    result = service.list(
+        page=1,
+        page_size=100,
+        customer_id=customer_id,
+        event_id=None,
+        status=None,
+        search=None,
+    )
+    return [BookingResponse.from_entity(item) for item in result.items]

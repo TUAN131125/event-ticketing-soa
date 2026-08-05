@@ -101,7 +101,7 @@ class IdentityService:
     ) -> UserView:
         return self._role_management.bootstrap_admin(email, password, context)
 
-    def jwks(self) -> dict[str, object]:
+    def jwks(self) -> dict[str, list[dict[str, str]]]:
         return self._token_service.jwks()
 
     def active_refresh_session_count(self) -> int:

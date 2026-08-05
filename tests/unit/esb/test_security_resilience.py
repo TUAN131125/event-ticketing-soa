@@ -30,11 +30,16 @@ def key_material(kid: str = "identity-1") -> tuple[str, dict[str, str]]:
         serialization.NoEncryption(),
     ).decode()
     numbers = key.public_key().public_numbers()
-    encode = lambda value: (
-        base64.urlsafe_b64encode(value.to_bytes((value.bit_length() + 7) // 8, "big"))
-        .rstrip(b"=")
-        .decode()
-    )
+
+    def encode(value: int) -> str:
+        return (
+            base64.urlsafe_b64encode(
+                value.to_bytes((value.bit_length() + 7) // 8, "big")
+            )
+            .rstrip(b"=")
+            .decode()
+        )
+
     return private, {
         "kty": "RSA",
         "kid": kid,
@@ -168,13 +173,9 @@ def test_production_config_rejects_insecure_defaults() -> None:
         "ws_ticket_private_key": "key",
         "docs_enabled": False,
         "notification_webhook_secret": "n" * 32,
-        "seat_service_token": "s" * 32,
-        "realtime_internal_service_token": "r" * 32,
+        "allowed_origins": "https://customer.example",
     }
-    with pytest.raises(ValueError, match="Seat service token"):
-        Settings(**{**production, "seat_service_token": "short"})
-    with pytest.raises(ValueError, match="Realtime internal service token"):
-        Settings(**{**production, "realtime_internal_service_token": "short"})
+    assert Settings(**production).origin_list() == ["https://customer.example"]
 
 
 @pytest.mark.asyncio

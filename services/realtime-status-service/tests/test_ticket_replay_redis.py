@@ -17,7 +17,7 @@ from app.security.ticket_replay import RedisTicketReplayStore
 from app.security.ws_ticket import ValidatedWebSocketTicket
 from app.websocket.connection_manager import BroadcastResult
 from app.websocket.endpoint import CLOSE_FORBIDDEN
-from tests.conftest import FakeAccessChecker, FakeTokenValidator, ws_headers
+from tests.conftest import ws_headers
 
 
 class FakeRedisClient:
@@ -133,7 +133,7 @@ async def test_redis_set_nx_ex_accepts_once_and_rejects_reuse(
     await store.stop()
 
 
-def test_optional_redis_keeps_native_mode_up_but_ticket_mode_fails_closed(
+def test_optional_redis_keeps_http_up_but_ticket_replay_fails_closed(
     settings: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     redis_client = FakeRedisClient(online=False)
@@ -141,8 +141,6 @@ def test_optional_redis_keeps_native_mode_up_but_ticket_mode_fails_closed(
     current = replace(settings, redis_url="redis://redis:6379/0", redis_required=False)
     app = create_app(
         current,
-        token_validator=FakeTokenValidator(),
-        access_checker=FakeAccessChecker(),
         broadcast_backend=AvailableBroadcastBackend(),
         ws_ticket_validator=AcceptTicketValidator(),
     )
@@ -150,12 +148,6 @@ def test_optional_redis_keeps_native_mode_up_but_ticket_mode_fails_closed(
     with TestClient(app) as client:
         assert client.get("/health/live").status_code == 200
         assert client.get("/health/ready").status_code == 200
-        with client.websocket_connect(
-            "/ws/bookings/BK-1",
-            headers=ws_headers(),
-            subprotocols=["bearer", "owner-token"],
-        ) as native:
-            assert native.receive_json()["type"] == "connected"
         with pytest.raises(WebSocketDisconnect) as closed:
             with client.websocket_connect(
                 "/ws/bookings/BK-1", headers=ws_headers()
@@ -173,8 +165,6 @@ def test_required_redis_unavailable_is_not_ready(
     current = replace(settings, redis_url="redis://redis:6379/0", redis_required=True)
     app = create_app(
         current,
-        token_validator=FakeTokenValidator(),
-        access_checker=FakeAccessChecker(),
         broadcast_backend=AvailableBroadcastBackend(),
     )
     with TestClient(app) as client:

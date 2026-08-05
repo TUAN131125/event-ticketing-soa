@@ -9,7 +9,9 @@
     "admin-web"
   ],
   "scripts": {
+    "generate:contracts": "node scripts/generate-esb-types.mjs",
     "build": "npm run build --workspaces --if-present",
+    "lint": "npm run generate:contracts && npm run format:check",
     "format": "prettier --write \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -19,6 +21,8 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "prettier": "3.9.6"
+    "openapi-typescript": "^7.13.0",
+    "prettier": "3.9.6",
+    "yaml": "2.8.3"
   }
 }

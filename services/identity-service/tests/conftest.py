@@ -99,9 +99,7 @@ def clean_database(postgres_settings: Settings) -> Iterator[None]:
 
 
 @pytest.fixture
-def client(
-    postgres_settings: Settings, clean_database: None
-) -> Iterator[TestClient]:
+def client(postgres_settings: Settings, clean_database: None) -> Iterator[TestClient]:
     application = create_app(postgres_settings)
     with TestClient(application) as value:
         yield value

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,11 +21,19 @@ class StrictModel(BaseModel):
 class RealtimeStatusEvent(StrictModel):
     message_id: SafeIdentifier = Field(alias="messageId")
     booking_id: SafeIdentifier = Field(alias="bookingId")
-    status: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Z][A-Z0-9_]{0,39}$")]
+    status: Literal[
+        "PENDING",
+        "SEAT_RESERVED",
+        "PAYMENT_PROCESSING",
+        "CONFIRMED",
+        "FAILED",
+        "CANCELLED",
+        "COMPENSATION_PENDING",
+    ]
     sequence: int = Field(ge=1, le=2_147_483_647)
     occurred_at: datetime = Field(alias="occurredAt")
     correlation_id: SafeIdentifier = Field(alias="correlationId")
-    message: Annotated[str, Field(min_length=1, max_length=280)]
+    message: Annotated[str, Field(max_length=300)] | None = None
 
     @field_validator("occurred_at")
     @classmethod
@@ -35,7 +44,9 @@ class RealtimeStatusEvent(StrictModel):
 
     @field_validator("message")
     @classmethod
-    def reject_sensitive_message(cls, value: str) -> str:
+    def reject_sensitive_message(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         lowered = value.lower()
         prohibited = ("bearer ", "password", "secret", "access_token", "card number", "cvv")
         if any(term in lowered for term in prohibited):
@@ -53,18 +64,24 @@ class RealtimeStatusEvent(StrictModel):
 class ConnectedControl(StrictModel):
     type: Literal["connected"] = "connected"
     booking_id: SafeIdentifier = Field(alias="bookingId")
-    heartbeat_interval_seconds: float = Field(alias="heartbeatIntervalSeconds")
+
+
+class AuthenticatedControl(StrictModel):
+    type: Literal["authenticated"] = "authenticated"
+    booking_id: SafeIdentifier = Field(alias="bookingId")
+    authenticated_at: datetime = Field(alias="authenticatedAt")
 
 
 class HeartbeatControl(StrictModel):
     type: Literal["heartbeat"] = "heartbeat"
-    timestamp: datetime
+    heartbeat_id: SafeIdentifier = Field(default_factory=lambda: str(uuid4()), alias="heartbeatId")
+    sent_at: datetime = Field(alias="sentAt")
 
 
 class ResyncRequiredControl(StrictModel):
     type: Literal["resync_required"] = "resync_required"
     booking_id: SafeIdentifier = Field(alias="bookingId")
-    reason: Literal["reconnect_no_replay", "sequence_gap"]
+    reason: Literal["reconnect", "sequence_gap", "history_unavailable"]
     authoritative_url: str = Field(alias="authoritativeUrl", min_length=1, max_length=512)
     expected_sequence: int | None = Field(default=None, alias="expectedSequence", ge=1)
     observed_sequence: int | None = Field(default=None, alias="observedSequence", ge=1)
@@ -83,8 +100,20 @@ class ProtocolErrorControl(StrictModel):
     message: str = Field(max_length=120)
 
 
-class PongMessage(StrictModel):
-    type: Literal["pong"]
+class HeartbeatAckMessage(StrictModel):
+    type: Literal["heartbeat_ack"]
+    heartbeat_id: SafeIdentifier = Field(alias="heartbeatId")
+
+
+class SubscribeMessage(StrictModel):
+    type: Literal["subscribe"]
+    booking_id: SafeIdentifier = Field(alias="bookingId")
+    last_sequence: int | None = Field(default=None, alias="lastSequence", ge=0)
+
+
+class UnsubscribeMessage(StrictModel):
+    type: Literal["unsubscribe"]
+    booking_id: SafeIdentifier = Field(alias="bookingId")
 
 
 class AuthenticateMessage(StrictModel):
@@ -94,9 +123,19 @@ class AuthenticateMessage(StrictModel):
 
 class EventIngestResponse(StrictModel):
     correlation_id: SafeIdentifier = Field(alias="correlationId")
-    outcome: Literal["accepted", "duplicate", "stale", "no_subscribers"]
-    broadcast: bool
-    sequence_gap: bool = Field(alias="sequenceGap")
+    outcome: Literal["ACCEPTED", "DUPLICATE", "STALE"]
+    message_id: SafeIdentifier = Field(alias="messageId")
+    booking_id: SafeIdentifier = Field(alias="bookingId")
+    sequence: int = Field(ge=1)
+
+
+class ConnectionHealthResponse(StrictModel):
+    status: Literal["UP", "DEGRADED"]
+    active_connections: int = Field(alias="activeConnections", ge=0)
+    active_booking_channels: int = Field(alias="activeBookingChannels", ge=0)
+    broadcast_backend: Literal["memory", "redis"] = Field(alias="broadcastBackend")
+    backend_available: bool = Field(alias="backendAvailable")
+    draining: bool
 
 
 class ErrorDetail(StrictModel):

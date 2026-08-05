@@ -34,7 +34,7 @@ class PaymentModel(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('PENDING','AUTHORIZED','CAPTURED','FAILED','CANCELLED',"
-            "'PARTIALLY_REFUNDED','REFUNDED')",
+            "'PARTIALLY_REFUNDED','REFUNDED','UNKNOWN')",
             name="ck_payment_status",
         ),
         CheckConstraint("amount > 0", name="ck_payment_amount"),
@@ -81,7 +81,7 @@ class PaymentModel(Base):
     customer_id: Mapped[str] = mapped_column(String(128), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    payment_method: Mapped[str] = mapped_column(String(40), nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(200), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)

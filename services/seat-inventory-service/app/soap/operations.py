@@ -9,7 +9,7 @@ from lxml import etree
 from sqlalchemy.orm import Session
 
 from app.application.check_availability import check_availability
-from app.application.common import RequestContext
+from app.application.configure_inventory import SeatDefinition, configure_inventory
 from app.application.confirm_seats import confirm_seats
 from app.application.executor import execute_database_operation
 from app.application.expire_reservations import expire_reservations
@@ -20,6 +20,7 @@ from app.application.release_seats import release_seats
 from app.application.reserve_seats import reserve_seats
 from app.config import Settings
 from app.domain.exceptions import InvalidRequest
+from app.domain.seat import SeatStatus
 from app.soap.envelope import (
     append,
     append_reservation,
@@ -29,9 +30,9 @@ from app.soap.envelope import (
 from app.soap.types import (
     child_int,
     child_text,
-    iso_datetime,
     operation_name,
     request_context,
+    seat_definitions,
     seat_ids,
 )
 
@@ -47,6 +48,7 @@ def dispatch(operation: etree._Element, settings: Settings) -> etree._Element:
         "ConfirmSeats": _confirm_seats,
         "ReleaseSeats": _release_seats,
         "ExpireReservations": _expire_reservations,
+        "ConfigureInventory": _configure_inventory,
     }
     handler = handlers.get(name)
     if handler is None:
@@ -63,10 +65,8 @@ def _execute(
     return execute_database_operation(settings, operation, max_retries=retries)
 
 
-def _context_response(name: str, context: RequestContext) -> etree._Element:
-    response = element(f"{name}Response")
-    append(response, "correlationId", context.correlation_id)
-    return response
+def _response(name: str) -> etree._Element:
+    return element(f"{name}Response")
 
 
 def _get_seat_map(operation: etree._Element, settings: Settings) -> etree._Element:
@@ -75,10 +75,8 @@ def _get_seat_map(operation: etree._Element, settings: Settings) -> etree._Eleme
 
     def run(session: Session) -> etree._Element:
         result = get_seat_map(session, context, event_id)
-        response = _context_response("GetSeatMap", context)
+        response = _response("GetSeatMap")
         append(response, "eventId", result.event_id)
-        append(response, "inventoryVersion", result.inventory_version)
-        append(response, "generatedAt", iso_datetime(result.generated_at))
         seats_node = element("seats")
         for seat in result.seats:
             append_seat(seats_node, seat)
@@ -97,18 +95,10 @@ def _check_availability(
 
     def run(session: Session) -> etree._Element:
         result = check_availability(session, context, event_id, requested)
-        response = _context_response("CheckAvailability", context)
-        append(response, "eventId", result.event_id)
+        response = _response("CheckAvailability")
         append(response, "available", result.available)
-        available_node = element("availableSeatIds")
-        for seat_id in result.available_seat_ids:
-            append(available_node, "seatId", seat_id)
-        response.append(available_node)
-        unavailable_node = element("unavailableSeatIds")
-        for seat_id in result.unavailable_seat_ids:
-            append(unavailable_node, "seatId", seat_id)
-        response.append(unavailable_node)
-        append(response, "checkedAt", iso_datetime(result.checked_at))
+        if result.unavailable_seat_ids:
+            append(response, "unavailableSeatId", result.unavailable_seat_ids[0])
         return response
 
     return _execute(settings, run, retries=0)
@@ -121,7 +111,7 @@ def _reserve_seats(operation: etree._Element, settings: Settings) -> etree._Elem
     requested = seat_ids(operation)
     hold_seconds = child_int(
         operation,
-        "holdSeconds",
+        "ttlSeconds",
         required=False,
         default=settings.default_hold_seconds,
     )
@@ -136,7 +126,7 @@ def _reserve_seats(operation: etree._Element, settings: Settings) -> etree._Elem
             seat_ids=requested,
             hold_seconds=hold_seconds,
         )
-        response = _context_response("ReserveSeats", context)
+        response = _response("ReserveSeats")
         append_reservation(response, result)
         return response
 
@@ -149,7 +139,7 @@ def _get_reservation(operation: etree._Element, settings: Settings) -> etree._El
 
     def run(session: Session) -> etree._Element:
         result = get_reservation_view(session, context, reservation_id)
-        response = _context_response("GetReservation", context)
+        response = _response("GetReservation")
         append_reservation(response, result)
         return response
 
@@ -162,7 +152,7 @@ def _extend_reservation(
     context = request_context(operation)
     reservation_id = cast(str, child_text(operation, "reservationId"))
     expected_version = child_int(operation, "expectedVersion")
-    extension_seconds = child_int(operation, "extensionSeconds")
+    extension_seconds = child_int(operation, "additionalSeconds")
 
     def run(session: Session) -> etree._Element:
         result = extend_reservation(
@@ -173,7 +163,7 @@ def _extend_reservation(
             expected_version=expected_version,
             extension_seconds=extension_seconds,
         )
-        response = _context_response("ExtendReservation", context)
+        response = _response("ExtendReservation")
         append_reservation(response, result)
         return response
 
@@ -193,7 +183,7 @@ def _confirm_seats(operation: etree._Element, settings: Settings) -> etree._Elem
             reservation_id=reservation_id,
             expected_version=expected_version,
         )
-        response = _context_response("ConfirmSeats", context)
+        response = _response("ConfirmSeats")
         append_reservation(response, result)
         return response
 
@@ -221,32 +211,67 @@ def _release_seats(operation: etree._Element, settings: Settings) -> etree._Elem
             reservation_id=reservation_id,
             reason_code=reason_code,
         )
-        response = _context_response("ReleaseSeats", context)
+        response = _response("ReleaseSeats")
         append_reservation(response, result)
         return response
 
     return _execute(settings, run)
 
 
+def _configure_inventory(
+    operation: etree._Element, settings: Settings
+) -> etree._Element:
+    context = request_context(operation)
+    event_id = cast(str, child_text(operation, "eventId"))
+    inventory_version = child_int(operation, "inventoryVersion")
+    definitions = tuple(
+        SeatDefinition(
+            seat_id=row[0],
+            section=row[1],
+            row_label=row[2],
+            seat_number=row[3],
+            ticket_type=row[4],
+            status=_configurable_status(row[5]),
+        )
+        for row in seat_definitions(operation)
+    )
+
+    def run(session: Session) -> etree._Element:
+        result = configure_inventory(
+            session,
+            settings,
+            context,
+            event_id=event_id,
+            inventory_version=inventory_version,
+            seats=definitions,
+        )
+        response = _response("ConfigureInventory")
+        append(response, "eventId", result.event_id)
+        append(response, "inventoryVersion", result.inventory_version)
+        append(response, "configuredSeatCount", result.seat_count)
+        append(response, "status", "REPLAYED" if result.replayed else "CONFIGURED")
+        return response
+
+    return _execute(settings, run)
+
+
+def _configurable_status(value: str) -> SeatStatus:
+    if value not in {SeatStatus.AVAILABLE.value, SeatStatus.BLOCKED.value}:
+        raise InvalidRequest("seat status must be AVAILABLE or BLOCKED")
+    return SeatStatus(value)
+
+
 def _expire_reservations(
     operation: etree._Element, settings: Settings
 ) -> etree._Element:
     context = request_context(operation)
-    batch_size = child_int(
-        operation,
-        "batchSize",
-        required=False,
-        default=settings.expiry_batch_size,
-    )
+    child_text(operation, "cutoffTime")
+    batch_size = settings.expiry_batch_size
 
     def run(session: Session) -> etree._Element:
         result = expire_reservations(session, settings, context, batch_size=batch_size)
-        response = _context_response("ExpireReservations", context)
+        response = _response("ExpireReservations")
         append(response, "expiredCount", result.expired_count)
-        ids_node = element("reservationIds")
-        for reservation_id in result.reservation_ids:
-            append(ids_node, "reservationId", reservation_id)
-        response.append(ids_node)
         return response
 
     return _execute(settings, run)

@@ -22,9 +22,7 @@ def _operation_name(request: Request) -> str:
     )
 
 
-async def access_log_middleware(
-    request: Request, call_next
-):  # type: ignore[no-untyped-def]
+async def access_log_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
     started = time.perf_counter()
     status_code = 500
     try:

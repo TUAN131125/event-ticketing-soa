@@ -19,6 +19,7 @@ class WorkflowPhase(str, Enum):
 
 
 class PaymentOutcome(str, Enum):
+    NOT_DISPATCHED = "NOT_DISPATCHED"
     CREATED = "CREATED"
     AUTHORIZED = "AUTHORIZED"
     CAPTURED = "CAPTURED"

@@ -8,6 +8,8 @@ x-backend: &backend
       required: false
   networks:
     - event-ticketing
+  volumes:
+    - ./local-secrets:/run/secrets:ro
 
 x-migration: &migration
   restart: "no"
@@ -108,8 +110,10 @@ services:
     <<: [*migration, *identity-image]
     profiles: [all, backend, identity]
     environment:
-      IDENTITY_PRIVATE_KEY_PATH: /tmp/migration-private-key-not-used
-      IDENTITY_PUBLIC_KEY_PATH: /tmp/migration-public-key-not-used
+      IDENTITY_PRIVATE_KEY_FILE: ""
+      IDENTITY_PRIVATE_KEY_BASE64: ""
+      IDENTITY_PUBLIC_KEY_FILE: ""
+      IDENTITY_PUBLIC_KEY_BASE64: ""
 
   identity:
     <<: [*backend, *identity-image]
@@ -119,8 +123,6 @@ services:
         condition: service_completed_successfully
     ports:
       - "8009:8009"
-    volumes:
-      - ./local-secrets:/run/secrets:ro
     healthcheck:
       test:
         - CMD
@@ -149,7 +151,7 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2); assert database_ready()
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=2)
       interval: 10s
       timeout: 3s
       retries: 5
@@ -172,7 +174,7 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=2); assert database_ready()
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health/ready', timeout=2)
       interval: 10s
       timeout: 3s
       retries: 5
@@ -287,7 +289,7 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=2); assert database_ready()
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health/ready', timeout=2)
       interval: 10s
       timeout: 3s
       retries: 5
@@ -303,20 +305,62 @@ services:
     depends_on:
       orchestrator-migrate:
         condition: service_completed_successfully
+      identity:
+        condition: service_healthy
+      customer:
+        condition: service_healthy
+      event:
+        condition: service_healthy
+      seat:
+        condition: service_healthy
+      booking:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+      ticket:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+      realtime:
+        condition: service_healthy
     ports:
       - "8000:8000"
-    volumes:
-      - ./local-secrets:/run/secrets:ro
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 20s
+
+  # One-shot local/demo provisioning. It is deliberately outside the `all` profile so
+  # neither `docker compose up` nor any migration can trigger it implicitly.
+  seed-local:
+    <<: *orchestrator-image
+    profiles: [seed]
+    restart: "no"
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    networks:
+      - event-ticketing
+    volumes:
+      - ./local-secrets:/run/secrets:ro
+      - ./scripts/seed_local.py:/app/seed_local.py:ro
+    depends_on:
+      event:
+        condition: service_healthy
+      seat:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    entrypoint:
+      - python
+      - /app/seed_local.py
 
   realtime:
     <<: *backend
@@ -327,8 +371,6 @@ services:
     profiles: [all, backend, realtime]
     ports:
       - "8008:8008"
-    volumes:
-      - ./local-secrets:/run/secrets:ro
     healthcheck:
       test:
         - CMD
@@ -340,22 +382,36 @@ services:
       retries: 5
       start_period: 10s
 
+  # The browser is the client, so these URLs are the ones it can reach from the host, not
+  # in-network service names. They are baked in at build time by Vite and never hardcoded
+  # in the source.
   customer-web:
     image: event-ticketing/customer-web:local
     build:
       context: ./frontend
       dockerfile: customer-web/Dockerfile
       args:
+        # Compose interpolation reads the shell and `.env`, not `env_file`, so the local
+        # defaults live here and stay overridable per environment.
         VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
         VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
         VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
-        VITE_AUTH_TRANSPORT: ${VITE_AUTH_TRANSPORT:-direct}
     profiles: [all, frontend]
     restart: unless-stopped
     ports:
       - "3000:80"
     networks:
       - event-ticketing
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://127.0.0.1/health
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   admin-web:
     image: event-ticketing/admin-web:local
@@ -363,16 +419,27 @@ services:
       context: ./frontend
       dockerfile: admin-web/Dockerfile
       args:
+        # Compose interpolation reads the shell and `.env`, not `env_file`, so the local
+        # defaults live here and stay overridable per environment.
         VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
         VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
         VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
-        VITE_AUTH_TRANSPORT: ${VITE_AUTH_TRANSPORT:-direct}
     profiles: [all, frontend]
     restart: unless-stopped
     ports:
       - "3001:80"
     networks:
       - event-ticketing
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://127.0.0.1/health
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   postgres-data:

@@ -9,6 +9,7 @@ import time
 from fastapi import APIRouter, Header, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
+from libs.platform_security import ServiceAuthenticationError
 
 from app.config import Settings
 from app.domain.exceptions import InternalFailure, InvalidRequest, SeatInventoryError
@@ -22,7 +23,6 @@ from app.observability.tracing import (
     reset_correlation_id,
     set_correlation_id,
 )
-from app.security.service_authentication import authenticate_service
 from app.security.xml_hardening import parse_soap
 from app.soap.envelope import soap_envelope
 from app.soap.faults import soap_fault
@@ -56,14 +56,21 @@ def create_soap_router(settings: Settings) -> APIRouter:
     @router.post("/soap", include_in_schema=False)
     async def soap_endpoint(
         request: Request,
-        x_service_token: str | None = Header(default=None, alias="X-Service-Token"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
         soap_action: str | None = Header(default=None, alias="SOAPAction"),
     ) -> Response:
         started = time.perf_counter()
         name = "Unknown"
         token = None
         try:
-            authenticate_service(x_service_token, settings.service_token)
+            try:
+                request.app.state.service_jwt_verifier.verify_authorization(
+                    authorization
+                )
+            except ServiceAuthenticationError as exc:
+                from app.domain.exceptions import AuthenticationFailed
+
+                raise AuthenticationFailed() from exc
             content_length = request.headers.get("content-length")
             if content_length:
                 try:

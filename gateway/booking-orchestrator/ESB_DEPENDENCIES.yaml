@@ -265,15 +265,15 @@ publicOperations:
     method: GET
     path: /api/health
     authentication: none
-    authorization: public shallow health
+    authorization: public aggregate health across ESB and providers
     requiredHeaders: []
     acceptedHeaders: []
     generatedHeaders: [X-Correlation-ID]
     security: []
     requestSchema: null
     responseSchemas:
-      '200': '#/paths/~1api~1health/get/responses/200/content/application~1json/schema'
-      '503': '#/components/schemas/ErrorResponse'
+      '200': '#/components/schemas/AggregateHealth'
+      '503': '#/components/schemas/AggregateHealth'
     providerCalls: []
     timeoutPolicy: read
     retryPolicy: none

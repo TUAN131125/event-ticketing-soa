@@ -31,9 +31,7 @@ def test_dtd_and_xxe_are_rejected_before_parsing() -> None:
 
 @pytest.mark.security
 def test_wrong_namespace_or_schema_is_rejected() -> None:
-    payload = valid_payload().replace(
-        b"urn:event-ticketing:seat:v1", b"urn:wrong"
-    )
+    payload = valid_payload().replace(b"urn:event-ticketing:seat:v1", b"urn:wrong")
     with pytest.raises(InvalidRequest, match="XSD"):
         parse_soap(payload, 262_144)
 

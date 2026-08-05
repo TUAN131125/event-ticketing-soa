@@ -1,4 +1,5 @@
 """Gom tat ca router con cua Notification Service lai lam mot."""
+
 from fastapi import APIRouter
 
 from app.api import health

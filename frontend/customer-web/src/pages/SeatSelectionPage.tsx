@@ -1,155 +1,126 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Armchair, ArrowRight, Info } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, Spinner } from '@event-ticketing/shared-ui';
-import { useAuth } from '../app/auth';
-import { useEvent, useReserveSeats, useSeatMap } from '../app/hooks';
-import { ApiError } from '../api/auth-client';
+import { ArrowRight, Info, Ticket } from 'lucide-react';
+import { Badge, Button, Card, Input, Spinner } from '@event-ticketing/shared-ui';
+import { useEvent } from '../app/hooks';
 import { QueryState } from './PageState';
+
+function splitSeatIds(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((seat) => seat.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 10);
+}
 
 export function SeatSelectionPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const event = useEvent(eventId);
-  const map = useSeatMap(eventId);
-  const [selected, setSelected] = useState<string[]>([]);
-  const reserve = useReserveSeats();
-  if (!user) return null;
-  if (event.isLoading || map.isLoading)
+  const [seatText, setSeatText] = useState('A01');
+  const seatIds = useMemo(() => splitSeatIds(seatText), [seatText]);
+
+  if (event.isLoading)
     return (
       <section className="container page-section page-state">
-        <Spinner label="Loading live seat inventory" />
+        <Spinner label="Loading event" />
       </section>
     );
-  if (event.isError) return <QueryState error={event.error} retry={() => void event.refetch()} />;
-  if (map.isError) return <QueryState error={map.error} retry={() => void map.refetch()} />;
-  const seats = map.data?.seats ?? [];
-  if (!seats.length)
+  if (event.isError || !event.data)
     return (
-      <EmptyState
-        title="Seat inventory is not available"
-        description="The organiser has not published seat inventory for this event yet."
-        action={
-          <Link to={`/events/${eventId}`} className="button button-secondary">
-            Back to event
-          </Link>
-        }
+      <QueryState
+        error={event.error}
+        retry={() => void event.refetch()}
+        notFound={!event.data}
+        serviceName="event service"
       />
     );
-  const total = selected.reduce(
-    (sum, id) => sum + (seats.find((seat) => seat.seatId === id)?.price ?? 0),
-    0,
-  );
+
   return (
     <section className="container page-section">
-      <Link to={`/events/${eventId}`} className="back-link">
-        ← {event.data?.name}
+      <Link to={`/events/${encodeURIComponent(event.data.eventId)}`} className="back-link">
+        ← {event.data.name}
       </Link>
       <div className="page-heading">
         <div>
           <p className="eyebrow">Step 1 of 2</p>
-          <h1>Choose your seats</h1>
-          <p className="lede">Select available seats. Inventory is held only after you continue.</p>
+          <h1>Choose ticket or seat references</h1>
+          <p className="lede">
+            The current ESB contract accepts up to 10 <code>seatIds</code>. Seat-map browsing is not
+            published by the public ESB API yet, so this restored UI uses explicit seat references.
+          </p>
         </div>
       </div>
-      <div className="seat-layout">
-        <Card className="seat-map-card">
-          <div className="seat-stage">STAGE</div>
-          <div className="seat-grid" role="group" aria-label="Seat map">
-            {seats.map((seat) => {
-              const unavailable = seat.status !== 'AVAILABLE';
-              const active = selected.includes(seat.seatId);
-              return (
-                <button
-                  key={seat.seatId}
-                  type="button"
-                  className={`seat ${active ? 'seat-selected' : ''} ${unavailable ? 'seat-unavailable' : ''}`}
-                  disabled={unavailable || reserve.isPending}
-                  aria-pressed={active}
-                  aria-label={`${seat.label || seat.seatId}, ${unavailable ? seat.status.toLowerCase() : 'available'}`}
-                  onClick={() =>
-                    setSelected((current) =>
-                      active
-                        ? current.filter((item) => item !== seat.seatId)
-                        : [...current, seat.seatId],
-                    )
-                  }
-                >
-                  <Armchair size={15} />
-                  <span>{seat.label || seat.seatId}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="seat-legend">
-            <span>
-              <i className="legend-dot available" /> Available
-            </span>
-            <span>
-              <i className="legend-dot selected" /> Selected
-            </span>
-            <span>
-              <i className="legend-dot unavailable" /> Unavailable
-            </span>
+
+      {event.data.ticketTypes.length > 0 && (
+        <div className="event-grid">
+          {event.data.ticketTypes.map((ticketType, index) => (
+            <Card padded key={ticketType.ticketTypeId ?? index}>
+              <div className="event-card-meta">
+                <Badge tone="information">Ticket type</Badge>
+              </div>
+              <h2>{ticketType.name ?? `Option ${index + 1}`}</h2>
+              {ticketType.price && (
+                <p>
+                  {ticketType.price.amountMinor.toLocaleString()} {ticketType.price.currency}
+                </p>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div className="detail-layout">
+        <Card padded className="detail-main">
+          <label htmlFor="seat-ids">
+            <strong>Seat IDs</strong>
+          </label>
+          <Input
+            id="seat-ids"
+            value={seatText}
+            onChange={(inputEvent) => setSeatText(inputEvent.target.value)}
+            placeholder="A01, A02"
+            aria-describedby="seat-help"
+          />
+          <p id="seat-help" className="muted">
+            Separate values with commas or spaces. Availability is validated authoritatively by Seat
+            Inventory through the ESB when the booking is submitted.
+          </p>
+          <div className="event-card-meta">
+            {seatIds.map((seatId) => (
+              <Badge key={seatId}>{seatId}</Badge>
+            ))}
           </div>
         </Card>
-        <Card className="booking-panel">
-          <Badge tone="information">{event.data?.name}</Badge>
-          <h2>Your selection</h2>
-          {selected.length ? (
-            <ul className="selection-list">
-              {selected.map((id) => {
-                const seat = seats.find((item) => item.seatId === id);
-                return (
-                  <li key={id}>
-                    <span>{seat?.label || id}</span>
-                    <strong>
-                      {seat?.price
-                        ? `${seat.currency ?? 'VND'} ${seat.price.toLocaleString()}`
-                        : 'Price on checkout'}
-                    </strong>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="muted">
-              <Info size={16} /> Choose at least one available seat.
-            </p>
-          )}
-          <div className="total-row">
-            <span>Estimated total</span>
-            <strong>{total ? `VND ${total.toLocaleString()}` : '—'}</strong>
+        <Card padded className="booking-panel">
+          <h2>Selection summary</h2>
+          <p>
+            <Ticket size={16} /> {seatIds.length} reference{seatIds.length === 1 ? '' : 's'}
+          </p>
+          <div className="notice notice-information">
+            <Info size={18} />
+            <span>
+              The UI never decides that a seat is available; the backend remains authoritative.
+            </span>
           </div>
           <Button
             fullWidth
-            disabled={!selected.length || reserve.isPending}
+            disabled={seatIds.length === 0}
             onClick={() =>
-              reserve.mutate(
-                {
-                  eventId: eventId as string,
-                  seatIds: selected,
-                  idempotencyKey: crypto.randomUUID(),
+              navigate('/checkout', {
+                state: {
+                  eventId: event.data.eventId,
+                  eventName: event.data.name,
+                  seatIds,
                 },
-                {
-                  onSuccess: (result) =>
-                    navigate(
-                      `/checkout?reservationId=${encodeURIComponent(result.reservationId)}&eventId=${encodeURIComponent(eventId as string)}`,
-                    ),
-                },
-              )
+              })
             }
           >
-            {reserve.isPending ? 'Holding seats…' : 'Continue to checkout'} <ArrowRight size={17} />
+            Continue to checkout <ArrowRight size={17} />
           </Button>
-          {reserve.isError && (
-            <p className="form-error">
-              {reserve.error instanceof ApiError
-                ? reserve.error.message
-                : 'Seats could not be held. Refresh and try again.'}
-            </p>
-          )}
         </Card>
       </div>
     </section>

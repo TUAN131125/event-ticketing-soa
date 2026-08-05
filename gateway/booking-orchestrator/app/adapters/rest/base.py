@@ -10,6 +10,7 @@ import httpx
 from app.domain.errors import (
     AmbiguousOutcome,
     BusinessFault,
+    CommandNotDispatched,
     DependencyFailure,
     EsbError,
 )
@@ -53,26 +54,38 @@ class RestClient:
         ambiguous_command: bool = False,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Any:
-        headers = {
-            "Authorization": f"Bearer {self.signer.service_token(self.audience)}",
-            "X-Correlation-ID": context.correlation_id,
-        }
+        headers = {"X-Correlation-ID": context.correlation_id}
         if context.trace_id:
             headers["traceparent"] = context.trace_id
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
         headers.update(extra_headers or {})
 
+        # Tracks whether any byte left this process, so callers can tell a command that
+        # was never sent from one whose outcome is genuinely unknown.
+        dispatched = False
+
         async def invoke() -> Any:
+            nonlocal dispatched
+            attempt_headers = {
+                **headers,
+                "Authorization": f"Bearer {self.signer.service_token(self.audience)}",
+            }
             try:
                 if raw_body is not None:
-                    response = await self.http.request(method, f"{self.base_url}{path}", content=raw_body, headers=headers)
+                    response = await self.http.request(method, f"{self.base_url}{path}", content=raw_body, headers=attempt_headers)
                 else:
-                    response = await self.http.request(method, f"{self.base_url}{path}", json=json_body, headers=headers)
+                    response = await self.http.request(method, f"{self.base_url}{path}", json=json_body, headers=attempt_headers)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                # The connection never opened, so no request byte reached the provider.
+                raise CommandNotDispatched(path, "CONNECT_FAILED") from exc
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                # The request was written; the answer may simply have been lost.
+                dispatched = True
                 if ambiguous_command:
                     raise AmbiguousOutcome(path) from exc
                 raise DependencyFailure("DEPENDENCY_UNAVAILABLE", "Dependency is unavailable.", 503, True) from exc
+            dispatched = True
             if response.status_code >= 400:
                 error = self._safe_error(response)
                 if 400 <= response.status_code < 500:
@@ -99,6 +112,14 @@ class RestClient:
         started = time.perf_counter()
         try:
             result = await self.resilience.execute(invoke, retry_class, context)
+        except AmbiguousOutcome as exc:
+            await self._observe(path, context, "FAILURE", started, exc.code)
+            raise
+        except DependencyFailure as exc:
+            await self._observe(path, context, "FAILURE", started, exc.code)
+            if dispatched:
+                raise
+            raise CommandNotDispatched(path, exc.code) from exc
         except EsbError as exc:
             await self._observe(path, context, "FAILURE", started, exc.code)
             raise

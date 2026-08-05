@@ -1,11 +1,20 @@
-name: Contract validation
+name: Contracts
 
 on:
   pull_request:
     paths:
       - 'contracts/**'
+      - 'services/**'
+      - 'gateway/booking-orchestrator/**'
+      - 'frontend/**'
       - '.github/workflows/contracts.yml'
-      - 'gateway/booking-orchestrator/ESB_DEPENDENCIES.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'services/**'
+      - 'gateway/booking-orchestrator/**'
+      - 'frontend/**'
   workflow_dispatch:
 
 permissions:
@@ -16,26 +25,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-
-      - name: Install contract validation dependencies
-        run: python -m pip install --disable-pip-version-check pyyaml==6.0.2 jsonschema==4.23.0 lxml==5.3.0
-
+      - run: python -m pip install pyyaml==6.0.3 jsonschema==4.23.0 lxml==6.1.0
       - name: Validate canonical contracts
         run: python contracts/scripts/validate_contracts.py
-
-      - name: Build runtime contract artifacts
+      - name: Build runtime artifacts
         run: python contracts/scripts/build_contracts.py
-
-      - name: Upload contract bundle
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: event-ticketing-contracts
           path: dist/contracts/

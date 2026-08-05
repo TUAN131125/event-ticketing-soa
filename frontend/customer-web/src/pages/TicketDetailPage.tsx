@@ -1,50 +1,44 @@
-import { Link, useParams } from 'react-router-dom';
-import { Download, Ticket as TicketIcon } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, Spinner } from '@event-ticketing/shared-ui';
-import { useTicket } from '../app/hooks';
-import { QueryState } from './PageState';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { QrCode, Ticket } from 'lucide-react';
+import { Badge, Card, EmptyState } from '@event-ticketing/shared-ui';
+import { useBooking } from '../app/hooks';
+
 export function TicketDetailPage() {
-  const { ticketId } = useParams();
-  const result = useTicket(ticketId);
-  if (result.isLoading)
+  const { ticketId = '' } = useParams();
+  const [params] = useSearchParams();
+  const bookingId = params.get('bookingId') ?? undefined;
+  const booking = useBooking(bookingId);
+  if (!bookingId)
     return (
-      <section className="container page-section page-state">
-        <Spinner label="Loading ticket" />
-      </section>
+      <EmptyState
+        title="Booking reference required"
+        description="The current public ESB contract returns ticket IDs inside BookingResult but does not publish a ticket-detail endpoint."
+        action={
+          <Link className="button button-primary" to="/bookings">
+            Find booking
+          </Link>
+        }
+      />
     );
-  if (result.isError || !result.data)
-    return <QueryState error={result.error} retry={() => void result.refetch()} />;
-  const ticket = result.data;
   return (
-    <section className="container page-section narrow-page">
-      <Link to={`/bookings/${ticket.bookingId}`} className="back-link">
+    <section className="container page-section">
+      <Link to={`/bookings/${encodeURIComponent(bookingId)}`} className="back-link">
         ← Booking
       </Link>
-      <Card className="ticket-card">
-        <div className="ticket-top">
-          <div className="result-icon">
-            <TicketIcon size={26} />
-          </div>
-          <div>
-            <p className="eyebrow">Digital ticket</p>
-            <h1>{ticket.event?.name || ticket.ticketId}</h1>
-            <Badge tone={ticket.status === 'VALID' ? 'success' : 'warning'}>{ticket.status}</Badge>
-          </div>
+      <Card padded className="ticket-card">
+        <Ticket size={30} />
+        <p className="eyebrow">Ticket reference</p>
+        <h1>{ticketId}</h1>
+        <Badge tone={booking.data?.ticketIds?.includes(ticketId) ? 'success' : 'warning'}>
+          {booking.data?.ticketIds?.includes(ticketId) ? 'ISSUED' : 'VERIFYING'}
+        </Badge>
+        <div className="qr-placeholder" aria-label="QR not exposed by public contract">
+          <QrCode size={80} />
         </div>
-        {ticket.qrCode ? (
-          <div className="ticket-code">
-            <img src={ticket.qrCode} width="180" height="180" alt="Ticket QR code" />
-            <span>{ticket.seatLabel || 'Seat assigned at venue'}</span>
-          </div>
-        ) : (
-          <EmptyState
-            title="QR code not available yet"
-            description="Your ticket code will appear after the booking service confirms payment."
-          />
-        )}
-        <Button variant="secondary" onClick={() => window.print()}>
-          <Download size={16} /> Print ticket
-        </Button>
+        <p className="muted">
+          QR payload and check-in details are intentionally not fabricated. They can be shown after
+          a public ticket contract is added to the ESB.
+        </p>
       </Card>
     </section>
   );

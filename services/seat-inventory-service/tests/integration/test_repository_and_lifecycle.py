@@ -121,7 +121,8 @@ def test_full_reserve_extend_confirm_lifecycle_is_audited_and_idempotent(
             select(func.count()).select_from(IdempotencyRecordModel)
         ).scalar_one()
     assert audit_count == 7  # 3 configure + 2 reserve + 2 confirm
-    assert idempotency_count == 4
+    # ConfigureInventory is idempotent too, so it stores a replay record of its own.
+    assert idempotency_count == 5
 
 
 @pytest.mark.integration
@@ -207,7 +208,8 @@ def test_multi_seat_reserve_rolls_back_when_one_seat_is_unavailable(
         SeatStatus.BLOCKED,
     ]
     assert reservations == 0
-    assert idempotency == 0
+    # Only the ConfigureInventory replay record survives; the reserve stored none.
+    assert idempotency == 1
 
 
 @pytest.mark.integration

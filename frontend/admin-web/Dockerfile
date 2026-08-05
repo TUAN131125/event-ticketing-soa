@@ -2,8 +2,10 @@
 # docker build -f admin-web/Dockerfile .
 FROM node:22-alpine AS build
 WORKDIR /workspace
+# Every workspace manifest is required for `npm ci` to reproduce the single root lockfile.
 COPY package*.json ./
 COPY shared-ui/package*.json ./shared-ui/
+COPY customer-web/package*.json ./customer-web/
 COPY admin-web/package*.json ./admin-web/
 RUN npm ci
 COPY shared-ui ./shared-ui
@@ -12,11 +14,9 @@ COPY admin-web ./admin-web
 ARG VITE_IDENTITY_API_URL
 ARG VITE_ESB_API_URL
 ARG VITE_REALTIME_WS_URL
-ARG VITE_AUTH_TRANSPORT
 ENV VITE_IDENTITY_API_URL=$VITE_IDENTITY_API_URL \
     VITE_ESB_API_URL=$VITE_ESB_API_URL \
-    VITE_REALTIME_WS_URL=$VITE_REALTIME_WS_URL \
-    VITE_AUTH_TRANSPORT=$VITE_AUTH_TRANSPORT
+    VITE_REALTIME_WS_URL=$VITE_REALTIME_WS_URL
 RUN npm run build --workspace @event-ticketing/admin-web
 
 FROM nginx:1.27-alpine

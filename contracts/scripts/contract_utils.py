@@ -97,22 +97,38 @@ def manifest_artifacts(manifest: dict[str, Any]) -> list[Artifact]:
     result: list[Artifact] = []
     contracts = manifest.get("runtimeContracts")
     if not isinstance(contracts, list):
-        raise ContractError(MANIFEST_PATH, "manifest.runtimeContracts", "must be a list")
+        raise ContractError(
+            MANIFEST_PATH, "manifest.runtimeContracts", "must be a list"
+        )
     for contract in contracts:
         if not isinstance(contract, dict):
-            raise ContractError(MANIFEST_PATH, "manifest.contract", "entry must be a mapping")
+            raise ContractError(
+                MANIFEST_PATH, "manifest.contract", "entry must be a mapping"
+            )
         contract_id = contract.get("id")
         port = contract.get("port")
         entries = contract.get("artifacts")
         if not isinstance(contract_id, str) or not isinstance(entries, list):
-            raise ContractError(MANIFEST_PATH, "manifest.contract", "id and artifacts are required")
+            raise ContractError(
+                MANIFEST_PATH, "manifest.contract", "id and artifacts are required"
+            )
         for entry in entries:
             if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
-                raise ContractError(MANIFEST_PATH, "manifest.artifact", f"invalid artifact for {contract_id}")
+                raise ContractError(
+                    MANIFEST_PATH,
+                    "manifest.artifact",
+                    f"invalid artifact for {contract_id}",
+                )
             relative = entry["path"]
             relative_path = Path(relative)
-            if relative_path.is_absolute() or ".." in relative_path.parts or len(relative_path.parts) != 1:
-                raise ContractError(MANIFEST_PATH, "manifest.path", f"artifact must be flat: {relative}")
+            if (
+                relative_path.is_absolute()
+                or ".." in relative_path.parts
+                or len(relative_path.parts) != 1
+            ):
+                raise ContractError(
+                    MANIFEST_PATH, "manifest.path", f"artifact must be flat: {relative}"
+                )
             result.append(
                 Artifact(
                     contract_id=contract_id,

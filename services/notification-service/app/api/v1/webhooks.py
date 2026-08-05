@@ -1,37 +1,70 @@
-"""Webhook endpoint - noi ESB goi toi sau khi co su kien nghiep vu.
+"""Generic signed canonical Notification webhook ingress."""
 
-Luon tra HTTP 200 kem truong "status" ("SENT" / "DUPLICATE_IGNORED") -
-day la dung hop dong webhook idempotent: khong bao gio tra 4xx/5xx cho
-truong hop trung lap, de ESB khong hieu nham la loi va retry vo han.
-"""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.application.commands.handle_booking_confirmed import handle_booking_confirmed
-from app.application.commands.handle_booking_failed import handle_booking_failed
 from app.dependencies import get_provider, get_repository
+from app.domain.entities import Delivery
+from app.domain.enums import DeliveryStatus
+from app.middleware.authentication import require_webhook_hmac
 from app.providers.email_provider import EmailProvider
 from app.repositories.interfaces import DeliveryRepository
-from app.schemas.requests import BookingConfirmedPayload, BookingFailedPayload
-from app.schemas.responses import WebhookResultResponse
+from app.schemas.requests import EventEnvelopeRequest
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
-@router.post("/booking-confirmed", response_model=WebhookResultResponse)
-def booking_confirmed(
-    payload: BookingConfirmedPayload,
-    repo: DeliveryRepository = Depends(get_repository),
-    provider: EmailProvider = Depends(get_provider),
-):
-    status_ = handle_booking_confirmed(repo, provider, payload.model_dump())
-    return WebhookResultResponse(status=status_)
+def _content(payload: EventEnvelopeRequest) -> tuple[str, str, str]:
+    recipient = str(payload.data.get("customerEmail", ""))
+    subject = {
+        "booking.confirmed": "Booking confirmed",
+        "booking.failed": "Booking failed",
+        "event.changed": "Event changed",
+        "ticket.issued": "Ticket issued",
+    }[payload.event_type]
+    return recipient, subject, str(payload.data)
 
 
-@router.post("/booking-failed", response_model=WebhookResultResponse)
-def booking_failed(
-    payload: BookingFailedPayload,
+@router.post(
+    "/events",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="receiveEventWebhook",
+    dependencies=[Depends(require_webhook_hmac)],
+    openapi_extra={
+        "parameters": [
+            {
+                "name": "X-Webhook-Timestamp",
+                "in": "header",
+                "required": True,
+                "schema": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": r"(?:Z|\+00:00)$",
+                },
+            }
+        ]
+    },
+)
+def receive_event(
+    payload: EventEnvelopeRequest,
     repo: DeliveryRepository = Depends(get_repository),
     provider: EmailProvider = Depends(get_provider),
-):
-    status_ = handle_booking_failed(repo, provider, payload.model_dump())
-    return WebhookResultResponse(status=status_)
+) -> Response:
+    if repo.get_by_event_id(payload.event_id) is not None:
+        raise HTTPException(
+            status_code=409, detail="Webhook event was already accepted"
+        )
+    recipient, subject, body = _content(payload)
+    delivery = Delivery.create(
+        repo.next_id(), payload.event_id, recipient, subject, body
+    )
+    repo.add(delivery)
+    delivery.attempt_count = 1
+    try:
+        provider.send(to=recipient, subject=subject, body=body)
+        delivery.status = DeliveryStatus.DELIVERED
+    except Exception:  # noqa: BLE001 -- delivery failure is persisted for retry
+        delivery.status = DeliveryStatus.RETRY_PENDING
+        delivery.last_error_code = "PROVIDER_FAILURE"
+    delivery.resource_version += 1
+    repo.update(delivery)
+    return Response(status_code=status.HTTP_202_ACCEPTED)

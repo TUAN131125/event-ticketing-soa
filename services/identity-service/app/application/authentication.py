@@ -49,9 +49,7 @@ class AuthenticationUseCase:
         self._tokens = token_service
         self._session_issuer = session_issuer
 
-    def login(
-        self, email: str, password: str, context: RequestContext
-    ) -> LoginOutcome:
+    def login(self, email: str, password: str, context: RequestContext) -> LoginOutcome:
         _, normalized_email = normalize_email(email)
         pending_error: IdentityError | None = None
         outcome: LoginOutcome | None = None
@@ -76,9 +74,7 @@ class AuthenticationUseCase:
                 )
                 pending_error = RateLimited(retry_after)
             else:
-                user = users.find_by_normalized_email(
-                    normalized_email, for_update=True
-                )
+                user = users.find_by_normalized_email(normalized_email, for_update=True)
                 encoded_hash = (
                     user.password_hash
                     if user is not None

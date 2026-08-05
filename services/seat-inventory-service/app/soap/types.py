@@ -54,7 +54,7 @@ def request_context(operation: etree._Element) -> RequestContext:
             node, "idempotencyKey", required=False, default=None
         ),
         caller_service=child_text(node, "callerService") or "",
-        actor_id=child_text(node, "actorId", required=False, default=None),
+        actor_id=None,
         schema_version=child_text(node, "schemaVersion") or "",
     )
 
@@ -63,11 +63,33 @@ def seat_ids(operation: etree._Element) -> tuple[str, ...]:
     parent = operation.find(qname("seatIds"))
     if parent is None:
         raise InvalidRequest("seatIds is required")
-    return tuple(
-        node.text.strip()
-        for node in parent.findall(qname("seatId"))
-        if node.text and node.text.strip()
-    )
+    values: list[str] = []
+    for seat in parent.findall(qname("seat")):
+        seat_id = child_text(seat, "seatId")
+        if seat_id:
+            values.append(seat_id)
+    return tuple(values)
+
+
+def seat_definitions(operation: etree._Element) -> tuple[tuple[str, ...], ...]:
+    """Return raw seat rows: id, section, row, number, ticket type, status."""
+    parent = operation.find(qname("seats"))
+    if parent is None:
+        raise InvalidRequest("seats is required")
+    rows: list[tuple[str, ...]] = []
+    for seat in parent.findall(qname("seat")):
+        rows.append(
+            (
+                child_text(seat, "seatId") or "",
+                child_text(seat, "section") or "",
+                child_text(seat, "rowLabel") or "",
+                child_text(seat, "seatNumber") or "",
+                child_text(seat, "ticketTypeCode") or "",
+                child_text(seat, "status", required=False, default="AVAILABLE")
+                or "AVAILABLE",
+            )
+        )
+    return tuple(rows)
 
 
 def operation_name(operation: etree._Element) -> str:

@@ -1,18 +1,17 @@
-"""SQLAlchemy ORM model - khop voi bang events/ticket_types duoc tao trong
-migrations/versions/. Day la nguon su that duy nhat cho cau truc bang
-(giong quy uoc cua customer-service - moi service tu quan ly schema cua
-minh qua Alembic, giong seat-inventory-service).
-"""
+"""SQLAlchemy models for canonical Event resources."""
+
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Sequence, String
-from sqlalchemy.orm import declarative_base, relationship
+from datetime import datetime
 
-Base = declarative_base()
+from sqlalchemy import DateTime, ForeignKey, Integer, Sequence, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# Sequence rieng cho schema "event", dung de sinh id dang EV001, EV002, ...
-# ngay tai tang database - tranh dung id giua nhieu instance/worker cua
-# service khi chay voi nhieu uvicorn worker hoac nhieu container.
+
+class Base(DeclarativeBase):
+    pass
+
+
 event_id_seq = Sequence("event_id_seq", start=1, schema="event")
 
 
@@ -20,14 +19,25 @@ class EventModel(Base):
     __tablename__ = "events"
     __table_args__ = {"schema": "event"}
 
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    location = Column(String, nullable=False)
-    start_time = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="DRAFT")
-    created_at = Column(DateTime(timezone=True), nullable=False)
-
-    ticket_types = relationship(
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    venue: Mapped[str] = mapped_column(String, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sale_starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    sale_ends_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="DRAFT")
+    resource_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    ticket_types: Mapped[list[TicketTypeModel]] = relationship(
         "TicketTypeModel",
         back_populates="event",
         cascade="all, delete-orphan",
@@ -39,11 +49,12 @@ class TicketTypeModel(Base):
     __tablename__ = "ticket_types"
     __table_args__ = {"schema": "event"}
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    event_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(
         String, ForeignKey("event.events.id", ondelete="CASCADE"), nullable=False
     )
-    type = Column(String, nullable=False)
-    price = Column(Integer, nullable=False)
-
-    event = relationship("EventModel", back_populates="ticket_types")
+    code: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False)
+    event: Mapped[EventModel] = relationship(back_populates="ticket_types")

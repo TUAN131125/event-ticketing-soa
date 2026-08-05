@@ -21,9 +21,7 @@ def _sha256(path: Path) -> str:
 
 
 def _aggregate(entries: list[tuple[str, str]]) -> str:
-    payload = "".join(
-        f"{path}\0{digest}\n" for path, digest in sorted(entries)
-    )
+    payload = "".join(f"{path}\0{digest}\n" for path, digest in sorted(entries))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -83,9 +81,7 @@ def _source_catalog_sha(directory: Path, manifest: dict[str, Any]) -> str:
     entries = _source_entries(manifest)
     if len(entries) != 13:
         raise RuntimeError("canonical contract inventory must contain 13 artifacts")
-    return _aggregate(
-        [(relative, _sha256(_flat_artifact(directory, relative))) for relative in entries]
-    )
+    return _aggregate([(relative, _sha256(_flat_artifact(directory, relative))) for relative in entries])
 
 
 def _catalog_sha(directory: Path) -> str:
@@ -113,9 +109,6 @@ def verify_contract_freeze(directory: Path = CONTRACT_DIRECTORY) -> None:
         return
 
     manifest = _load_document(directory / "manifest.yaml")
-    if (
-        manifest.get("catalogVersion") != "1.0.0"
-        or manifest.get("sourceOfTruth") != "contracts/"
-    ):
+    if manifest.get("catalogVersion") != "1.0.0" or manifest.get("sourceOfTruth") != "contracts/":
         raise RuntimeError("unexpected canonical contract catalog")
     _source_catalog_sha(directory, manifest)

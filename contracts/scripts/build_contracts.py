@@ -22,7 +22,9 @@ from validate_contracts import validate_contracts
 
 def build_manifest(source: dict[str, Any]) -> dict[str, Any]:
     entries: list[dict[str, Any]] = []
-    for artifact in sorted(manifest_artifacts(source), key=lambda item: item.relative_path):
+    for artifact in sorted(
+        manifest_artifacts(source), key=lambda item: item.relative_path
+    ):
         entry: dict[str, Any] = {
             "contractId": artifact.contract_id,
             "path": artifact.relative_path,

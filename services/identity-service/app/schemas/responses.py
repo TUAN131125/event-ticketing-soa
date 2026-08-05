@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import EmailStr, Field
@@ -23,10 +23,10 @@ class User(ClosedModel):
     @classmethod
     def from_view(cls, user: UserView) -> User:
         return cls(
-            userId=user.user_id,
+            userId=UUID(user.user_id),
             email=user.email,
-            status=user.status,
-            roles=list(user.roles),
+            status=cast(Literal["ACTIVE", "DISABLED"], user.status),
+            roles=[Role(value) for value in user.roles],
             tokenVersion=user.token_version,
             createdAt=user.created_at,
         )
@@ -64,8 +64,8 @@ class RoleChangeResponse(ClosedModel):
     def from_result(cls, result: RoleChange) -> RoleChangeResponse:
         return cls(
             user=User.from_view(result.user),
-            role=result.role,
-            action=result.action,
+            role=Role(result.role),
+            action=result.action.value,
             changed=result.changed,
         )
 

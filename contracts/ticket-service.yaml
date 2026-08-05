@@ -311,8 +311,6 @@ components:
       example:
         amountMinor: 250000
         currency: VND
-    PageMeta:
-      $ref: '#/components/schemas/PageMeta'
     TicketIssue:
       type: object
       additionalProperties: false

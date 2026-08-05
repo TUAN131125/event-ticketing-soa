@@ -28,6 +28,7 @@ export function EventDetailPage() {
         error={result.error}
         retry={() => void result.refetch()}
         notFound={!result.data && !result.error}
+        serviceName="event service"
       />
     );
   const event = result.data;
@@ -50,7 +51,7 @@ export function EventDetailPage() {
             {event.description || 'Event details will be published by the organiser.'}
           </p>
         </div>
-        <Card className="booking-panel">
+        <Card padded className="booking-panel">
           <h2>Ready to go?</h2>
           <dl className="facts">
             <div>

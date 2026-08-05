@@ -1,101 +1,249 @@
+import type { components } from '@event-ticketing/shared-ui/esb-contract';
 import { ApiError } from './auth-client';
 
-export interface EventSummary {
-  eventId: string;
-  name: string;
-  venue?: string;
-  startsAt?: string;
-  endsAt?: string;
-  status?: string;
-  imageUrl?: string;
+export type ContractEvent = components['schemas']['PublicEvent'];
+export type ContractBooking = components['schemas']['BookingResult'];
+export type PlaceBookingRequest = components['schemas']['PlaceBookingRequest'];
+export type RealtimeWsTicket = components['schemas']['WsTicketResponse'];
+export type TraceStep = components['schemas']['TraceStep'];
+
+export type TicketType = {
+  ticketTypeId?: string;
+  name?: string;
+  price?: { amountMinor: number; currency: string };
+  [key: string]: unknown;
+};
+
+export type EventSummary = Omit<ContractEvent, 'ticketTypes'> & {
+  ticketTypes: TicketType[];
   description?: string;
   category?: string;
-}
-export interface Seat {
-  seatId: string;
-  label?: string;
-  section?: string;
-  row?: string;
-  number?: string | number;
-  status: string;
-  price?: number;
-  currency?: string;
-}
-export interface SeatMap {
-  eventId: string;
-  seats: Seat[];
-  inventoryVersion?: number;
-}
-export interface Reservation {
-  reservationId: string;
-  bookingId?: string;
-  eventId: string;
-  seatIds: string[];
-  status: string;
-  expiresAt?: string;
-  total?: number;
-  currency?: string;
-}
-export interface Booking {
-  bookingId: string;
+  imageUrl?: string;
+};
+
+export type Booking = ContractBooking & {
   eventId?: string;
-  status: string;
-  total?: number;
-  currency?: string;
-  createdAt?: string;
-  seats?: string[];
-  ticketIds?: string[];
-  event?: EventSummary;
-}
-export interface Ticket {
-  ticketId: string;
-  bookingId: string;
-  status: string;
-  qrCode?: string;
-  seatLabel?: string;
-  event?: EventSummary;
-}
+  seatIds?: string[];
+};
+
 export interface Page<T> {
   items: T[];
   page: number;
   pageSize: number;
   total: number;
 }
-export interface RealtimeWsTicket {
-  ticket: string;
-  bookingId: string;
-  expiresAt: string;
+
+/**
+ * Result of `POST /api/bookings`. `201` is a settled outcome; `202` means the payment
+ * result is still unknown and the ESB is reconciling it. The contract requires the client
+ * to poll `Location` instead of resubmitting the booking command.
+ */
+export interface BookingSubmission {
+  booking: Booking;
+  reconciling: boolean;
+  retryAfterSeconds: number | null;
+  statusPath: string | null;
 }
 
-function asObject(value: unknown): Record<string, unknown> {
+export const DEFAULT_BOOKING_POLL_SECONDS = 3;
+
+const bookingContextKey = (bookingId: string) => `evently.booking.${bookingId}`;
+const bookingIndexKey = 'evently.bookingIds';
+
+function readObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
-function text(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
+
+function rememberBookingContext(booking: Booking, request?: PlaceBookingRequest): Booking {
+  const merged: Booking = {
+    ...booking,
+    eventId: request?.eventId ?? booking.eventId,
+    seatIds: request?.seatIds ?? booking.seatIds,
+  };
+  try {
+    sessionStorage.setItem(bookingContextKey(booking.bookingId), JSON.stringify(merged));
+    const ids = JSON.parse(localStorage.getItem(bookingIndexKey) ?? '[]') as unknown;
+    const list = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+    localStorage.setItem(
+      bookingIndexKey,
+      JSON.stringify(
+        [booking.bookingId, ...list.filter((id) => id !== booking.bookingId)].slice(0, 20),
+      ),
+    );
+  } catch {
+    // Storage is a convenience only; authoritative state always comes from the ESB.
+  }
+  return merged;
 }
-function array<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
+
+function mergeStoredContext(booking: ContractBooking): Booking {
+  try {
+    const raw = sessionStorage.getItem(bookingContextKey(booking.bookingId));
+    if (!raw) return booking;
+    const context = readObject(JSON.parse(raw));
+    return {
+      ...booking,
+      eventId: typeof context.eventId === 'string' ? context.eventId : undefined,
+      seatIds: Array.isArray(context.seatIds)
+        ? context.seatIds.filter((seat): seat is string => typeof seat === 'string')
+        : undefined,
+    };
+  } catch {
+    return booking;
+  }
+}
+
+export function recentBookingIds(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(bookingIndexKey) ?? '[]') as unknown;
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export class EsbClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly getToken: () => string | null;
+  private readonly bookingEtags = new Map<string, string>();
+
   constructor(
     options: { baseUrl?: string; fetchImpl?: typeof fetch; getToken?: () => string | null } = {},
   ) {
     this.baseUrl = (options.baseUrl ?? import.meta.env.VITE_ESB_API_URL ?? '').replace(/\/$/, '');
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // `fetch` must be called with the global as its receiver. Storing the bare function on
+    // the instance and calling `this.fetchImpl(...)` makes the receiver this client, which
+    // browsers reject with "Illegal invocation" before any request is sent. The wrapper also
+    // keeps the lookup late so a replaced global is honoured.
+    this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
     this.getToken = options.getToken ?? (() => null);
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    if (!this.baseUrl)
-      throw new ApiError(503, {
+  async listEvents(
+    params: { query?: string; category?: string; page?: number; pageSize?: number } = {},
+  ): Promise<Page<EventSummary>> {
+    const events = (await this.request<ContractEvent[]>('/api/events')).body.map((event) =>
+      this.normaliseEvent(event),
+    );
+    const query = params.query?.trim().toLocaleLowerCase();
+    const category = params.category?.trim().toLocaleUpperCase();
+    const filtered = events.filter((event) => {
+      const searchText = `${event.name} ${event.venue} ${event.status}`.toLocaleLowerCase();
+      const matchesQuery = !query || searchText.includes(query);
+      const matchesCategory = !category || event.category?.toLocaleUpperCase() === category;
+      return matchesQuery && matchesCategory;
+    });
+    const page = Math.max(1, params.page ?? 1);
+    const pageSize = Math.max(1, params.pageSize ?? 12);
+    const start = (page - 1) * pageSize;
+    return {
+      items: filtered.slice(start, start + pageSize),
+      page,
+      pageSize,
+      total: filtered.length,
+    };
+  }
+
+  async getEvent(eventId: string): Promise<EventSummary> {
+    const result = await this.request<ContractEvent>(`/api/events/${encodeURIComponent(eventId)}`);
+    return this.normaliseEvent(result.body);
+  }
+
+  async createBooking(
+    payload: PlaceBookingRequest,
+    idempotencyKey: string,
+  ): Promise<BookingSubmission> {
+    const result = await this.request<ContractBooking>('/api/bookings', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload),
+    });
+    this.rememberEtag(result.body.bookingId, result.etag);
+    const retryAfter = Number.parseInt(result.headers.get('Retry-After') ?? '', 10);
+    return {
+      booking: rememberBookingContext(result.body, payload),
+      reconciling: result.status === 202,
+      retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+      statusPath: result.headers.get('Location'),
+    };
+  }
+
+  async getBooking(bookingId: string): Promise<Booking> {
+    const result = await this.request<ContractBooking>(
+      `/api/bookings/${encodeURIComponent(bookingId)}`,
+    );
+    this.rememberEtag(bookingId, result.etag);
+    return mergeStoredContext(result.body);
+  }
+
+  async cancelBooking(
+    bookingId: string,
+    idempotencyKey: string = crypto.randomUUID(),
+  ): Promise<Booking> {
+    // The contract makes If-Match required, so the authoritative ETag is read first.
+    if (!this.bookingEtags.has(bookingId)) await this.getBooking(bookingId);
+    const ifMatch = this.bookingEtags.get(bookingId);
+    if (!ifMatch)
+      throw new ApiError(428, {
         error: {
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Event services are not configured.',
+          code: 'PRECONDITION_REQUIRED',
+          message: 'The booking version is unavailable, so cancellation cannot be sent safely.',
           retryable: true,
+        },
+      });
+    const result = await this.request<ContractBooking>(
+      `/api/bookings/${encodeURIComponent(bookingId)}/cancel`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': ifMatch },
+      },
+    );
+    this.rememberEtag(bookingId, result.etag);
+    return rememberBookingContext(mergeStoredContext(result.body));
+  }
+
+  async getTrace(correlationId: string): Promise<TraceStep[]> {
+    return (await this.request<TraceStep[]>(`/api/traces/${encodeURIComponent(correlationId)}`))
+      .body;
+  }
+
+  async issueRealtimeWsTicket(bookingId: string): Promise<RealtimeWsTicket> {
+    return (
+      await this.request<RealtimeWsTicket>('/api/realtime/ws-tickets', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ bookingId }),
+      })
+    ).body;
+  }
+
+  private normaliseEvent(event: ContractEvent): EventSummary {
+    const rawTicketTypes = Array.isArray(event.ticketTypes) ? event.ticketTypes : [];
+    const ticketTypes = rawTicketTypes.map((value) => readObject(value) as TicketType);
+    return {
+      ...event,
+      ticketTypes,
+      category:
+        typeof ticketTypes[0]?.category === 'string' ? String(ticketTypes[0].category) : undefined,
+    };
+  }
+
+  private rememberEtag(bookingId: string, etag: string | null): void {
+    if (etag) this.bookingEtags.set(bookingId, etag);
+  }
+
+  private async request<T>(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<{ body: T; etag: string | null; status: number; headers: Headers }> {
+    // A missing build-time URL is a deployment defect, not an unavailable service.
+    if (!this.baseUrl)
+      throw new ApiError(0, {
+        error: {
+          code: 'CONFIGURATION_ERROR',
+          message: 'This build has no ESB URL configured.',
+          retryable: false,
         },
       });
     const headers = new Headers(init.headers);
@@ -103,7 +251,7 @@ export class EsbClient {
     headers.set('X-Correlation-ID', crypto.randomUUID());
     const token = this.getToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
-    if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    if (init.body) headers.set('Content-Type', 'application/json');
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -111,187 +259,33 @@ export class EsbClient {
         headers,
         credentials: 'include',
       });
-    } catch {
-      throw new ApiError(503, {
-        error: {
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Event services are temporarily unavailable.',
-          retryable: true,
-        },
-      });
+    } catch (cause) {
+      throw this.unavailable('ESB is temporarily unavailable.', cause);
     }
     if (!response.ok) {
-      let payload: Record<string, unknown> | undefined;
-      try {
-        payload = (await response.json()) as Record<string, unknown>;
-      } catch {
-        /* empty response */
-      }
-      const nested = asObject(payload?.error);
-      throw new ApiError(response.status, {
-        correlationId: text(payload?.correlationId),
-        traceId: text(payload?.traceId),
-        error: {
-          code: text(
-            nested.code,
-            text(payload?.code, response.status === 404 ? 'NOT_FOUND' : 'REQUEST_FAILED'),
-          ),
-          message: text(nested.message, text(payload?.message, 'Event service request failed.')),
-          retryable: Boolean(nested.retryable),
-        },
-      });
+      const payload = (await response.json().catch(() => undefined)) as
+        | {
+            correlationId?: string;
+            traceId?: string;
+            error?: { code?: string; message?: string; retryable?: boolean };
+          }
+        | undefined;
+      throw new ApiError(response.status, payload, 'ESB request failed.');
     }
-    if (response.status === 204) return undefined as T;
-    try {
-      return (await response.json()) as T;
-    } catch {
-      throw new ApiError(503, {
-        error: {
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Event services are temporarily unavailable.',
-          retryable: true,
-        },
-      });
-    }
-  }
-
-  private normaliseEvent(value: unknown): EventSummary {
-    const item = asObject(value);
     return {
-      eventId: text(item.eventId, text(item.id)),
-      name: text(item.name, text(item.title, 'Untitled event')),
-      venue: text(item.venue),
-      startsAt: text(item.startsAt, text(item.startTime)),
-      endsAt: text(item.endsAt, text(item.endTime)),
-      status: text(item.status),
-      imageUrl: text(item.imageUrl, text(item.coverUrl)),
-      description: text(item.description),
-      category: text(item.category),
+      body: (response.status === 204 ? undefined : await response.json()) as T,
+      etag: response.headers.get('ETag'),
+      status: response.status,
+      headers: response.headers,
     };
   }
 
-  async listEvents(
-    params: {
-      query?: string;
-      category?: string;
-      from?: string;
-      to?: string;
-      page?: number;
-      pageSize?: number;
-    } = {},
-  ): Promise<Page<EventSummary>> {
-    const search = new URLSearchParams();
-    if (params.query) search.set('q', params.query);
-    if (params.category) search.set('category', params.category);
-    if (params.from) search.set('from', params.from);
-    if (params.to) search.set('to', params.to);
-    search.set('page', String(params.page ?? 1));
-    search.set('pageSize', String(params.pageSize ?? 12));
-    const payload = await this.request<unknown>(`/api/events?${search}`);
-    const raw = asObject(payload);
-    const items = (Array.isArray(payload) ? payload : array<unknown>(raw.items ?? raw.data)).map(
-      (x) => this.normaliseEvent(x),
+  private unavailable(message: string, cause?: unknown): ApiError {
+    return new ApiError(
+      503,
+      { error: { code: 'SERVICE_UNAVAILABLE', message, retryable: true } },
+      message,
+      { cause },
     );
-    return {
-      items,
-      page: Number(raw.page ?? params.page ?? 1),
-      pageSize: Number(raw.pageSize ?? params.pageSize ?? 12),
-      total: Number(raw.total ?? items.length),
-    };
-  }
-
-  async getEvent(eventId: string): Promise<EventSummary> {
-    return this.normaliseEvent(await this.request(`/api/events/${encodeURIComponent(eventId)}`));
-  }
-
-  async getSeatMap(eventId: string): Promise<SeatMap> {
-    const raw = asObject(await this.request(`/api/events/${encodeURIComponent(eventId)}/seats`));
-    const seats = array<unknown>(raw.seats ?? raw.items).map((x) => {
-      const item = asObject(x);
-      return {
-        seatId: text(item.seatId, text(item.id)),
-        label: text(item.label),
-        section: text(item.section),
-        row: text(item.row),
-        number:
-          typeof item.number === 'number' || typeof item.number === 'string'
-            ? item.number
-            : undefined,
-        status: text(item.status, 'UNKNOWN'),
-        price: typeof item.price === 'number' ? item.price : undefined,
-        currency: text(item.currency, 'VND'),
-      };
-    });
-    return {
-      eventId,
-      seats,
-      inventoryVersion: typeof raw.inventoryVersion === 'number' ? raw.inventoryVersion : undefined,
-    };
-  }
-
-  async reserveSeats(payload: {
-    eventId: string;
-    seatIds: string[];
-    bookingId?: string;
-    idempotencyKey: string;
-  }): Promise<Reservation> {
-    return this.request('/api/bookings/reservations', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': payload.idempotencyKey },
-      body: JSON.stringify(payload),
-    });
-  }
-  async getReservation(reservationId: string): Promise<Reservation> {
-    return this.request(`/api/bookings/reservations/${encodeURIComponent(reservationId)}`);
-  }
-  async extendReservation(reservationId: string, expectedVersion?: number): Promise<Reservation> {
-    return this.request(`/api/bookings/reservations/${encodeURIComponent(reservationId)}/extend`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
-      body: JSON.stringify({ expectedVersion }),
-    });
-  }
-  async releaseReservation(reservationId: string): Promise<void> {
-    await this.request(`/api/bookings/reservations/${encodeURIComponent(reservationId)}/release`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
-    });
-  }
-  async createBooking(payload: {
-    eventId: string;
-    reservationId: string;
-    paymentMethod: string;
-    idempotencyKey: string;
-  }): Promise<Booking> {
-    return this.request('/api/bookings', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': payload.idempotencyKey },
-      body: JSON.stringify(payload),
-    });
-  }
-  async listBookings(): Promise<Page<Booking>> {
-    const payload = await this.request<unknown>('/api/bookings');
-    const raw = asObject(payload);
-    const items = (
-      Array.isArray(payload) ? payload : array<Booking>(raw.items ?? raw.data)
-    ) as Booking[];
-    return {
-      items,
-      page: Number(raw.page ?? 1),
-      pageSize: Number(raw.pageSize ?? items.length),
-      total: Number(raw.total ?? items.length),
-    };
-  }
-  async getBooking(bookingId: string): Promise<Booking> {
-    return this.request(`/api/bookings/${encodeURIComponent(bookingId)}`);
-  }
-  async getTicket(ticketId: string): Promise<Ticket> {
-    return this.request(`/api/tickets/${encodeURIComponent(ticketId)}`);
-  }
-  async issueRealtimeWsTicket(bookingId: string): Promise<RealtimeWsTicket> {
-    return this.request('/api/realtime/ws-tickets', {
-      method: 'POST',
-      body: JSON.stringify({ bookingId }),
-    });
   }
 }

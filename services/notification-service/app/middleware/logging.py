@@ -1,9 +1,11 @@
 """Middleware ghi log co cau truc cho moi request - phuc vu Observability
 (tra cuu bang Correlation ID nhu DOC-04 mo ta)."""
+
 import time
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.observability.logs import get_logger
 
@@ -11,7 +13,9 @@ logger = get_logger(__name__)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         start = time.perf_counter()
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
