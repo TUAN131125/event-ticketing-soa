@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "VERSION_CONFLICT",
     "message": "If-Match does not match resourceVersion",

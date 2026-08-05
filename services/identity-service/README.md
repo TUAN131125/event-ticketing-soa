@@ -1,113 +1,206 @@
 # Identity and Access Service
 
-Security-critical REST service for account credentials, roles, access tokens and
-refresh sessions. Identity owns authentication data only; Customer, Booking,
-Payment and Ticket data remain in their own services.
+Standalone FastAPI service for account credentials, roles, access JWTs and
+refresh sessions. It owns only Identity data and does not depend on Customer,
+Booking, Payment, Ticket or the ESB to run locally.
 
-## Architecture and security decisions
+## Implemented v1 contract
 
-- FastAPI with synchronous SQLAlchemy transactions and PostgreSQL schema identity.
-- Argon2id password hashes; raw passwords never enter logs or database rows.
-- RS256 access JWTs with iss, aud, sub, iat, exp, jti, roles, tokenVersion and
-  rotating kid-selected keys.
-- Opaque 64-byte refresh tokens. Only SHA-256 token hashes are stored.
-- Refresh sessions are grouped into families. A token is consumed once; reuse
-  revokes the whole family. Two concurrent refreshes are serialized by the
-  PostgreSQL row lock, so only one can succeed.
-- Refresh tokens are HttpOnly cookies. Refresh and logout use double-submit CSRF
-  plus an Origin allow-list. Access tokens are returned in JSON.
-- Logout revokes refresh sessions; an already issued access JWT remains valid until
-  expiry unless the user's tokenVersion changes, for example after a role change.
-- Authorization is deny-by-default and centralized in FastAPI dependencies.
-- Login rate-limit buckets and audit records are database-backed, so replicas share state.
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/auth/register` | Register a CUSTOMER account |
+| `POST` | `/auth/login` | Issue access JWT and refresh/CSRF cookies |
+| `POST` | `/auth/refresh` | Rotate refresh token and issue a new access JWT |
+| `POST` | `/auth/logout` | Revoke the refresh-token family and clear cookies |
+| `GET` | `/auth/me` | Read the current Identity principal |
+| `POST` | `/admin/users/{userId}/roles` | Assign or revoke a role; requires ADMIN |
+| `GET` | `/.well-known/jwks.json` | Publish the RSA verification key |
+| `GET` | `/health/live` | Process liveness |
+| `GET` | `/health/ready` | PostgreSQL and migration readiness |
 
-The project material describes Identity but does not provide a canonical Giai đoạn 5
-OpenAPI or migration. This directory therefore contains the executable contract at
-contracts/identity-service.yaml and migration 0001_identity. Role names and JWT
-claims are intentionally stable for ESB consumers.
+The reviewed OpenAPI document is [`../../contracts/identity-service.yaml`](../../contracts/identity-service.yaml) and is served
+unchanged at `/openapi.json`.
 
-## Local setup
+## Local prerequisites
 
-Requirements: Python 3.12, Docker Desktop and PostgreSQL.
+- Python 3.12
+- PostgreSQL installed directly on the computer
+- PostgreSQL command-line tools (`psql`) available, or pgAdmin for running SQL
 
-~~~powershell
+Docker is not required for local development.
+
+## 1. Create the local PostgreSQL role and databases
+
+Run the following as the PostgreSQL administrator. Change the password before
+executing it.
+
+```sql
+CREATE ROLE identity WITH LOGIN PASSWORD 'change-me';
+CREATE DATABASE identity OWNER identity;
+CREATE DATABASE identity_test OWNER identity;
+```
+
+`identity_test` is separate because integration tests truncate Identity tables.
+Never point `IDENTITY_TEST_DATABASE_URL` at data that must be preserved.
+
+The default native PostgreSQL port is `5432`. Confirm it with:
+
+```sql
+SHOW port;
+```
+
+## 2. Create the Python environment
+
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
-$env:IDENTITY_DATABASE_URL = "postgresql+psycopg://identity:identity@localhost:5434/identity"
-python scripts/generate_keys.py --private-key keys/private.pem --public-key keys/public.pem
+```
+
+## 3. Create local configuration
+
+Copy the example file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env` and replace `change-me` in both database URLs with the password used
+when creating the PostgreSQL role. Load this file explicitly into the process
+environment; the service does not silently load secret files from source.
+
+Important local values:
+
+```dotenv
+IDENTITY_DATABASE_URL=postgresql+psycopg://identity:change-me@localhost:5432/identity
+IDENTITY_TEST_DATABASE_URL=postgresql+psycopg://identity:change-me@localhost:5432/identity_test
+IDENTITY_ISSUER=http://localhost:8009
+IDENTITY_AUDIENCE=public-esb
+IDENTITY_COOKIE_SECURE=false
+```
+
+If the password contains `@`, `:`, `/`, `#`, `%` or spaces, URL-encode it in the
+connection string.
+
+## 4. Generate the local RSA signing key
+
+```powershell
+python scripts/generate_keys.py `
+  --private-key keys/private.pem `
+  --public-key keys/public.pem
+```
+
+The `keys/` directory and `.env` are ignored by Git and Docker build context.
+
+## 5. Apply the database migration
+
+```powershell
 alembic upgrade head
-uvicorn app.main:app --reload --port 8009
-~~~
+alembic current
+```
 
-Or run the complete local stack:
+Expected current revision:
 
-~~~powershell
-docker compose up --build
-~~~
+```text
+0001_identity (head)
+```
 
-The API is at http://localhost:8009, docs are at /docs, and JWKS is at
-/.well-known/jwks.json. Production must use HTTPS, Secure cookies and managed
-private key material; local defaults are not production credentials.
+The migration creates the `identity` schema, all Identity tables, constraints,
+indexes and the four roles `CUSTOMER`, `ADMIN`, `CHECKIN_STAFF` and `SERVICE`.
 
-## Bootstrap an administrator
+## 6. Run the service
 
-Never commit an admin password. Supply it through the environment or an interactive
-prompt after the database and signing keys exist:
+```powershell
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8009
+```
 
-~~~powershell
+Useful URLs:
+
+- API docs: `http://localhost:8009/docs`
+- OpenAPI: `http://localhost:8009/openapi.json`
+- Liveness: `http://localhost:8009/health/live`
+- Readiness: `http://localhost:8009/health/ready`
+- JWKS: `http://localhost:8009/.well-known/jwks.json`
+- Metrics: `http://localhost:8009/metrics`
+
+Readiness should return:
+
+```json
+{"service":"identity-service","status":"READY","version":"1.0.0"}
+```
+
+## 7. Run tests against local PostgreSQL
+
+The test database URL is read from the process environment.
+
+```powershell
+pytest
+pytest -m integration -v
+pytest -m security -v
+```
+
+The PostgreSQL-backed tests cover registration/login, CSRF, role authorization,
+account lockout, refresh-token reuse and concurrent refresh row locking.
+
+## Bootstrap the first administrator
+
+```powershell
 $env:IDENTITY_ADMIN_EMAIL = "admin@example.test"
 $env:IDENTITY_ADMIN_PASSWORD = "Use-a-long-local-password-9!Long"
 python -m scripts.bootstrap_admin
 Remove-Item Env:IDENTITY_ADMIN_PASSWORD
-~~~
+```
 
-Public registration can only create CUSTOMER. The bootstrap script is the
-controlled path for the first ADMIN.
+Public registration only creates `CUSTOMER`. The bootstrap command is the
+controlled path for the first `ADMIN`.
 
-## Endpoint examples
+## Local browser input/output rules
 
-Register:
+Login returns the access token in JSON and sets two cookies:
 
-~~~powershell
-curl.exe -X POST http://localhost:8009/auth/register -H "Content-Type: application/json" -d '{"email":"customer@example.test","password":"Correct-Horse-9!Long"}'
-~~~
+- `identity_refresh`: HttpOnly refresh token
+- `identity_csrf`: readable double-submit CSRF token
 
-Login stores the refresh and CSRF cookies in a normal browser client and returns
-the access token:
+Refresh and logout require all of the following:
 
-~~~powershell
-curl.exe -i -c cookies.txt -X POST http://localhost:8009/auth/login -H "Content-Type: application/json" -d '{"email":"customer@example.test","password":"Correct-Horse-9!Long"}'
-~~~
+- `identity_refresh` cookie
+- `identity_csrf` cookie
+- `X-CSRF-Token` header equal to the CSRF cookie
+- An allowed `Origin` when the client sends an Origin header
 
-Call /auth/me with the returned Bearer access token. For refresh/logout, send the
-identity_refresh and identity_csrf cookies plus the exact CSRF cookie value in
-X-CSRF-Token; clients should also send an allowed Origin.
+All endpoints accept optional `X-Correlation-ID` and `traceparent` headers. The
+service returns `X-Correlation-ID` and `X-Trace-ID` response headers. Login and
+refresh responses use `Cache-Control: no-store`.
 
-## Migration and test commands
+## Architecture and security
 
-~~~powershell
-alembic upgrade head
-alembic downgrade base
-alembic upgrade head
+- Synchronous SQLAlchemy transactions over PostgreSQL schema `identity`
+- Argon2id password hashes
+- RS256 JWT claims: `iss`, `aud`, `sub`, `iat`, `exp`, `jti`, `roles`,
+  `tokenVersion`
+- Opaque refresh tokens; only SHA-256 hashes are stored
+- Refresh-token family rotation and reuse detection
+- PostgreSQL row locking for concurrent refresh safety
+- Database-backed rate limiting and audit records
+- Deny-by-default authorization dependencies
+- Structured logs without passwords, cookies, JWTs, private keys or DSNs
+
+JWT `sub` is the Identity user ID. `customerId` is intentionally not an Identity
+claim. When the ESB is connected locally, configure it to expect:
+
+```text
+issuer  = http://localhost:8009
+audience = public-esb
+```
+
+## Quality commands
+
+```powershell
 ruff check .
 ruff format --check .
 mypy app
 pytest
-pytest -m integration
 pip-audit -r requirements.txt
 bandit -r app scripts
-~~~
-
-Integration and concurrency tests require a real PostgreSQL database. Set
-IDENTITY_TEST_DATABASE_URL to a migrated test database; tests never use SQLite as
-a substitute for transaction semantics.
-
-## Operational contract
-
-/health/live only reports process liveness. /health/ready checks PostgreSQL, the
-identity schema and Alembic revision. The application sets readiness to draining
-during graceful shutdown. Structured logs include operation, status, duration,
-correlation and trace IDs, but never credentials, cookies, JWTs, Authorization
-headers, private keys or database DSNs. /metrics exposes bounded Prometheus labels
-for request/authentication/session signals.
+```

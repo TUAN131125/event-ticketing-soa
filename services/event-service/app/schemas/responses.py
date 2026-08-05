@@ -1,4 +1,5 @@
 """Response schema cua Event Service."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -20,9 +21,15 @@ class EventResponse(BaseModel):
     ticketTypes: list[TicketTypeResponse]
 
     @classmethod
-    def from_entity(cls, event: Event) -> "EventResponse":
+    def from_entity(cls, event: Event) -> EventResponse:
         return cls(
-            id=event.id, name=event.name, location=event.location,
-            startTime=event.start_time, status=event.status.value,
-            ticketTypes=[TicketTypeResponse(type=t.type, price=t.price) for t in event.ticket_types],
+            id=event.id,
+            name=event.name,
+            location=event.location,
+            startTime=event.start_time,
+            status=event.status.value,
+            ticketTypes=[
+                TicketTypeResponse(type=t.type, price=t.price)
+                for t in event.ticket_types
+            ],
         )

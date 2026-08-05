@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 
 def _integer(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -30,6 +31,13 @@ def _boolean(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean")
 
 
+def get_xsd_path() -> Path:
+    value = os.getenv("SEAT_XSD_PATH", "").strip()
+    if not value:
+        raise ValueError("SEAT_XSD_PATH is required")
+    return Path(value)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings with safe defaults for local development."""
@@ -39,6 +47,8 @@ class Settings:
     database_url: str
     service_token: str
     soap_public_url: str
+    wsdl_path: Path
+    xsd_path: Path
     max_xml_bytes: int
     min_hold_seconds: int
     max_hold_seconds: int
@@ -68,10 +78,25 @@ class Settings:
             minimum=min_hold,
             maximum=max_hold,
         )
-        database_url = os.getenv(
-            "SEAT_DATABASE_URL",
-            "postgresql+psycopg://seat_inventory:seat_inventory@localhost:5433/seat_inventory",
+        database_url = os.getenv("SEAT_DATABASE_URL", "").strip()
+        service_token = os.getenv("SEAT_SERVICE_TOKEN", "").strip()
+        soap_public_url = os.getenv("SEAT_SOAP_PUBLIC_URL", "").strip()
+        wsdl_path = os.getenv("SEAT_WSDL_PATH", "").strip()
+        missing = next(
+            (
+                name
+                for name, value in (
+                    ("SEAT_DATABASE_URL", database_url),
+                    ("SEAT_SERVICE_TOKEN", service_token),
+                    ("SEAT_SOAP_PUBLIC_URL", soap_public_url),
+                    ("SEAT_WSDL_PATH", wsdl_path),
+                )
+                if not value
+            ),
+            None,
         )
+        if missing is not None:
+            raise ValueError(f"{missing} is required")
         if database_url.startswith("postgres://"):
             database_url = database_url.replace(
                 "postgres://", "postgresql+psycopg://", 1
@@ -85,10 +110,10 @@ class Settings:
             app_name="seat-inventory-service",
             app_env=os.getenv("SEAT_APP_ENV", "local"),
             database_url=database_url,
-            service_token=os.getenv("SEAT_SERVICE_TOKEN", "local-development-token"),
-            soap_public_url=os.getenv(
-                "SEAT_SOAP_PUBLIC_URL", "http://localhost:8003/soap"
-            ),
+            service_token=service_token,
+            soap_public_url=soap_public_url,
+            wsdl_path=Path(wsdl_path),
+            xsd_path=get_xsd_path(),
             max_xml_bytes=_integer(
                 "SEAT_MAX_XML_BYTES", 262_144, minimum=1024, maximum=2_097_152
             ),

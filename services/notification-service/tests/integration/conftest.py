@@ -1,6 +1,6 @@
 """Fixture dung chung cho integration test - can PostgreSQL that dang
 chay (vi du qua `docker compose up postgres`). Doc NOTIFICATION_DATABASE_URL
-tu bien moi truong, mac dinh trung voi docker-compose.yml/.env.example
+tu bien moi truong, mac dinh trung voi root compose.yaml/.env.example
 cua service nay."""
 from __future__ import annotations
 

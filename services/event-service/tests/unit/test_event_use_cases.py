@@ -1,6 +1,7 @@
 """Unit test cho use case (application layer), dung InMemoryEventRepository
 de chay nhanh, khong can PostgreSQL. Test hanh vi nghiep vu thuan tuy -
 KHONG test SQL/DB (xem tests/integration cho phan do)."""
+
 import pytest
 
 from app.application.commands.cancel_event import cancel_event
@@ -34,7 +35,10 @@ def test_get_missing_event_raises(repo: InMemoryEventRepository) -> None:
 
 def test_create_event_assigns_incrementing_id(repo: InMemoryEventRepository) -> None:
     event = create_event(
-        repo, "Hoi thao AI", "Trung tam hoi nghi", "2026-09-15T09:00:00",
+        repo,
+        "Hoi thao AI",
+        "Trung tam hoi nghi",
+        "2026-09-15T09:00:00",
         [TicketType("STANDARD", 100000)],
     )
     assert event.id == "EV002"
@@ -50,7 +54,10 @@ def test_update_event_changes_info_not_status(repo: InMemoryEventRepository) -> 
 
 def test_full_state_machine_happy_path(repo: InMemoryEventRepository) -> None:
     event = create_event(
-        repo, "Show moi", "San khau B", "2026-10-01T20:00:00",
+        repo,
+        "Show moi",
+        "San khau B",
+        "2026-10-01T20:00:00",
         [TicketType("VIP", 500000)],
     )
     assert event.status == EventStatus.DRAFT
@@ -65,16 +72,24 @@ def test_full_state_machine_happy_path(repo: InMemoryEventRepository) -> None:
     assert event.status == EventStatus.CLOSED
 
 
-def test_invalid_transition_raises_409_style_error(repo: InMemoryEventRepository) -> None:
+def test_invalid_transition_raises_409_style_error(
+    repo: InMemoryEventRepository,
+) -> None:
     # EV001 dang ON_SALE - khong the "open_sales" lai tu chinh no theo
     # bang ALLOWED_TRANSITIONS (chi DRAFT/PAUSED -> ON_SALE).
     with pytest.raises(InvalidStateTransitionError):
         open_sales(repo, "EV001")
 
 
-def test_cancel_from_draft_allowed_but_not_from_closed(repo: InMemoryEventRepository) -> None:
+def test_cancel_from_draft_allowed_but_not_from_closed(
+    repo: InMemoryEventRepository,
+) -> None:
     event = create_event(
-        repo, "Se huy", "Dia diem C", "2026-11-01T19:00:00", [TicketType("VIP", 100000)],
+        repo,
+        "Se huy",
+        "Dia diem C",
+        "2026-11-01T19:00:00",
+        [TicketType("VIP", 100000)],
     )
     cancelled = cancel_event(repo, event.id)
     assert cancelled.status == EventStatus.CANCELLED

@@ -97,13 +97,28 @@ async def test_booking_access_checker_owner_admin_and_dependency_fail_closed(
     await client.aclose()
 
 
+def _settings(**overrides) -> Settings:
+    values = {
+        "host": "127.0.0.1",
+        "allowed_ws_origins": ("http://localhost:3000",),
+        "jwt_issuer": "http://identity.test",
+        "jwt_audience": "public-esb",
+        "jwks_url": "http://identity.test/jwks",
+        "internal_service_token": "test-internal-token",
+        "booking_authorization_url": "http://booking.test/bookings/{bookingId}",
+        "booking_service_token": "test-booking-token",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
 def test_production_configuration_rejects_insecure_values() -> None:
     with pytest.raises(ValueError, match="Wildcard"):
-        Settings(app_env="production", allowed_ws_origins=("*",))
+        _settings(app_env="production", allowed_ws_origins=("*",))
     with pytest.raises(ValueError, match="HTTPS"):
-        Settings(app_env="production", allowed_ws_origins=("https://app.example",))
+        _settings(app_env="production", allowed_ws_origins=("https://app.example",))
     with pytest.raises(ValueError, match="authentication modes"):
-        Settings(
+        _settings(
             app_env="production",
             allowed_ws_origins=("https://app.example",),
             jwt_issuer="https://identity.example",
@@ -113,7 +128,7 @@ def test_production_configuration_rejects_insecure_values() -> None:
             allow_query_token=True,
         )
     with pytest.raises(ValueError, match="ticket public key"):
-        Settings(
+        _settings(
             app_env="production",
             allowed_ws_origins=("https://app.example",),
             jwt_issuer="https://identity.example",
@@ -124,15 +139,14 @@ def test_production_configuration_rejects_insecure_values() -> None:
 
 
 def test_booking_authorization_configuration_targets_booking_service() -> None:
-    assert Settings().booking_authorization_url == "http://localhost:8004/bookings/{bookingId}"
     env_example = (SERVICE_ROOT / ".env.example").read_text(encoding="utf-8")
     assert (
-        "REALTIME_BOOKING_AUTHORIZATION_URL=http://booking-service:8000/bookings/{bookingId}"
+        "REALTIME_BOOKING_AUTHORIZATION_URL=http://booking:8004/bookings/{bookingId}"
         in env_example
     )
     assert "8007/bookings/{bookingId}" not in env_example
     with pytest.raises(ValueError, match=r"must contain \{bookingId\}"):
-        Settings(booking_authorization_url="http://localhost:8004/bookings/static")
+        _settings(booking_authorization_url="http://booking.test/bookings/static")
 
 
 def test_event_schema_rejects_naive_time_unknown_fields_and_sensitive_shape() -> None:

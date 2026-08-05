@@ -4,6 +4,7 @@ Quy uoc dat ten bien moi truong: tien to NOTIFICATION_ (giong CUSTOMER_ cua
 customer-service, SEAT_ cua seat-inventory-service) de tranh dung do khi
 nhieu service chay chung mot may.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,18 +43,18 @@ class Settings:
     sql_echo: bool
 
     @classmethod
-    def from_environment(cls) -> "Settings":
-        database_url = os.getenv(
-            "NOTIFICATION_DATABASE_URL",
-            "postgresql+psycopg://notification_service:notification_service"
-            "@localhost:5436/notification_service",
-        )
+    def from_environment(cls) -> Settings:
+        database_url = os.getenv("NOTIFICATION_DATABASE_URL", "").strip()
+        if not database_url:
+            raise ValueError("NOTIFICATION_DATABASE_URL is required")
         return cls(
             app_env=os.getenv("NOTIFICATION_APP_ENV", "local"),
             log_level=os.getenv("NOTIFICATION_LOG_LEVEL", "INFO").upper(),
             service_name="notification-service",
             database_url=_normalize_database_url(database_url),
-            db_pool_size=_integer("NOTIFICATION_DB_POOL_SIZE", 10, minimum=1, maximum=100),
+            db_pool_size=_integer(
+                "NOTIFICATION_DB_POOL_SIZE", 10, minimum=1, maximum=100
+            ),
             db_max_overflow=_integer(
                 "NOTIFICATION_DB_MAX_OVERFLOW", 10, minimum=0, maximum=100
             ),

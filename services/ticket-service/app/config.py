@@ -31,10 +31,9 @@ def _boolean(name: str, default: bool) -> bool:
 
 
 def _database_url() -> str:
-    value = os.getenv(
-        "TICKET_DATABASE_URL",
-        "postgresql+psycopg://ticket:ticket@localhost:5439/ticket",
-    )
+    value = os.getenv("TICKET_DATABASE_URL", "").strip()
+    if not value:
+        raise ValueError("TICKET_DATABASE_URL is required")
     if value.startswith("postgres://"):
         return value.replace("postgres://", "postgresql+psycopg://", 1)
     if value.startswith("postgresql://"):
@@ -62,17 +61,19 @@ class Settings:
     @classmethod
     def from_environment(cls) -> Settings:
         app_env = os.getenv("TICKET_APP_ENV", "local").strip().lower()
-        configured_token = os.getenv("TICKET_SERVICE_TOKEN")
-        service_token = configured_token or "local-development-token"
-        configured_qr_key = os.getenv("TICKET_QR_SIGNING_KEY")
-        qr_signing_key = configured_qr_key or "local-development-qr-signing-key"
+        service_token = os.getenv("TICKET_SERVICE_TOKEN", "").strip()
+        qr_signing_key = os.getenv("TICKET_QR_SIGNING_KEY", "").strip()
+        if not service_token:
+            raise ValueError("TICKET_SERVICE_TOKEN is required")
+        if not qr_signing_key:
+            raise ValueError("TICKET_QR_SIGNING_KEY is required")
         if app_env == "production":
-            if configured_token is None or len(configured_token) < 32:
+            if len(service_token) < 32:
                 raise ValueError(
                     "TICKET_SERVICE_TOKEN must be a non-default value of at least "
                     "32 characters in production"
                 )
-            if configured_qr_key is None or len(configured_qr_key) < 32:
+            if len(qr_signing_key) < 32:
                 raise ValueError(
                     "TICKET_QR_SIGNING_KEY must be a non-default value of at least "
                     "32 characters in production"

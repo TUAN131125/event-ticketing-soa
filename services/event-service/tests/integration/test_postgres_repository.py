@@ -6,6 +6,7 @@ id dung tai tang DB, ticket_types (bang con) duoc luu/doc dung kem theo
 event cha, va du lieu con lai sau khi "restart" (engine moi, ket noi
 moi).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,7 +19,9 @@ from app.infrastructure.database.repositories import PostgresEventRepository
 pytestmark = pytest.mark.integration
 
 
-def test_next_id_increments_via_db_sequence(postgres_repo: PostgresEventRepository) -> None:
+def test_next_id_increments_via_db_sequence(
+    postgres_repo: PostgresEventRepository,
+) -> None:
     assert postgres_repo.next_id() == "EV001"
     assert postgres_repo.next_id() == "EV002"
     assert postgres_repo.next_id() == "EV003"
@@ -28,7 +31,10 @@ def test_add_and_get_round_trip_with_ticket_types(
     postgres_repo: PostgresEventRepository,
 ) -> None:
     event = Event.create(
-        "EV001", "Hoi cho cong nghe", "SECC Quan 7", "2026-09-10T09:00:00",
+        "EV001",
+        "Hoi cho cong nghe",
+        "SECC Quan 7",
+        "2026-09-10T09:00:00",
         [TicketType("VIP", 2000000), TicketType("STANDARD", 700000)],
     )
     postgres_repo.add(event)
@@ -47,9 +53,14 @@ def test_get_missing_returns_none(postgres_repo: PostgresEventRepository) -> Non
     assert postgres_repo.get("EV999") is None
 
 
-def test_update_persists_state_transition(postgres_repo: PostgresEventRepository) -> None:
+def test_update_persists_state_transition(
+    postgres_repo: PostgresEventRepository,
+) -> None:
     event = Event.create(
-        "EV001", "Live show", "San khau Trung tam", "2026-10-01T20:00:00",
+        "EV001",
+        "Live show",
+        "San khau Trung tam",
+        "2026-10-01T20:00:00",
         [TicketType("STANDARD", 300000)],
     )
     postgres_repo.add(event)
@@ -74,7 +85,10 @@ def test_data_survives_new_engine_connection(
 
     postgres_repo.add(
         Event.create(
-            "EV001", "Ton tai sau restart", "Dia diem A", "2026-11-01T19:00:00",
+            "EV001",
+            "Ton tai sau restart",
+            "Dia diem A",
+            "2026-11-01T19:00:00",
             [TicketType("VIP", 1000000)],
         )
     )
@@ -92,12 +106,22 @@ def test_list_all_returns_every_event_with_its_own_ticket_types(
     postgres_repo: PostgresEventRepository,
 ) -> None:
     postgres_repo.add(
-        Event.create("EV001", "A", "Dia diem A", "2026-08-01T19:00:00",
-                      [TicketType("VIP", 1000000)])
+        Event.create(
+            "EV001",
+            "A",
+            "Dia diem A",
+            "2026-08-01T19:00:00",
+            [TicketType("VIP", 1000000)],
+        )
     )
     postgres_repo.add(
-        Event.create("EV002", "B", "Dia diem B", "2026-08-02T19:00:00",
-                      [TicketType("STANDARD", 200000), TicketType("VIP", 900000)])
+        Event.create(
+            "EV002",
+            "B",
+            "Dia diem B",
+            "2026-08-02T19:00:00",
+            [TicketType("STANDARD", 200000), TicketType("VIP", 900000)],
+        )
     )
 
     events = {e.id: e for e in postgres_repo.list_all()}
@@ -118,8 +142,13 @@ def test_cascade_delete_removes_ticket_types_with_event(
     from app.infrastructure.database.session import session_scope
 
     postgres_repo.add(
-        Event.create("EV001", "Se bi xoa", "Dia diem X", "2026-12-01T19:00:00",
-                      [TicketType("VIP", 500000)])
+        Event.create(
+            "EV001",
+            "Se bi xoa",
+            "Dia diem X",
+            "2026-12-01T19:00:00",
+            [TicketType("VIP", 500000)],
+        )
     )
 
     with session_scope() as session:

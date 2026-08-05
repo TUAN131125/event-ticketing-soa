@@ -4,7 +4,7 @@ Khong phu thuoc FastAPI, khong phu thuoc database - day la quy tac cot loi
 cua Clean Architecture: domain khong biet gi ve tang ben ngoai.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.domain.enums import CustomerStatus
 
@@ -26,7 +26,7 @@ class Customer:
             email=email,
             phone=phone,
             status=CustomerStatus.ACTIVE,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     def update_contact(self, name: str | None = None, email: str | None = None,

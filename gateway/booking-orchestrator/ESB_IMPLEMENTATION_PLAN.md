@@ -5,7 +5,7 @@
 - Freeze ID: `event-ticketing-contracts-v1.0.0`
 - Catalog digest: `6fea9810b380cd94a00fa2a5b611e70c01d8db1c41b6ca886b303a9395d408a6`
 - Manifest digest: `f93f3c05837b542d028cc9b672c00f41cc1a9915ab32156e735dae4175abc746`
-- Canonical source: root `contracts/`, locked by `contracts/FREEZE.lock.yaml`.
+- Canonical source: root `contracts/`, inventoried by `contracts/manifest.yaml`; build digests are emitted in `dist/contracts/manifest.json`.
 - The ESB implementation prompt consumes this freeze and must not edit canonical contracts. Contract changes require a separate governed contract change and a new freeze.
 - `contracts/**` is the sole semantic and wire authority. `ESB_DEPENDENCIES.yaml` is a derived orchestration design only: it may reconcile call ordering and failure planning, but it is not a canonical contract and cannot override an OpenAPI, WSDL, XSD or shared schema.
 
@@ -84,7 +84,7 @@ Runtime was inspected only as evidence. Every readiness status below is backed b
 |---|---|---|---|---|---|
 | Customer | mapping resolve/link/unlink; customer get | DRIFT | `services/customer-service/app/api/router.py::api_router` includes public resources/admin/health only; no `/internal/identity-mappings` route | 2, 3 | Add provider alignment for internal mapping, one-to-one/audit/inactive semantics and canonical paths before integration |
 | Event | list, detail, sale eligibility | DRIFT | `services/event-service/app/api/v1/resources.py::router` provides event resources but no `getSaleEligibility` operation | 1, 3 | Align `/sale-eligibility`, status/price response and canonical error envelope |
-| Seat Inventory | 8 SOAP operations; v1 namespace/actions; `SeatServiceFault` | DRIFT | `services/seat-inventory-service/contracts/seat-inventory.wsdl` uses `urn:event-ticketing:seat-inventory:v1/*` actions and `SeatInventoryFault` | 4, 5, 7, 8 | Align runtime WSDL namespace `urn:event-ticketing:seat:v1`, actions and fault name before adapter integration |
+| Seat Inventory | 8 SOAP operations; v1 namespace/actions; `SeatServiceFault` | DRIFT | `services/seat-inventory-service/app/soap/service.py` and the ESB SOAP adapter still implement the prior namespace/authentication behavior recorded in `contracts/CONTRACT_REVIEW.md` | 4, 5, 7, 8 | Align runtime namespace `urn:event-ticketing:seat:v1`, actions, fault and Service JWT before adapter integration |
 | Booking | 10 business operations, access decision, seven-state/evidence model | DRIFT | `services/booking-service/app/api/v1/resources.py::router` and `admin.py::router` have no `/internal/bookings/{bookingId}/access-decisions` operation | 2, 3, 5, 6, 7, 8 | Add missing transition/access operations and align runtime state model to canonical evidence semantics |
 | Payment | create/get/authorize/capture/cancel/refund/callback/reconcile including `UNKNOWN` | DRIFT | `services/payment-service/app/api/v1/admin.py::reconcile` exists, but canonical callback/UNKNOWN evidence is not exposed consistently across `resources.py` and `admin.py` | 3, 5, 6, 8 | Align `UNKNOWN`, callback and reconciliation semantics; prove idempotency before integration |
 | Ticket | issue/get/by-booking/validate/check-in/cancel/reissue; `ISSUED` state | DRIFT | `services/ticket-service/app/api/v1/resources.py::router` and `admin.py::router` do not expose the canonical `/tickets:issue` and `/bookings/{bookingId}/tickets` pair | 3, 7, 8 | Align issue/by-booking paths and runtime state with canonical `ISSUED` evidence |

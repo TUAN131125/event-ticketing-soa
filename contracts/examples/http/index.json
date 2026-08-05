@@ -36,12 +36,12 @@
   },
   {
     "file": "realtime-success.json",
-    "openapi": "realtime-service.yaml",
+    "openapi": "realtime-service.openapi.yaml",
     "schema": "ConnectionHealth"
   },
   {
     "file": "realtime-event-accepted.json",
-    "openapi": "realtime-service.yaml",
+    "openapi": "realtime-service.openapi.yaml",
     "schema": "StatusEventResult"
   },
   {
@@ -86,63 +86,78 @@
   },
   {
     "file": "customer-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "customer-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "event-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "event-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "booking-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "booking-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "payment-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "payment-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "ticket-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "ticket-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "notification-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "notification-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "esb-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "esb-public-api.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "realtime-error.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "realtime-service.openapi.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "idempotency-conflict.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "booking-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "optimistic-concurrency-conflict.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "booking-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "identity-link-conflict.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "customer-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "identity-resolve-not-found.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "customer-service.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "ws-ticket-denied.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "esb-public-api.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "internal-status-invalid-audience.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "realtime-service.openapi.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "internal-status-replayed-jti.json",
-    "jsonSchema": "../../common/error-response.schema.json"
+    "openapi": "realtime-service.openapi.yaml",
+    "schema": "ErrorResponse"
   },
   {
     "file": "idempotency-replay.json",
@@ -151,6 +166,7 @@
   },
   {
     "file": "internal-status-event-valid.json",
-    "jsonSchema": "../../websocket/realtime-status/status-message.schema.json"
+    "openapi": "realtime-service.openapi.yaml",
+    "schemaRef": "#/paths/~1internal~1status-events/post/requestBody/content/application~1json/schema"
   }
 ]

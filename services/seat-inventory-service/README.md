@@ -48,7 +48,7 @@ Reservation: ACTIVE -> CONFIRMED
 
 ## Contract
 
-WSDL 1.1 document/literal: `contracts/seat-inventory.wsdl`.
+WSDL 1.1 document/literal canonical: [`../../contracts/seat-inventory.wsdl`](../../contracts/seat-inventory.wsdl).
 
 | Operation | Loại | Ghi chú |
 |---|---|---|
@@ -74,7 +74,7 @@ cấu hình ghế `AVAILABLE`/`BLOCKED`; không cho xóa hoặc thay đổi gh�
 Yêu cầu Docker Desktop hoặc Docker Engine:
 
 ```powershell
-docker compose up --build -d --wait
+docker compose --profile seat up --build -d --wait
 ```
 
 Trên PowerShell, có thể seed bằng:
@@ -95,8 +95,8 @@ Readiness:  http://localhost:8003/health/ready
 Metrics:    http://localhost:8003/metrics
 ```
 
-Container chạy migration trước khi khởi động Uvicorn. Trong container, app
-nghe port `8000`; Compose ánh xạ host `8003 -> 8000`.
+Root Compose chạy `seat-migrate` trước khi khởi động Uvicorn. Service dùng cổng
+chuẩn `8003` cả trong container lẫn trên host.
 
 ## Chạy trực tiếp bằng Python
 
@@ -174,7 +174,7 @@ unique booking reservation, index expiry/status, audit và idempotency.
 Không dùng SQLite cho integration/concurrency test.
 
 ```powershell
-docker compose -f docker-compose.test.yml up -d --wait
+docker compose --profile seat up -d --wait
 $env:SEAT_TEST_DATABASE_URL = "postgresql+psycopg://seat_inventory:seat_inventory@localhost:55432/seat_inventory_test"
 .\.venv\Scripts\python.exe -m ruff format --check app migrations scripts tests
 .\.venv\Scripts\python.exe -m ruff check app migrations scripts tests
@@ -213,7 +213,6 @@ seat_readiness
   `RESERVED` trong mô tả cũ được chuẩn hóa thành `HELD`.
 - `ExpireReservations` vừa được công bố trong WSDL để giữ đủ contract, vừa có
   worker nội bộ. Cả hai dùng chung application handler.
-- Port chuẩn trong container là `8000`; `8003` là port host tương thích tài
-  liệu demo.
+- Port chuẩn của Seat Inventory là `8003`.
 - `expectedVersion` là bắt buộc cho `ExtendReservation` và `ConfirmSeats` để
   tránh cập nhật trên state đã thay đổi.

@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "PAYMENT_RESULT_UNKNOWN",
     "message": "Payment result requires reconciliation",

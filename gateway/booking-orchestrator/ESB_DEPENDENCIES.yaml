@@ -6,8 +6,8 @@ description: >-
   Machine-readable ESB orchestration design derived from the frozen canonical
   contracts. This file plans call ordering, failure handling and resilience;
   it is not a canonical contract and must never override contracts/**.
-contractFreezeId: event-ticketing-contracts-v1.0.0
-contractFreezeSha256: 6fea9810b380cd94a00fa2a5b611e70c01d8db1c41b6ca886b303a9395d408a6
+contractCatalog: contracts/manifest.yaml
+contractCatalogVersion: 1.0.0
 orchestrator: booking-orchestrator
 crossServiceDatabaseAccess: forbidden
 criticalWorkflowTransports: [REST, SOAP, INTERNAL_REST]
@@ -58,7 +58,7 @@ idempotencyPolicy:
   compensations: Every compensation reuses a stable compensation key and propagates correlation ID.
 
 errorMappingPolicy:
-  targetSchema: contracts/common/error-response.schema.json
+  targetSchema: contracts/esb-public-api.yaml#/components/schemas/ErrorResponse
   preserve: [correlationId, traceId_when_available, stable_error_code, retryable, safe_details]
   redact: [traceback, internal_provider_url, token, raw_soap_xml, secret, unnecessary_pii]
   mappings:
@@ -87,38 +87,38 @@ errorMappingPolicy:
       safeDetails: [providerService, violatedContract]
 
 providerOperations:
-  customerResolve: &customerResolve {contractId: openapi.customer-service, canonicalPath: openapi/customer-service.yaml, operationId: resolveCustomerIdentityMapping, method: GET, path: '/internal/identity-mappings/{identitySubject}'}
-  customerGet: &customerGet {contractId: openapi.customer-service, canonicalPath: openapi/customer-service.yaml, operationId: getCustomer, method: GET, path: '/customers/{customerId}'}
-  eventList: &eventList {contractId: openapi.event-service, canonicalPath: openapi/event-service.yaml, operationId: listEvents, method: GET, path: /events}
-  eventGet: &eventGet {contractId: openapi.event-service, canonicalPath: openapi/event-service.yaml, operationId: getEvent, method: GET, path: '/events/{eventId}'}
-  eventEligibility: &eventEligibility {contractId: openapi.event-service, canonicalPath: openapi/event-service.yaml, operationId: getSaleEligibility, method: GET, path: '/events/{eventId}/sale-eligibility'}
-  seatCheck: &seatCheck {contractId: soap.seat-inventory.wsdl, canonicalPath: soap/seat-inventory.wsdl, operationId: CheckAvailability, method: SOAP, path: 'urn:event-ticketing:seat:v1/CheckAvailability'}
-  seatReserve: &seatReserve {contractId: soap.seat-inventory.wsdl, canonicalPath: soap/seat-inventory.wsdl, operationId: ReserveSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ReserveSeats'}
-  seatGetReservation: &seatGetReservation {contractId: soap.seat-inventory.wsdl, canonicalPath: soap/seat-inventory.wsdl, operationId: GetReservation, method: SOAP, path: 'urn:event-ticketing:seat:v1/GetReservation'}
-  seatConfirm: &seatConfirm {contractId: soap.seat-inventory.wsdl, canonicalPath: soap/seat-inventory.wsdl, operationId: ConfirmSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ConfirmSeats'}
-  seatRelease: &seatRelease {contractId: soap.seat-inventory.wsdl, canonicalPath: soap/seat-inventory.wsdl, operationId: ReleaseSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ReleaseSeats'}
-  bookingCreate: &bookingCreate {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: createBooking, method: POST, path: /bookings}
-  bookingGet: &bookingGet {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: getBooking, method: GET, path: '/bookings/{bookingId}'}
-  bookingReservation: &bookingReservation {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingReservation, method: POST, path: '/bookings/{bookingId}/reservation'}
-  bookingPaymentStarted: &bookingPaymentStarted {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingPaymentStarted, method: POST, path: '/bookings/{bookingId}/payment-started'}
-  bookingPaymentResult: &bookingPaymentResult {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingPaymentResult, method: POST, path: '/bookings/{bookingId}/payment-result'}
-  bookingTickets: &bookingTickets {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingTickets, method: POST, path: '/bookings/{bookingId}/tickets'}
-  bookingConfirm: &bookingConfirm {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingConfirm, method: POST, path: '/bookings/{bookingId}/confirm'}
-  bookingFail: &bookingFail {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingFail, method: POST, path: '/bookings/{bookingId}/fail'}
-  bookingCancel: &bookingCancel {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: bookingCancel, method: POST, path: '/bookings/{bookingId}/cancel'}
-  bookingAccess: &bookingAccess {contractId: openapi.booking-service, canonicalPath: openapi/booking-service.yaml, operationId: decideBookingResourceAccess, method: POST, path: '/internal/bookings/{bookingId}/access-decisions'}
-  paymentCreate: &paymentCreate {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: createPayment, method: POST, path: /payments}
-  paymentGet: &paymentGet {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: getPayment, method: GET, path: '/payments/{paymentId}'}
-  paymentAuthorize: &paymentAuthorize {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: authorizePayment, method: POST, path: '/payments/{paymentId}/authorize'}
-  paymentCapture: &paymentCapture {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: capturePayment, method: POST, path: '/payments/{paymentId}/capture'}
-  paymentRefund: &paymentRefund {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: createRefund, method: POST, path: '/payments/{paymentId}/refunds'}
-  paymentReconcile: &paymentReconcile {contractId: openapi.payment-service, canonicalPath: openapi/payment-service.yaml, operationId: reconcilePayment, method: POST, path: '/payments/{paymentId}/reconcile'}
-  ticketIssue: &ticketIssue {contractId: openapi.ticket-service, canonicalPath: openapi/ticket-service.yaml, operationId: issueTickets, method: POST, path: '/tickets:issue'}
-  ticketListBooking: &ticketListBooking {contractId: openapi.ticket-service, canonicalPath: openapi/ticket-service.yaml, operationId: listBookingTickets, method: GET, path: '/bookings/{bookingId}/tickets'}
-  ticketCancel: &ticketCancel {contractId: openapi.ticket-service, canonicalPath: openapi/ticket-service.yaml, operationId: cancelTicket, method: POST, path: '/tickets/{ticketId}/cancel'}
-  notificationIngress: &notificationIngress {contractId: openapi.notification-service, canonicalPath: openapi/notification-service.yaml, operationId: receiveEventWebhook, method: POST, path: /webhooks/events}
-  realtimeIngress: &realtimeIngress {contractId: openapi.realtime-service, canonicalPath: openapi/realtime-service.yaml, operationId: ingestRealtimeStatusEvent, method: POST, path: /internal/status-events}
-  identityJwks: &identityJwks {contractId: openapi.identity-service, canonicalPath: openapi/identity-service.yaml, operationId: getIdentityJwks, method: GET, path: /.well-known/jwks.json}
+  customerResolve: &customerResolve {contractId: customer-service, canonicalPath: customer-service.yaml, operationId: resolveCustomerIdentityMapping, method: GET, path: '/internal/identity-mappings/{identitySubject}'}
+  customerGet: &customerGet {contractId: customer-service, canonicalPath: customer-service.yaml, operationId: getCustomer, method: GET, path: '/customers/{customerId}'}
+  eventList: &eventList {contractId: event-service, canonicalPath: event-service.yaml, operationId: listEvents, method: GET, path: /events}
+  eventGet: &eventGet {contractId: event-service, canonicalPath: event-service.yaml, operationId: getEvent, method: GET, path: '/events/{eventId}'}
+  eventEligibility: &eventEligibility {contractId: event-service, canonicalPath: event-service.yaml, operationId: getSaleEligibility, method: GET, path: '/events/{eventId}/sale-eligibility'}
+  seatCheck: &seatCheck {contractId: seat-inventory, canonicalPath: seat-inventory.wsdl, operationId: CheckAvailability, method: SOAP, path: 'urn:event-ticketing:seat:v1/CheckAvailability'}
+  seatReserve: &seatReserve {contractId: seat-inventory, canonicalPath: seat-inventory.wsdl, operationId: ReserveSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ReserveSeats'}
+  seatGetReservation: &seatGetReservation {contractId: seat-inventory, canonicalPath: seat-inventory.wsdl, operationId: GetReservation, method: SOAP, path: 'urn:event-ticketing:seat:v1/GetReservation'}
+  seatConfirm: &seatConfirm {contractId: seat-inventory, canonicalPath: seat-inventory.wsdl, operationId: ConfirmSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ConfirmSeats'}
+  seatRelease: &seatRelease {contractId: seat-inventory, canonicalPath: seat-inventory.wsdl, operationId: ReleaseSeats, method: SOAP, path: 'urn:event-ticketing:seat:v1/ReleaseSeats'}
+  bookingCreate: &bookingCreate {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: createBooking, method: POST, path: /bookings}
+  bookingGet: &bookingGet {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: getBooking, method: GET, path: '/bookings/{bookingId}'}
+  bookingReservation: &bookingReservation {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingReservation, method: POST, path: '/bookings/{bookingId}/reservation'}
+  bookingPaymentStarted: &bookingPaymentStarted {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingPaymentStarted, method: POST, path: '/bookings/{bookingId}/payment-started'}
+  bookingPaymentResult: &bookingPaymentResult {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingPaymentResult, method: POST, path: '/bookings/{bookingId}/payment-result'}
+  bookingTickets: &bookingTickets {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingTickets, method: POST, path: '/bookings/{bookingId}/tickets'}
+  bookingConfirm: &bookingConfirm {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingConfirm, method: POST, path: '/bookings/{bookingId}/confirm'}
+  bookingFail: &bookingFail {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingFail, method: POST, path: '/bookings/{bookingId}/fail'}
+  bookingCancel: &bookingCancel {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: bookingCancel, method: POST, path: '/bookings/{bookingId}/cancel'}
+  bookingAccess: &bookingAccess {contractId: booking-service, canonicalPath: booking-service.yaml, operationId: decideBookingResourceAccess, method: POST, path: '/internal/bookings/{bookingId}/access-decisions'}
+  paymentCreate: &paymentCreate {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: createPayment, method: POST, path: /payments}
+  paymentGet: &paymentGet {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: getPayment, method: GET, path: '/payments/{paymentId}'}
+  paymentAuthorize: &paymentAuthorize {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: authorizePayment, method: POST, path: '/payments/{paymentId}/authorize'}
+  paymentCapture: &paymentCapture {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: capturePayment, method: POST, path: '/payments/{paymentId}/capture'}
+  paymentRefund: &paymentRefund {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: createRefund, method: POST, path: '/payments/{paymentId}/refunds'}
+  paymentReconcile: &paymentReconcile {contractId: payment-service, canonicalPath: payment-service.yaml, operationId: reconcilePayment, method: POST, path: '/payments/{paymentId}/reconcile'}
+  ticketIssue: &ticketIssue {contractId: ticket-service, canonicalPath: ticket-service.yaml, operationId: issueTickets, method: POST, path: '/tickets:issue'}
+  ticketListBooking: &ticketListBooking {contractId: ticket-service, canonicalPath: ticket-service.yaml, operationId: listBookingTickets, method: GET, path: '/bookings/{bookingId}/tickets'}
+  ticketCancel: &ticketCancel {contractId: ticket-service, canonicalPath: ticket-service.yaml, operationId: cancelTicket, method: POST, path: '/tickets/{ticketId}/cancel'}
+  notificationIngress: &notificationIngress {contractId: notification-service, canonicalPath: notification-service.yaml, operationId: receiveEventWebhook, method: POST, path: /webhooks/events}
+  realtimeIngress: &realtimeIngress {contractId: realtime-service, canonicalPath: realtime-service.openapi.yaml, operationId: ingestRealtimeStatusEvent, method: POST, path: /internal/status-events}
+  identityJwks: &identityJwks {contractId: identity-service, canonicalPath: identity-service.yaml, operationId: getIdentityJwks, method: GET, path: /.well-known/jwks.json}
 
 publicOperations:
   - publicOperationId: publicListEvents
@@ -153,8 +153,8 @@ publicOperations:
     requestSchema: path.eventId
     responseSchemas:
       '200': '#/components/schemas/PublicEvent'
-      '404': '../common/error-response.schema.json'
-      '503': '../common/error-response.schema.json'
+      '404': '#/components/schemas/ErrorResponse'
+      '503': '#/components/schemas/ErrorResponse'
     providerCalls:
       - {<<: *eventGet, step: 1, service: event-service, protocol: REST, criticality: critical, inputFrom: path.eventId, outputTo: public event projection, timeoutClass: read, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: return transformed detail, onFailure: normalized ErrorResponse, compensation: none}
     timeoutPolicy: read
@@ -166,20 +166,20 @@ publicOperations:
   - publicOperationId: placeBooking
     method: POST
     path: /api/bookings
-    authentication: BrowserBearerAuth required; verify signature/issuer/audience/expiry and read sub plus roles
+    authentication: UserJwt required; verify signature/issuer/audience/expiry and read sub plus roles
     authorization: Customer derived through Customer mapping; browser customerId is ignored as ownership proof
     requiredHeaders: [Idempotency-Key]
     acceptedHeaders: [X-Correlation-ID, traceparent]
     generatedHeaders: [X-Correlation-ID]
-    security: [bearerAuth]
+    security: [UserJwt]
     requestSchema: '#/components/schemas/PlaceBookingRequest'
     responseSchemas:
       '201': '#/components/schemas/BookingResult'
       '202': '#/components/schemas/BookingResult'
-      '402': '../common/error-response.schema.json'
-      '409': '../common/error-response.schema.json'
-      '422': '../common/error-response.schema.json'
-      '503': '../common/error-response.schema.json'
+      '402': '#/components/schemas/ErrorResponse'
+      '409': '#/components/schemas/ErrorResponse'
+      '422': '#/components/schemas/ErrorResponse'
+      '503': '#/components/schemas/ErrorResponse'
     providerCalls:
       - {<<: *customerResolve, step: 1, service: customer-service, protocol: INTERNAL_REST, criticality: critical, inputFrom: verifiedJwt.sub, outputTo: workflow.customerId, timeoutClass: internalDecision, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: require ACTIVE mapping, onFailure: fail-closed before seat/payment, compensation: none}
       - {<<: *customerGet, step: 2, service: customer-service, protocol: REST, criticality: critical, inputFrom: workflow.customerId, outputTo: workflow.customer, timeoutClass: read, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: require ACTIVE customer, onFailure: fail-closed before seat/payment, compensation: none}
@@ -209,17 +209,17 @@ publicOperations:
   - publicOperationId: publicGetBooking
     method: GET
     path: /api/bookings/{bookingId}
-    authentication: BrowserBearerAuth required
+    authentication: UserJwt required
     authorization: Booking access decision from verified JWT sub and roles; deny before disclosure
     requiredHeaders: []
     acceptedHeaders: []
     generatedHeaders: [X-Correlation-ID]
-    security: [bearerAuth]
+    security: [UserJwt]
     requestSchema: path.bookingId
     responseSchemas:
       '200': '#/components/schemas/BookingResult'
-      '403': '../common/error-response.schema.json'
-      '404': '../common/error-response.schema.json'
+      '403': '#/components/schemas/ErrorResponse'
+      '404': '#/components/schemas/ErrorResponse'
     providerCalls:
       - {<<: *bookingAccess, step: 1, service: booking-service, protocol: INTERNAL_REST, criticality: critical, inputFrom: path.bookingId plus verifiedJwt.sub/roles, outputTo: allowed decision, timeoutClass: internalDecision, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: continue only when allowed, onFailure: deny before resource disclosure, compensation: none}
       - {<<: *bookingGet, step: 2, service: booking-service, protocol: REST, criticality: critical, inputFrom: path.bookingId, outputTo: public BookingResult, timeoutClass: read, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: return projection, onFailure: normalized ErrorResponse, compensation: none}
@@ -232,19 +232,19 @@ publicOperations:
   - publicOperationId: publicCancelBooking
     method: POST
     path: /api/bookings/{bookingId}/cancel
-    authentication: BrowserBearerAuth required
+    authentication: UserJwt required
     authorization: Booking access decision before reading or mutating booking
     requiredHeaders: [Idempotency-Key]
     acceptedHeaders: []
     generatedHeaders: [X-Correlation-ID]
-    security: [bearerAuth]
+    security: [UserJwt]
     requestSchema: path.bookingId
     responseSchemas:
       '200': '#/components/schemas/BookingResult'
-      '403': '../common/error-response.schema.json'
-      '404': '../common/error-response.schema.json'
-      '409': '../common/error-response.schema.json'
-      '503': '../common/error-response.schema.json'
+      '403': '#/components/schemas/ErrorResponse'
+      '404': '#/components/schemas/ErrorResponse'
+      '409': '#/components/schemas/ErrorResponse'
+      '503': '#/components/schemas/ErrorResponse'
     providerCalls:
       - {<<: *bookingAccess, step: 1, service: booking-service, protocol: INTERNAL_REST, criticality: critical, inputFrom: path.bookingId plus verifiedJwt.sub/roles, outputTo: allowed decision, timeoutClass: internalDecision, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: continue only when allowed, onFailure: deny before disclosure, compensation: none}
       - {<<: *bookingGet, step: 2, service: booking-service, protocol: REST, criticality: critical, inputFrom: path.bookingId, outputTo: authoritative state/evidence, timeoutClass: read, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: choose evidence-driven compensations, onFailure: stop, compensation: none}
@@ -273,7 +273,7 @@ publicOperations:
     requestSchema: null
     responseSchemas:
       '200': '#/paths/~1api~1health/get/responses/200/content/application~1json/schema'
-      '503': '../common/error-response.schema.json'
+      '503': '#/components/schemas/ErrorResponse'
     providerCalls: []
     timeoutPolicy: read
     retryPolicy: none
@@ -284,17 +284,17 @@ publicOperations:
   - publicOperationId: getWorkflowTrace
     method: GET
     path: /api/traces/{correlationId}
-    authentication: BrowserBearerAuth required
+    authentication: UserJwt required
     authorization: operations/admin policy in ESB
     requiredHeaders: []
     acceptedHeaders: []
     generatedHeaders: [X-Correlation-ID]
-    security: [bearerAuth]
+    security: [UserJwt]
     requestSchema: path.correlationId
     responseSchemas:
       '200': '#/paths/~1api~1traces~1{correlationId}/get/responses/200/content/application~1json/schema'
-      '403': '../common/error-response.schema.json'
-      '404': '../common/error-response.schema.json'
+      '403': '#/components/schemas/ErrorResponse'
+      '404': '#/components/schemas/ErrorResponse'
     providerCalls: []
     timeoutPolicy: read
     retryPolicy: safeRead
@@ -305,20 +305,20 @@ publicOperations:
   - publicOperationId: issueRealtimeWebSocketTicket
     method: POST
     path: /api/realtime/ws-tickets
-    authentication: BrowserBearerAuth required
+    authentication: UserJwt required
     authorization: Booking access decision from verified JWT sub and roles
-    requiredHeaders: [X-Correlation-ID]
-    acceptedHeaders: []
+    requiredHeaders: []
+    acceptedHeaders: [X-Correlation-ID, traceparent]
     generatedHeaders: [X-Correlation-ID]
-    security: [BrowserBearerAuth]
+    security: [UserJwt]
     requestSchema: '#/components/schemas/WsTicketRequest'
     responseSchemas:
       '201': '#/components/schemas/WsTicketResponse'
-      '400': '../common/error-response.schema.json'
-      '401': '../common/error-response.schema.json'
-      '403': '../common/error-response.schema.json'
-      '429': '../common/error-response.schema.json'
-      '503': '../common/error-response.schema.json'
+      '400': '#/components/schemas/ErrorResponse'
+      '401': '#/components/schemas/ErrorResponse'
+      '403': '#/components/schemas/ErrorResponse'
+      '429': '#/components/schemas/ErrorResponse'
+      '503': '#/components/schemas/ErrorResponse'
     providerCalls:
       - {<<: *bookingAccess, step: 1, service: booking-service, protocol: INTERNAL_REST, criticality: critical, inputFrom: request.bookingId plus verifiedJwt.sub/roles, outputTo: allowed decision, timeoutClass: internalDecision, retryClass: safeRead, idempotency: naturally-idempotent, onSuccess: issue only if allowed, onFailure: deny and issue no ticket, compensation: none}
     timeoutPolicy: internalDecision

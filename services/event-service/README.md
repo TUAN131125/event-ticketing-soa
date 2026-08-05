@@ -81,12 +81,11 @@ luôn dùng `PostgresEventRepository`.
 ### Cách 1: Docker Compose (khuyến nghị, giống hệt CI/production)
 
 ```powershell
-cd services\event-service
-docker compose up --build
+docker compose --profile event up --build --wait
 ```
 
-Compose tự khởi động PostgreSQL, chạy `alembic upgrade head` (qua
-`docker-entrypoint.sh`) rồi mới start service ở cổng `8002`.
+Root Compose chạy `event-migrate` trước và chỉ start service ở cổng `8002`
+khi migration hoàn thành thành công.
 
 ### Cách 2: Chạy trực tiếp (cần tự có PostgreSQL)
 

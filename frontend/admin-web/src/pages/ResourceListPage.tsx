@@ -9,9 +9,132 @@ import type { NotificationRecord, PaymentRecord, TraceRecord } from '../types';
 
 type ResourceKind = 'payments' | 'notifications' | 'monitoring';
 export function ResourceListPage({ kind }: { kind: ResourceKind }) {
-  const [search, setSearch] = useState(''); const [page, setPage] = useState(1);
-  const title = kind === 'payments' ? 'Payments' : kind === 'notifications' ? 'Notifications' : 'Trace explorer';
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const title =
+    kind === 'payments'
+      ? 'Payments'
+      : kind === 'notifications'
+        ? 'Notifications'
+        : 'Trace explorer';
   const query = useAdminResource(kind, { search, page });
   const records = query.data?.items ?? [];
-  return <><PageHeader eyebrow="Operations" title={title} description="This view is intentionally read-only until the corresponding gateway contract is available." /><Card><div className="toolbar"><label className="search-control"><Search size={16} /><Input aria-label={`Search ${title}`} placeholder="Search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label><span className="toolbar-meta">{query.data ? `${query.data.total} records` : 'Live results'}</span></div><QueryState isLoading={query.isLoading} error={query.error} onRetry={() => void query.refetch()}>{kind === 'payments' && <Table<PaymentRecord> rows={records as PaymentRecord[]} columns={[{ key: 'id', label: 'Payment', render: (row) => row.id }, { key: 'booking', label: 'Booking', render: (row) => row.bookingId ?? '—' }, { key: 'amount', label: 'Amount', render: (row) => row.amount !== undefined ? `${row.amount} ${row.currency ?? ''}` : '—' }, { key: 'status', label: 'Status', render: (row) => <Badge tone={row.status?.toLowerCase() === 'succeeded' ? 'success' : 'warning'}>{row.status ?? 'Unknown'}</Badge> }, { key: 'created', label: 'Created', render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleString() : '—' }]} />}{kind === 'notifications' && <Table<NotificationRecord> rows={records as NotificationRecord[]} columns={[{ key: 'id', label: 'Notification', render: (row) => row.id }, { key: 'channel', label: 'Channel', render: (row) => row.channel ?? '—' }, { key: 'recipient', label: 'Recipient', render: (row) => row.recipient ?? '—' }, { key: 'status', label: 'Status', render: (row) => <Badge tone={row.status?.toLowerCase() === 'sent' ? 'success' : 'warning'}>{row.status ?? 'Unknown'}</Badge> }, { key: 'created', label: 'Created', render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleString() : '—' }]} />}{kind === 'monitoring' && <Table<TraceRecord> rows={records as TraceRecord[]} columns={[{ key: 'trace', label: 'Trace ID', render: (row) => row.traceId }, { key: 'operation', label: 'Operation', render: (row) => row.operation ?? '—' }, { key: 'status', label: 'Status', render: (row) => <Badge tone={row.status?.toLowerCase() === 'ok' ? 'success' : 'warning'}>{row.status ?? 'Unknown'}</Badge> }, { key: 'duration', label: 'Duration', render: (row) => row.durationMs !== undefined ? `${row.durationMs} ms` : '—' }, { key: 'started', label: 'Started', render: (row) => row.startedAt ? new Date(row.startedAt).toLocaleString() : '—' }]} />}{query.data && query.data.totalPages > 1 && <Pagination page={page} pageCount={query.data.totalPages} onPageChange={setPage} />}</QueryState></Card></>;
+  return (
+    <>
+      <PageHeader
+        eyebrow="Operations"
+        title={title}
+        description="This view is intentionally read-only until the corresponding gateway contract is available."
+      />
+      <Card>
+        <div className="toolbar">
+          <label className="search-control">
+            <Search size={16} />
+            <Input
+              aria-label={`Search ${title}`}
+              placeholder="Search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <span className="toolbar-meta">
+            {query.data ? `${query.data.total} records` : 'Live results'}
+          </span>
+        </div>
+        <QueryState
+          isLoading={query.isLoading}
+          error={query.error}
+          onRetry={() => void query.refetch()}
+        >
+          {kind === 'payments' && (
+            <Table<PaymentRecord>
+              rows={records as PaymentRecord[]}
+              columns={[
+                { key: 'id', label: 'Payment', render: (row) => row.id },
+                { key: 'booking', label: 'Booking', render: (row) => row.bookingId ?? '—' },
+                {
+                  key: 'amount',
+                  label: 'Amount',
+                  render: (row) =>
+                    row.amount !== undefined ? `${row.amount} ${row.currency ?? ''}` : '—',
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (row) => (
+                    <Badge tone={row.status?.toLowerCase() === 'succeeded' ? 'success' : 'warning'}>
+                      {row.status ?? 'Unknown'}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: 'created',
+                  label: 'Created',
+                  render: (row) => (row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'),
+                },
+              ]}
+            />
+          )}
+          {kind === 'notifications' && (
+            <Table<NotificationRecord>
+              rows={records as NotificationRecord[]}
+              columns={[
+                { key: 'id', label: 'Notification', render: (row) => row.id },
+                { key: 'channel', label: 'Channel', render: (row) => row.channel ?? '—' },
+                { key: 'recipient', label: 'Recipient', render: (row) => row.recipient ?? '—' },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (row) => (
+                    <Badge tone={row.status?.toLowerCase() === 'sent' ? 'success' : 'warning'}>
+                      {row.status ?? 'Unknown'}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: 'created',
+                  label: 'Created',
+                  render: (row) => (row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'),
+                },
+              ]}
+            />
+          )}
+          {kind === 'monitoring' && (
+            <Table<TraceRecord>
+              rows={records as TraceRecord[]}
+              columns={[
+                { key: 'trace', label: 'Trace ID', render: (row) => row.traceId },
+                { key: 'operation', label: 'Operation', render: (row) => row.operation ?? '—' },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (row) => (
+                    <Badge tone={row.status?.toLowerCase() === 'ok' ? 'success' : 'warning'}>
+                      {row.status ?? 'Unknown'}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: 'duration',
+                  label: 'Duration',
+                  render: (row) => (row.durationMs !== undefined ? `${row.durationMs} ms` : '—'),
+                },
+                {
+                  key: 'started',
+                  label: 'Started',
+                  render: (row) => (row.startedAt ? new Date(row.startedAt).toLocaleString() : '—'),
+                },
+              ]}
+            />
+          )}
+          {query.data && query.data.totalPages > 1 && (
+            <Pagination page={page} pageCount={query.data.totalPages} onPageChange={setPage} />
+          )}
+        </QueryState>
+      </Card>
+    </>
+  );
 }

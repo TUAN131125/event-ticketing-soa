@@ -1,0 +1,496 @@
+openapi: 3.1.0
+info:
+  title: Realtime Status Service HTTP API
+  version: 1.0.0
+  description: Canonical HTTP integration contract for internal status ingestion and aggregate connection
+    health. Realtime is a best-effort projection and is never authoritative for booking state. Internal
+    producer authentication is the RT-AUTH-001 short-lived service JWT contract. Browser access uses the
+    ESB-issued signed one-time JWT/JWS WebSocket ticket protocol; Realtime never accepts a browser-provided
+    customerId or a long-lived access token in the URL.
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+servers:
+- url: http://localhost:8008
+  description: Local contract endpoint; deployment host is supplied by configuration.
+paths:
+  /internal/status-events:
+    post:
+      operationId: ingestRealtimeStatusEvent
+      summary: Accept a booking status projection from an internal producer
+      x-interface-class: internal
+      x-version: v1
+      description: Accepts a non-authoritative status projection for best-effort broadcast. messageId
+        is the deduplication identity and sequence is monotonic per bookingId. Duplicate or stale input
+        is not broadcast again. The caller presents a short-lived signed service JWT whose iss, sub, aud,
+        iat, exp and jti are verified. aud must identify Realtime Status Service, sub must be allow-listed
+        and replayed jti values are rejected. Browser JWTs are forbidden; deployment mTLS may supplement
+        but not replace this contract.
+      x-service-jwt-policy:
+        requiredClaims:
+        - iss
+        - sub
+        - aud
+        - iat
+        - exp
+        - jti
+        audience: realtime-status-service
+        shortLived: true
+        callerAllowListRequired: true
+        replayedJtiRejected: true
+        browserJwtAccepted: false
+      security:
+      - ServiceJwt: []
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              $id: urn:event-ticketing:realtime-message:v1
+              title: RealtimeMessage
+              description: Best-effort non-authoritative booking status projection.
+              x-contract-status: canonical-v1
+              x-designed-baseline-version: 1.0.0
+              type: object
+              additionalProperties: false
+              required:
+              - messageId
+              - bookingId
+              - status
+              - sequence
+              - occurredAt
+              - correlationId
+              properties:
+                messageId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                bookingId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                status:
+                  enum:
+                  - PENDING
+                  - SEAT_RESERVED
+                  - PAYMENT_PROCESSING
+                  - CONFIRMED
+                  - FAILED
+                  - CANCELLED
+                  - COMPENSATION_PENDING
+                sequence:
+                  type: integer
+                  minimum: 1
+                occurredAt:
+                  type: string
+                  format: date-time
+                  pattern: (?:Z|\+00:00)$
+                correlationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                message:
+                  type: string
+                  maxLength: 300
+              examples:
+              - messageId: MSG-001
+                bookingId: BKG-001
+                status: PAYMENT_PROCESSING
+                sequence: 3
+                occurredAt: '2026-08-03T03:00:00Z'
+                correlationId: corr-1234567890abcdef
+                message: Payment result is being verified
+              x-origin: phase5-machine-baseline
+      responses:
+        '202':
+          description: New event accepted for best-effort publication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEventResult'
+              example:
+                outcome: ACCEPTED
+                messageId: MSG-001
+                bookingId: BKG-001
+                sequence: 3
+                correlationId: corr-1234567890abcdef
+        '200':
+          description: Valid event identified as duplicate or stale and not broadcast.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEventResult'
+              examples:
+                duplicate:
+                  value:
+                    outcome: DUPLICATE
+                    messageId: MSG-001
+                    bookingId: BKG-001
+                    sequence: 3
+                    correlationId: corr-1234567890abcdef
+                stale:
+                  value:
+                    outcome: STALE
+                    messageId: MSG-002
+                    bookingId: BKG-001
+                    sequence: 2
+                    correlationId: corr-1234567890abcdef
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Invalid status, sequence, timestamp or identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Temporary broadcast backend failure; booking processing is unaffected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /connections/health:
+    get:
+      operationId: getConnectionHealth
+      summary: Read non-sensitive aggregate connection health
+      x-interface-class: internal
+      x-version: v1
+      description: Returns only aggregate connection and backend readiness information. It never returns
+        tokens, booking subscription identifiers, customer identifiers, user identifiers or message content.
+      security:
+      - ServiceJwt: []
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          description: Aggregate connection health.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionHealth'
+              example:
+                status: UP
+                activeConnections: 12
+                activeBookingChannels: 5
+                broadcastBackend: memory
+                backendAvailable: true
+                draining: false
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /health/live:
+    get:
+      operationId: realtimeLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: realtimeReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  securitySchemes:
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    StatusEventResult:
+      type: object
+      additionalProperties: false
+      required:
+      - outcome
+      - messageId
+      - bookingId
+      - sequence
+      - correlationId
+      properties:
+        outcome:
+          type: string
+          enum:
+          - ACCEPTED
+          - DUPLICATE
+          - STALE
+        messageId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        bookingId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        sequence:
+          type: integer
+          minimum: 1
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ConnectionHealth:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - activeConnections
+      - activeBookingChannels
+      - broadcastBackend
+      - backendAvailable
+      - draining
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - DEGRADED
+        activeConnections:
+          type: integer
+          minimum: 0
+        activeBookingChannels:
+          type: integer
+          minimum: 0
+        broadcastBackend:
+          type: string
+          enum:
+          - memory
+          - redis
+        backendAvailable:
+          type: boolean
+        draining:
+          type: boolean
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

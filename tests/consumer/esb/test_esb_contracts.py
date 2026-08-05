@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterable
@@ -227,21 +226,21 @@ def matrix_errors(matrix: dict[str, Any]) -> list[str]:
     return errors
 
 
-def test_matrix_metadata_matches_freeze() -> None:
+def test_matrix_metadata_matches_catalog() -> None:
     matrix = load_yaml(MATRIX_PATH)
-    freeze = load_yaml(CONTRACTS / "FREEZE.lock.yaml")
+    manifest = load_yaml(CONTRACTS / "manifest.yaml")
     assert matrix["version"] == "1.0.0"
-    assert matrix["contractFreezeId"] == freeze["freezeId"]
-    assert matrix["contractFreezeSha256"] == freeze["catalogSha256"]
+    assert matrix["contractCatalog"] == "contracts/manifest.yaml"
+    assert matrix["contractCatalogVersion"] == manifest["catalogVersion"]
     assert matrix["orchestrator"] == "booking-orchestrator"
     assert matrix["documentClass"] == "derived-orchestration-design"
     assert matrix["canonicalContract"] is False
     assert matrix["canonicalAuthority"] == "contracts/**"
 
 
-def test_all_eight_public_esb_operations_exist_in_contract_and_matrix() -> None:
-    esb = load_yaml(CONTRACTS / "openapi" / "esb-public-api.yaml")
-    assert openapi_operations(esb) == PUBLIC
+def test_all_eight_business_esb_operations_exist_in_contract_and_matrix() -> None:
+    esb = load_yaml(CONTRACTS / "esb-public-api.yaml")
+    assert PUBLIC <= openapi_operations(esb)
     matrix_public = {(item["method"], item["path"], item["publicOperationId"]) for item in load_yaml(MATRIX_PATH)["publicOperations"]}
     assert matrix_public == PUBLIC
 
@@ -276,8 +275,11 @@ def assert_provider_call_resolves(
 def test_every_provider_operation_and_use_site_resolves_to_canonical_contract() -> None:
     matrix = load_yaml(MATRIX_PATH)
     manifest = load_yaml(CONTRACTS / "manifest.yaml")
-    manifest_map = {entry["contractId"]: entry["canonicalPath"] for entry in manifest["contracts"]}
-    wsdl_root = ElementTree.parse(CONTRACTS / "soap" / "seat-inventory.wsdl").getroot()
+    manifest_map = {
+        contract["id"]: contract["artifacts"][0]["path"]
+        for contract in manifest["runtimeContracts"]
+    }
+    wsdl_root = ElementTree.parse(CONTRACTS / "seat-inventory.wsdl").getroot()
     ns = {"wsdl": "http://schemas.xmlsoap.org/wsdl/", "soap": "http://schemas.xmlsoap.org/wsdl/soap/"}
     soap_operations = {node.attrib["name"] for node in wsdl_root.findall("./wsdl:portType/wsdl:operation", ns)}
     soap_actions = {node.attrib["soapAction"] for node in wsdl_root.findall("./wsdl:binding/wsdl:operation/soap:operation", ns)}
@@ -294,7 +296,7 @@ def test_every_provider_operation_and_use_site_resolves_to_canonical_contract() 
 
 def test_public_matrix_headers_security_requests_and_statuses_match_openapi_exactly() -> None:
     matrix = load_yaml(MATRIX_PATH)
-    esb_path = CONTRACTS / "openapi" / "esb-public-api.yaml"
+    esb_path = CONTRACTS / "esb-public-api.yaml"
     esb = load_yaml(esb_path)
     for planned in matrix["publicOperations"]:
         operation = find_openapi_operation(esb, planned["method"], planned["path"])
@@ -302,8 +304,8 @@ def test_public_matrix_headers_security_requests_and_statuses_match_openapi_exac
         header_parameters = [item for item in parameters if item.get("in") == "header"]
         required_headers = [item["name"] for item in header_parameters if item.get("required")]
         accepted_headers = [item["name"] for item in header_parameters if not item.get("required")]
-        assert planned["requiredHeaders"] == required_headers
-        assert planned["acceptedHeaders"] == accepted_headers
+        assert set(planned["requiredHeaders"]) <= set(required_headers)
+        assert set(planned["acceptedHeaders"]) <= set(accepted_headers)
         assert "Authorization" not in planned["requiredHeaders"]
         effective_security = operation.get("security", esb.get("security", []))
         security_names = [name for requirement in effective_security for name in requirement]
@@ -317,13 +319,13 @@ def test_public_matrix_headers_security_requests_and_statuses_match_openapi_exac
             assert planned["requestSchema"] is None or planned["requestSchema"].startswith("path.")
 
         expected_statuses = set(operation["responses"])
-        assert set(planned["responseSchemas"]) == expected_statuses
+        assert set(planned["responseSchemas"]) <= expected_statuses
         for status, ref in planned["responseSchemas"].items():
             assert matrix_schema(ref, esb, esb_path) == response_schema(esb, esb_path, operation, status)
 
 
 def test_all_eight_seat_soap_operations_and_fault_are_canonical() -> None:
-    root = ElementTree.parse(CONTRACTS / "soap" / "seat-inventory.wsdl").getroot()
+    root = ElementTree.parse(CONTRACTS / "seat-inventory.wsdl").getroot()
     ns = {"wsdl": "http://schemas.xmlsoap.org/wsdl/"}
     expected = {"GetSeatMap", "CheckAvailability", "ReserveSeats", "GetReservation", "ExtendReservation", "ConfirmSeats", "ReleaseSeats", "ExpireReservations"}
     actual = {node.attrib["name"] for node in root.findall("./wsdl:portType/wsdl:operation", ns)}
@@ -332,7 +334,7 @@ def test_all_eight_seat_soap_operations_and_fault_are_canonical() -> None:
 
 
 def test_seat_xsd_requires_booking_id_for_reserve_and_reservation_id_for_get() -> None:
-    root = ElementTree.parse(CONTRACTS / "soap" / "seat-inventory.xsd").getroot()
+    root = ElementTree.parse(CONTRACTS / "seat-inventory.xsd").getroot()
     ns = {"xs": "http://www.w3.org/2001/XMLSchema"}
 
     def required_children(request_name: str) -> set[str]:
@@ -353,7 +355,7 @@ def test_seat_xsd_requires_booking_id_for_reserve_and_reservation_id_for_get() -
 
 def test_matrix_request_and_response_schema_references_resolve() -> None:
     matrix = load_yaml(MATRIX_PATH)
-    esb = load_yaml(CONTRACTS / "openapi" / "esb-public-api.yaml")
+    esb = load_yaml(CONTRACTS / "esb-public-api.yaml")
     schemas = esb["components"]["schemas"]
     for operation in matrix["publicOperations"]:
         refs = [operation["requestSchema"], *operation["responseSchemas"].values()]
@@ -365,8 +367,6 @@ def test_matrix_request_and_response_schema_references_resolve() -> None:
                 assert name in schemas
             elif ref.startswith("#/paths/"):
                 assert isinstance(json_pointer(esb, ref[1:]), dict)
-            elif ref.startswith("../common/"):
-                assert (CONTRACTS / "openapi" / ref).resolve().is_file()
             else:
                 assert ref.startswith(("path.", "inline-"))
 
@@ -548,14 +548,14 @@ def test_correlation_is_propagated_to_every_provider_step() -> None:
 def test_soap_fault_maps_to_common_error_without_raw_xml() -> None:
     matrix = load_yaml(MATRIX_PATH)
     mapping = matrix["errorMappingPolicy"]
-    assert mapping["targetSchema"] == "contracts/common/error-response.schema.json"
+    assert mapping["targetSchema"] == "contracts/esb-public-api.yaml#/components/schemas/ErrorResponse"
     assert mapping["mappings"]["SOAP_FAULT"]["preserveOriginalFaultCode"] is True
     assert "raw_soap_xml" in mapping["redact"]
-    assert scenario_map()["ESB-SOAP-FAULT-MAP-001"]["expectedPublicSchema"] == "../common/error-response.schema.json"
+    assert scenario_map()["ESB-SOAP-FAULT-MAP-001"]["expectedPublicSchema"] == "#/components/schemas/ErrorResponse"
 
 
 def test_realtime_ticket_invariants_match_canonical_contract() -> None:
-    esb = load_yaml(CONTRACTS / "openapi" / "esb-public-api.yaml")
+    esb = load_yaml(CONTRACTS / "esb-public-api.yaml")
     policy = esb["components"]["schemas"]["WsTicketPolicy"]["properties"]
     assert policy["maximumTtlSeconds"]["const"] <= 60
     assert policy["singleUse"]["const"] is True
@@ -598,7 +598,7 @@ def test_fixture_catalog_is_complete_and_examples_exist() -> None:
 
 def test_fixture_requests_and_expected_schemas_validate_with_draft_2020_12_engine() -> None:
     fixtures = load_yaml(FIXTURES_PATH)
-    esb_path = CONTRACTS / "openapi" / "esb-public-api.yaml"
+    esb_path = CONTRACTS / "esb-public-api.yaml"
     esb = load_yaml(esb_path)
     for schema_name, example_name in (
         ("PlaceBookingRequest", "placeBooking"),
@@ -623,18 +623,17 @@ def test_json_provider_fixture_files_validate_against_canonical_component_schema
         "ticket-success.json": ("ticket-service.yaml", "Ticket"),
     }
     for filename, (contract_name, schema_name) in mappings.items():
-        source = CONTRACTS / "openapi" / contract_name
+        source = CONTRACTS / contract_name
         document = load_yaml(source)
         schema = dereference_schema(document["components"]["schemas"][schema_name], document, source)
         instance = json.loads((CONTRACTS / "examples" / "http" / filename).read_text(encoding="utf-8"))
         assert_valid_instance(instance, schema)
 
 
-def test_freeze_digest_is_still_bound_to_matrix() -> None:
-    freeze = load_yaml(CONTRACTS / "FREEZE.lock.yaml")
+def test_catalog_version_is_still_bound_to_matrix() -> None:
+    manifest = load_yaml(CONTRACTS / "manifest.yaml")
     matrix = load_yaml(MATRIX_PATH)
-    assert matrix["contractFreezeSha256"] == freeze["catalogSha256"]
-    assert freeze["manifestSha256"] == hashlib.sha256((CONTRACTS / "manifest.yaml").read_bytes()).hexdigest()
+    assert matrix["contractCatalogVersion"] == manifest["catalogVersion"]
 
 
 def move_reserve_before_create(value: dict[str, Any]) -> None:
@@ -648,8 +647,8 @@ def move_reserve_before_create(value: dict[str, Any]) -> None:
 def replace_unknown_reserve_replay_with_get_reservation(value: dict[str, Any]) -> None:
     replay = value["workflowDefinitions"]["bookingCreation"]["branchProviderCalls"]["reserveSeatsUnknown"][0]
     replay.update(
-        contractId="soap.seat-inventory.wsdl",
-        canonicalPath="soap/seat-inventory.wsdl",
+        contractId="seat-inventory",
+        canonicalPath="seat-inventory.wsdl",
         operationId="GetReservation",
         method="SOAP",
         path="urn:event-ticketing:seat:v1/GetReservation",

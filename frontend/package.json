@@ -3,11 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "npm@10.9.8",
-  "workspaces": ["shared-ui", "customer-web", "admin-web"],
+  "workspaces": [
+    "shared-ui",
+    "customer-web",
+    "admin-web"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "format": "prettier --write \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
+  }
 }

@@ -23,6 +23,11 @@ from app.infrastructure.database.session import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_CONTRACTS = ROOT.parents[1] / "contracts"
+os.environ.setdefault(
+    "SEAT_XSD_PATH",
+    str(REPOSITORY_CONTRACTS / "seat-inventory.xsd"),
+)
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+psycopg://seat_inventory:seat_inventory"
     "@localhost:55432/seat_inventory_test"
@@ -36,6 +41,8 @@ def test_settings() -> Iterator[Settings]:
     )
     os.environ["SEAT_SERVICE_TOKEN"] = "test-service-token"
     os.environ["SEAT_SOAP_PUBLIC_URL"] = "http://testserver/soap"
+    os.environ["SEAT_WSDL_PATH"] = str(REPOSITORY_CONTRACTS / "seat-inventory.wsdl")
+    os.environ["SEAT_XSD_PATH"] = str(REPOSITORY_CONTRACTS / "seat-inventory.xsd")
     os.environ["SEAT_MIN_HOLD_SECONDS"] = "1"
     os.environ["SEAT_DEFAULT_HOLD_SECONDS"] = "2"
     os.environ["SEAT_MAX_HOLD_SECONDS"] = "30"
@@ -59,7 +66,7 @@ def migrated_database(test_settings: Settings) -> Iterator[None]:
             connection.execute(text("SELECT 1"))
     except OperationalError:
         pytest.skip(
-            "Real PostgreSQL is required; start docker-compose.test.yml and set "
+            "Real PostgreSQL is required; start the root seat profile and set "
             "SEAT_TEST_DATABASE_URL when using another endpoint"
         )
 

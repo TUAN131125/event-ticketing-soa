@@ -1,6 +1,7 @@
 """Unit test cho use case (application layer), dung InMemoryCustomerRepository
 de chay nhanh, khong can PostgreSQL. Test hanh vi nghiep vu thuan tuy -
 KHONG test SQL/DB (xem tests/integration cho phan do)."""
+
 import pytest
 
 from app.application.commands.create_customer import create_customer
@@ -24,13 +25,17 @@ def test_seed_customer_exists(repo: InMemoryCustomerRepository) -> None:
     assert customer.status == CustomerStatus.ACTIVE
 
 
-def test_create_customer_assigns_incrementing_id(repo: InMemoryCustomerRepository) -> None:
+def test_create_customer_assigns_incrementing_id(
+    repo: InMemoryCustomerRepository,
+) -> None:
     customer = create_customer(repo, "Le Thi C", "c@example.com", "0911111111")
     assert customer.id == "C002"
     assert repo.get("C002") is not None
 
 
-def test_create_customer_rejects_duplicate_email(repo: InMemoryCustomerRepository) -> None:
+def test_create_customer_rejects_duplicate_email(
+    repo: InMemoryCustomerRepository,
+) -> None:
     with pytest.raises(DuplicateEmailError):
         create_customer(repo, "Trung Email", "an@example.com", "0900000000")
 
@@ -47,7 +52,9 @@ def test_get_customer_not_found_raises(repo: InMemoryCustomerRepository) -> None
         get_customer(repo, "C999")
 
 
-def test_update_customer_changes_only_given_fields(repo: InMemoryCustomerRepository) -> None:
+def test_update_customer_changes_only_given_fields(
+    repo: InMemoryCustomerRepository,
+) -> None:
     updated = update_customer(repo, "C001", name="Nguyen Van An 2")
     assert updated.name == "Nguyen Van An 2"
     assert updated.email == "an@example.com"  # khong doi vi khong truyen

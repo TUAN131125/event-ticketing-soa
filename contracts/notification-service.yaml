@@ -1,0 +1,541 @@
+openapi: 3.1.0
+info:
+  title: Notification Service API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
+servers:
+- url: http://localhost:8007
+  description: Local contract endpoint; deployment host is supplied by configuration.
+security:
+- ServiceJwt: []
+paths:
+  /webhooks/events:
+    post:
+      summary: Nhận sự kiện
+      operationId: receiveEventWebhook
+      description: Generic at-least-once ingress. The signature is HMAC SHA-256 over timestamp + "." +
+        raw body; eventId is the deduplication key.
+      parameters:
+      - name: X-Webhook-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+      - name: X-Webhook-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^sha256=[A-Fa-f0-9]{64}$
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '202':
+          description: Đã nhận
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              $id: urn:event-ticketing:notification-webhook:v1
+              title: NotificationWebhook
+              description: Generic signed notification ingress payload. HMAC and timestamp headers are
+                defined by the Notification OpenAPI.
+              x-contract-status: canonical-v1
+              x-designed-baseline-version: 1.0.0
+              allOf:
+              - $schema: https://json-schema.org/draft/2020-12/schema
+                $id: urn:event-ticketing:event-envelope:v1
+                title: EventEnvelope
+                x-contract-status: canonical-v1
+                x-designed-baseline-version: 1.0.0
+                type: object
+                additionalProperties: false
+                required:
+                - eventId
+                - eventType
+                - schemaVersion
+                - occurredAt
+                - correlationId
+                - aggregateId
+                - data
+                properties:
+                  eventId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  eventType:
+                    type: string
+                    minLength: 3
+                    maxLength: 128
+                    pattern: ^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$
+                  schemaVersion:
+                    type: integer
+                    minimum: 1
+                  occurredAt:
+                    type: string
+                    format: date-time
+                    pattern: (?:Z|\+00:00)$
+                  correlationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  aggregateId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  data:
+                    type: object
+                x-origin: phase5-machine-baseline
+              - type: object
+                properties:
+                  eventType:
+                    enum:
+                    - booking.confirmed
+                    - booking.failed
+                    - event.changed
+                    - ticket.issued
+              examples:
+              - eventId: EVTMSG-001
+                eventType: booking.confirmed
+                schemaVersion: 1
+                occurredAt: '2026-08-03T03:00:00Z'
+                correlationId: corr-1234567890abcdef
+                aggregateId: BKG-001
+                data:
+                  bookingId: BKG-001
+                  ticketIds:
+                  - TKT-001
+              x-origin: phase5-machine-baseline
+      security:
+      - WebhookHmac: []
+  /deliveries:
+    get:
+      summary: Liệt kê delivery
+      operationId: listDeliveries
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Delivery'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /deliveries/{deliveryId}:
+    get:
+      summary: Chi tiết delivery
+      operationId: getDelivery
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /deliveries/{deliveryId}/retry:
+    post:
+      summary: Retry thủ công
+      operationId: retryDelivery
+      responses:
+        '202':
+          description: Đã xếp hàng
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+      parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IfMatch'
+  /templates/{code}:
+    put:
+      summary: Cập nhật template
+      operationId: replaceTemplate
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                type: object
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUpdate'
+      parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/live:
+    get:
+      operationId: notificationLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: notificationReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    PageMeta:
+      $ref: '#/components/schemas/PageMeta'
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - eventType
+      - schemaVersion
+      - occurredAt
+      - correlationId
+      - aggregateId
+      - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        schemaVersion:
+          type: integer
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        correlationId:
+          type: string
+        aggregateId:
+          type: string
+        data:
+          type: object
+    Delivery:
+      type: object
+      additionalProperties: false
+      required:
+      - deliveryId
+      - eventId
+      - channel
+      - status
+      - attemptCount
+      - createdAt
+      properties:
+        deliveryId:
+          type: string
+        eventId:
+          type: string
+        channel:
+          enum:
+          - EMAIL
+          - SMS
+        status:
+          enum:
+          - PENDING
+          - SENDING
+          - DELIVERED
+          - RETRY_PENDING
+          - DEAD_LETTER
+          - CANCELLED
+        attemptCount:
+          type: integer
+          minimum: 0
+        lastErrorCode:
+          type:
+          - string
+          - 'null'
+        createdAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    TemplateUpdate:
+      type: object
+      additionalProperties: false
+      required:
+      - subject
+      - body
+      properties:
+        subject:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 10000
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

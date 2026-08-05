@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 from typing import cast
 
 from lxml import etree
 
+from app.config import get_xsd_path
 from app.domain.exceptions import InvalidRequest
 
 SOAP_ENV_NS = "http://schemas.xmlsoap.org/soap/envelope/"
-CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "seat-inventory.xsd"
 
 
 def reject_unsafe_declarations(payload: bytes) -> None:
@@ -66,5 +65,5 @@ def get_schema() -> etree.XMLSchema:
         load_dtd=False,
         huge_tree=False,
     )
-    document = etree.parse(str(CONTRACT_PATH), parser)
+    document = etree.parse(str(get_xsd_path()), parser)
     return etree.XMLSchema(document)

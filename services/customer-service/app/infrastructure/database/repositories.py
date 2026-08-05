@@ -8,9 +8,10 @@
   FastAPI goi dong thoi nhieu request cung luc (moi request 1 session
   rieng, khong chia se ket noi).
 """
+
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -36,10 +37,10 @@ class InMemoryCustomerRepository(CustomerRepository):
     def add(self, customer: Customer) -> None:
         self._data[customer.id] = customer
 
-    def get(self, customer_id: str) -> Optional[Customer]:
+    def get(self, customer_id: str) -> Customer | None:
         return self._data.get(customer_id)
 
-    def get_by_email(self, email: str) -> Optional[Customer]:
+    def get_by_email(self, email: str) -> Customer | None:
         for c in self._data.values():
             if c.email.lower() == email.lower():
                 return c
@@ -94,12 +95,12 @@ class PostgresCustomerRepository(CustomerRepository):
         except IntegrityError as exc:
             raise DuplicateEmailError(customer.email) from exc
 
-    def get(self, customer_id: str) -> Optional[Customer]:
+    def get(self, customer_id: str) -> Customer | None:
         with session_scope() as session:
             row = session.get(CustomerModel, customer_id)
             return _to_entity(row) if row is not None else None
 
-    def get_by_email(self, email: str) -> Optional[Customer]:
+    def get_by_email(self, email: str) -> Customer | None:
         with session_scope() as session:
             stmt = select(CustomerModel).where(CustomerModel.email.ilike(email))
             row = session.execute(stmt).scalar_one_or_none()
@@ -141,5 +142,7 @@ class PostgresCustomerRepository(CustomerRepository):
         # tang database - an toan khi nhieu worker/container cung goi
         # dong thoi (khac voi bien dem trong bo nho cua ban InMemory).
         with session_scope() as session:
-            next_value = session.execute(select(customer_id_seq.next_value())).scalar_one()
+            next_value = session.execute(
+                select(customer_id_seq.next_value())
+            ).scalar_one()
             return f"C{next_value:03d}"

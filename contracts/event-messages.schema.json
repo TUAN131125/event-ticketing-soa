@@ -1,0 +1,1310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:event-ticketing:event-messages:v1",
+  "title": "EventTicketingMessage",
+  "description": "Producer-owned event messages delivered at least once and deduplicated by eventId.",
+  "x-contract-status": "canonical-v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/bookingCancelled"
+    },
+    {
+      "$ref": "#/$defs/bookingConfirmed"
+    },
+    {
+      "$ref": "#/$defs/bookingCreated"
+    },
+    {
+      "$ref": "#/$defs/bookingFailed"
+    },
+    {
+      "$ref": "#/$defs/paymentAuthorized"
+    },
+    {
+      "$ref": "#/$defs/paymentCancelled"
+    },
+    {
+      "$ref": "#/$defs/paymentCreated"
+    },
+    {
+      "$ref": "#/$defs/paymentFailed"
+    },
+    {
+      "$ref": "#/$defs/paymentRefunded"
+    },
+    {
+      "$ref": "#/$defs/paymentSucceeded"
+    },
+    {
+      "$ref": "#/$defs/ticketCancelled"
+    },
+    {
+      "$ref": "#/$defs/ticketCheckedIn"
+    },
+    {
+      "$ref": "#/$defs/ticketIssued"
+    },
+    {
+      "$ref": "#/$defs/ticketQrRegenerated"
+    },
+    {
+      "$ref": "#/$defs/eventChanged"
+    }
+  ],
+  "$defs": {
+    "EventEnvelope": {
+      "title": "EventEnvelope",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "correlationId",
+        "aggregateId",
+        "data"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "eventType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(?:Z|\\+00:00)$"
+        },
+        "correlationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "x-origin": "phase5-machine-baseline"
+    },
+    "Money": {
+      "title": "Money",
+      "description": "Cross-service money. amountMinor is an int64; VND uses exponent 0.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amountMinor",
+        "currency"
+      ],
+      "properties": {
+        "amountMinor": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "examples": [
+        {
+          "amountMinor": 100000,
+          "currency": "VND"
+        }
+      ],
+      "x-origin": "phase5-machine-baseline"
+    },
+    "bookingCancelled": {
+      "title": "booking.cancelled",
+      "description": "Official design-derived v1 producer-owned schema for booking.cancelled. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "booking.cancelled"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/bookingCancelled/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bookingId",
+            "status",
+            "compensationState",
+            "resourceVersion"
+          ],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "CANCELLED",
+                "COMPENSATION_PENDING"
+              ]
+            },
+            "compensationState": {
+              "type": "string",
+              "enum": [
+                "COMPLETED",
+                "PENDING"
+              ]
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "booking.cancelled",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "bookingId": "BOOKING-001",
+            "status": "CANCELLED",
+            "compensationState": "COMPLETED",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "bookingConfirmed": {
+      "title": "booking.confirmed",
+      "description": "Official design-derived v1 producer-owned schema for booking.confirmed. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "booking.confirmed"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/bookingConfirmed/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bookingId",
+            "status",
+            "reservationId",
+            "paymentId",
+            "ticketIds",
+            "resourceVersion"
+          ],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CONFIRMED"
+            },
+            "reservationId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "ticketIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              }
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "booking.confirmed",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "bookingId": "BOOKING-001",
+            "status": "CONFIRMED",
+            "reservationId": "RESERVATION-001",
+            "paymentId": "PAYMENT-001",
+            "ticketIds": [
+              "TKT-001"
+            ],
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "bookingCreated": {
+      "title": "booking.created",
+      "description": "Official design-derived v1 producer-owned schema for booking.created. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "booking.created"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/bookingCreated/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bookingId",
+            "customerId",
+            "eventId",
+            "status",
+            "resourceVersion"
+          ],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "customerId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "eventId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "PENDING"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "booking.created",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "bookingId": "BOOKING-001",
+            "customerId": "CUSTOMER-001",
+            "eventId": "EVENT-001",
+            "status": "PENDING",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "bookingFailed": {
+      "title": "booking.failed",
+      "description": "Official design-derived v1 producer-owned schema for booking.failed. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "booking.failed"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/bookingFailed/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bookingId",
+            "status",
+            "reasonCode",
+            "compensationState",
+            "resourceVersion"
+          ],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "FAILED"
+            },
+            "reasonCode": {
+              "type": "string",
+              "pattern": "^[A-Z0-9_]{2,64}$"
+            },
+            "compensationState": {
+              "type": "string",
+              "enum": [
+                "NOT_REQUIRED",
+                "COMPLETED",
+                "PENDING"
+              ]
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "booking.failed",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "bookingId": "BOOKING-001",
+            "status": "FAILED",
+            "reasonCode": "PROCESSING_FAILED",
+            "compensationState": "NOT_REQUIRED",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentAuthorized": {
+      "title": "payment.authorized",
+      "description": "Official design-derived v1 producer-owned schema for payment.authorized. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.authorized"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentAuthorized/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "amount",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "AUTHORIZED"
+            },
+            "amount": {
+              "$ref": "#/$defs/Money"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.authorized",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "AUTHORIZED",
+            "amount": {
+              "amountMinor": 100000,
+              "currency": "VND"
+            },
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentCancelled": {
+      "title": "payment.cancelled",
+      "description": "Official design-derived v1 producer-owned schema for payment.cancelled. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.cancelled"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentCancelled/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "reason",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CANCELLED"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.cancelled",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "CANCELLED",
+            "reason": "Requested cancellation",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentCreated": {
+      "title": "payment.created",
+      "description": "Official design-derived v1 producer-owned schema for payment.created. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.created"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentCreated/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "amount",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CREATED"
+            },
+            "amount": {
+              "$ref": "#/$defs/Money"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.created",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "CREATED",
+            "amount": {
+              "amountMinor": 100000,
+              "currency": "VND"
+            },
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentFailed": {
+      "title": "payment.failed",
+      "description": "Official design-derived v1 producer-owned schema for payment.failed. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.failed"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentFailed/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "failureCode",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "FAILED"
+            },
+            "failureCode": {
+              "type": "string",
+              "pattern": "^[A-Z0-9_]{2,64}$"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.failed",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "FAILED",
+            "failureCode": "PROCESSING_FAILED",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentRefunded": {
+      "title": "payment.refunded",
+      "description": "Official design-derived v1 producer-owned schema for payment.refunded. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.refunded"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentRefunded/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "refundAmount",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "PARTIALLY_REFUNDED",
+                "REFUNDED"
+              ]
+            },
+            "refundAmount": {
+              "$ref": "#/$defs/Money"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.refunded",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "PARTIALLY_REFUNDED",
+            "refundAmount": {
+              "amountMinor": 100000,
+              "currency": "VND"
+            },
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "paymentSucceeded": {
+      "title": "payment.succeeded",
+      "description": "Official design-derived v1 producer-owned schema for payment.succeeded. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "payment.succeeded"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/paymentSucceeded/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paymentId",
+            "bookingId",
+            "status",
+            "capturedAmount",
+            "resourceVersion"
+          ],
+          "properties": {
+            "paymentId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CAPTURED"
+            },
+            "capturedAmount": {
+              "$ref": "#/$defs/Money"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "payment.succeeded",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "paymentId": "PAYMENT-001",
+            "bookingId": "BOOKING-001",
+            "status": "CAPTURED",
+            "capturedAmount": {
+              "amountMinor": 100000,
+              "currency": "VND"
+            },
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "ticketCancelled": {
+      "title": "ticket.cancelled",
+      "description": "Official design-derived v1 producer-owned schema for ticket.cancelled. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "ticket.cancelled"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/ticketCancelled/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ticketId",
+            "bookingId",
+            "status",
+            "reason",
+            "resourceVersion"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CANCELLED"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "ticket.cancelled",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "ticketId": "TICKET-001",
+            "bookingId": "BOOKING-001",
+            "status": "CANCELLED",
+            "reason": "Requested cancellation",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "ticketCheckedIn": {
+      "title": "ticket.checked-in",
+      "description": "Official design-derived v1 producer-owned schema for ticket.checked-in. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "ticket.checked-in"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/ticketCheckedIn/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ticketId",
+            "bookingId",
+            "status",
+            "gateId",
+            "resourceVersion"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "CHECKED_IN"
+            },
+            "gateId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "ticket.checked-in",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "ticketId": "TICKET-001",
+            "bookingId": "BOOKING-001",
+            "status": "CHECKED_IN",
+            "gateId": "GATE-001",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "ticketIssued": {
+      "title": "ticket.issued",
+      "description": "Official design-derived v1 producer-owned schema for ticket.issued. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "ticket.issued"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/ticketIssued/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ticketId",
+            "bookingId",
+            "eventId",
+            "seatId",
+            "status",
+            "resourceVersion"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "eventId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "seatId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "ISSUED"
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "ticket.issued",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "ticketId": "TICKET-001",
+            "bookingId": "BOOKING-001",
+            "eventId": "EVENT-001",
+            "seatId": "SEAT-001",
+            "status": "ISSUED",
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "ticketQrRegenerated": {
+      "title": "ticket.qr-regenerated",
+      "description": "Official design-derived v1 producer-owned schema for ticket.qr-regenerated. Delivery is at-least-once and consumers deduplicate by eventId.",
+      "x-contract-status": "canonical-v1",
+      "x-designed-baseline-version": "1.0.0",
+      "x-origin": "design-derived-v1",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "ticket.qr-regenerated"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "$ref": "#/$defs/ticketQrRegenerated/$defs/data"
+            }
+          }
+        }
+      ],
+      "$defs": {
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ticketId",
+            "bookingId",
+            "status",
+            "qrVersion",
+            "resourceVersion"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "bookingId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "status": {
+              "const": "ISSUED"
+            },
+            "qrVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "resourceVersion": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "eventId": "EVTMSG-001",
+          "eventType": "ticket.qr-regenerated",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "BOOKING-001",
+          "data": {
+            "ticketId": "TICKET-001",
+            "bookingId": "BOOKING-001",
+            "status": "ISSUED",
+            "qrVersion": 1,
+            "resourceVersion": 1
+          }
+        }
+      ]
+    },
+    "eventChanged": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "event.changed"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "eventId",
+                "status",
+                "resourceVersion"
+              ],
+              "properties": {
+                "eventId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "status": {
+                  "type": "string"
+                },
+                "resourceVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "examples": [
+        {
+          "eventId": "MSG-EVENT-001",
+          "eventType": "event.changed",
+          "schemaVersion": 1,
+          "occurredAt": "2026-08-03T03:00:00Z",
+          "correlationId": "corr-1234567890abcdef",
+          "aggregateId": "EVENT-001",
+          "data": {
+            "eventId": "EVENT-001",
+            "status": "PUBLISHED",
+            "resourceVersion": 2
+          }
+        }
+      ]
+    }
+  }
+}

@@ -9,7 +9,7 @@ Copy `.env.example` to `.env.local`:
 ```dotenv
 VITE_IDENTITY_API_URL=http://localhost:8009
 VITE_ESB_API_URL=http://localhost:8000
-VITE_REALTIME_WS_URL=ws://localhost:8007
+VITE_REALTIME_WS_URL=ws://localhost:8008
 VITE_AUTH_TRANSPORT=direct
 ```
 

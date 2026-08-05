@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "IDEMPOTENCY_KEY_REUSED",
     "message": "The key was reused with a different payload",

@@ -6,6 +6,7 @@ CANCELLED, chua co co che publish qua ESB). Giu lai lam diem mo rong: khi
 Event Service san sang publish, chi can them 1 route trong
 api/v1/webhooks.py goi ham nay, khong can sua gi them o day.
 """
+
 from app.domain.entities import Delivery
 from app.domain.enums import NotificationType
 from app.domain.exceptions import DuplicateCorrelationError
@@ -38,7 +39,12 @@ def handle_event_changed(
     )
 
     delivery = Delivery.create(
-        repo.next_id(), NotificationType.EVENT_CHANGED, correlation_id, to_email, SUBJECT, body
+        repo.next_id(),
+        NotificationType.EVENT_CHANGED,
+        correlation_id,
+        to_email,
+        SUBJECT,
+        body,
     )
     try:
         repo.add(delivery)

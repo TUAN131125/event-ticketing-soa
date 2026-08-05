@@ -6,6 +6,7 @@ import base64
 import hashlib
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -21,17 +22,36 @@ from app.config import Settings
 from app.domain.exceptions import TokenExpired, Unauthenticated
 from app.domain.value_objects import Principal
 
+JWT_ALGORITHM = "RS256"
+JWT_TYPE = "JWT"
+REQUIRED_ACCESS_CLAIMS = (
+    "iss",
+    "aud",
+    "sub",
+    "iat",
+    "exp",
+    "jti",
+    "roles",
+    "tokenVersion",
+)
+
 
 def _base64url_uint(value: int) -> str:
     length = max(1, (value.bit_length() + 7) // 8)
-    return base64.urlsafe_b64encode(value.to_bytes(length, "big")).rstrip(b"=").decode()
+    encoded = base64.urlsafe_b64encode(value.to_bytes(length, "big"))
+    return encoded.rstrip(b"=").decode("ascii")
 
 
-class TokenService:
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
+@dataclass(frozen=True, slots=True)
+class SigningKeyPair:
+    private: RSAPrivateKey
+    public: RSAPublicKey
+
+    @classmethod
+    def load(cls, settings: Settings) -> SigningKeyPair:
         private_key = serialization.load_pem_private_key(
-            settings.private_key_path.read_bytes(), password=None
+            settings.private_key_path.read_bytes(),
+            password=None,
         )
         public_key = serialization.load_pem_public_key(
             settings.public_key_path.read_bytes()
@@ -44,8 +64,13 @@ class TokenService:
             raise ValueError("Identity RSA signing key must be at least 2048 bits")
         if private_key.public_key().public_numbers() != public_key.public_numbers():
             raise ValueError("Identity private and public signing keys do not match")
-        self._private_key = private_key
-        self._public_key = public_key
+        return cls(private=private_key, public=public_key)
+
+
+class TokenService:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._keys = SigningKeyPair.load(settings)
 
     def issue_access_token(
         self,
@@ -70,9 +95,9 @@ class TokenService:
         return str(
             jwt.encode(
                 payload,
-                self._private_key,
-                algorithm="RS256",
-                headers={"kid": self._settings.key_id, "typ": "JWT"},
+                self._keys.private,
+                algorithm=JWT_ALGORITHM,
+                headers={"kid": self._settings.key_id, "typ": JWT_TYPE},
             )
         )
 
@@ -80,52 +105,47 @@ class TokenService:
         try:
             payload = jwt.decode(
                 token,
-                self._public_key,
-                algorithms=["RS256"],
+                self._keys.public,
+                algorithms=[JWT_ALGORITHM],
                 audience=self._settings.audience,
                 issuer=self._settings.issuer,
-                options={
-                    "require": [
-                        "iss",
-                        "aud",
-                        "sub",
-                        "iat",
-                        "exp",
-                        "jti",
-                        "roles",
-                        "tokenVersion",
-                    ]
-                },
+                options={"require": list(REQUIRED_ACCESS_CLAIMS)},
             )
         except ExpiredSignatureError as exc:
             raise TokenExpired() from exc
         except InvalidTokenError as exc:
             raise Unauthenticated() from exc
+        return self._principal_from_claims(payload)
+
+    @staticmethod
+    def _principal_from_claims(payload: dict[str, Any]) -> Principal:
+        subject = payload.get("sub")
+        token_id = payload.get("jti")
         roles = payload.get("roles")
         token_version = payload.get("tokenVersion")
         if (
-            not isinstance(payload.get("sub"), str)
-            or not isinstance(payload.get("jti"), str)
+            not isinstance(subject, str)
+            or not isinstance(token_id, str)
             or not isinstance(roles, list)
             or not all(isinstance(role, str) for role in roles)
             or not isinstance(token_version, int)
         ):
             raise Unauthenticated()
         return Principal(
-            user_id=payload["sub"],
+            user_id=subject,
             roles=tuple(sorted(set(roles))),
             token_version=token_version,
-            token_id=payload["jti"],
+            token_id=token_id,
         )
 
     def jwks(self) -> dict[str, list[dict[str, str]]]:
-        numbers = self._public_key.public_numbers()
+        numbers = self._keys.public.public_numbers()
         return {
             "keys": [
                 {
                     "kty": "RSA",
                     "use": "sig",
-                    "alg": "RS256",
+                    "alg": JWT_ALGORITHM,
                     "kid": self._settings.key_id,
                     "n": _base64url_uint(numbers.n),
                     "e": _base64url_uint(numbers.e),

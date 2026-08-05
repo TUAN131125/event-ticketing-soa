@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "REALTIME_UNAVAILABLE",
     "message": "Use authoritative booking REST status",

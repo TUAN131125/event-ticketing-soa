@@ -6,9 +6,18 @@ COPY package*.json ./
 COPY shared-ui/package*.json ./shared-ui/
 COPY customer-web/package*.json ./customer-web/
 COPY admin-web/package*.json ./admin-web/
-RUN npm install
+RUN npm ci
 COPY shared-ui ./shared-ui
 COPY customer-web ./customer-web
+
+ARG VITE_IDENTITY_API_URL
+ARG VITE_ESB_API_URL
+ARG VITE_REALTIME_WS_URL
+ARG VITE_AUTH_TRANSPORT
+ENV VITE_IDENTITY_API_URL=$VITE_IDENTITY_API_URL \
+    VITE_ESB_API_URL=$VITE_ESB_API_URL \
+    VITE_REALTIME_WS_URL=$VITE_REALTIME_WS_URL \
+    VITE_AUTH_TRANSPORT=$VITE_AUTH_TRANSPORT
 RUN npm run build --workspace @event-ticketing/customer-web
 
 FROM nginx:1.27-alpine

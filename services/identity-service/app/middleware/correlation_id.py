@@ -12,7 +12,9 @@ from app.security.input_validation import bounded_user_agent, correlation_id, tr
 MAX_REQUEST_BODY_BYTES = 64 * 1024
 
 
-async def context_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+async def context_middleware(
+    request: Request, call_next
+):  # type: ignore[no-untyped-def]
     correlation = correlation_id(request.headers.get("X-Correlation-ID"))
     trace = trace_id(request.headers.get("traceparent"))
     client_ip = request.client.host if request.client else "unknown"

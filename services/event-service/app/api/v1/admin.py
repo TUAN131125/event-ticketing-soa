@@ -1,4 +1,5 @@
 """Endpoint quan tri: dieu khien vong doi ban ve cua su kien."""
+
 from fastapi import APIRouter, Depends
 
 from app.application.commands.cancel_event import cancel_event
@@ -18,15 +19,21 @@ def open_sales_endpoint(event_id: str, repo: EventRepository = Depends(get_repos
 
 
 @router.post("/{event_id}/pause-sales", response_model=EventResponse)
-def pause_sales_endpoint(event_id: str, repo: EventRepository = Depends(get_repository)):
+def pause_sales_endpoint(
+    event_id: str, repo: EventRepository = Depends(get_repository)
+):
     return EventResponse.from_entity(pause_sales(repo, event_id))
 
 
 @router.post("/{event_id}/close-sales", response_model=EventResponse)
-def close_sales_endpoint(event_id: str, repo: EventRepository = Depends(get_repository)):
+def close_sales_endpoint(
+    event_id: str, repo: EventRepository = Depends(get_repository)
+):
     return EventResponse.from_entity(close_sales(repo, event_id))
 
 
 @router.post("/{event_id}/cancel", response_model=EventResponse)
-def cancel_event_endpoint(event_id: str, repo: EventRepository = Depends(get_repository)):
+def cancel_event_endpoint(
+    event_id: str, repo: EventRepository = Depends(get_repository)
+):
     return EventResponse.from_entity(cancel_event(repo, event_id))

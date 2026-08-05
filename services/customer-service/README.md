@@ -71,12 +71,11 @@ luôn dùng `PostgresCustomerRepository`.
 ### Cách 1: Docker Compose (khuyến nghị, giống hệt CI/production)
 
 ```powershell
-cd services\customer-service
-docker compose up --build
+docker compose --profile customer up --build --wait
 ```
 
-Compose tự khởi động PostgreSQL, chạy `alembic upgrade head` (qua
-`docker-entrypoint.sh`) rồi mới start service ở cổng `8001`.
+Root Compose chạy `customer-migrate` trước và chỉ start service ở cổng `8001`
+khi migration hoàn thành thành công.
 
 ### Cách 2: Chạy trực tiếp (cần tự có PostgreSQL)
 

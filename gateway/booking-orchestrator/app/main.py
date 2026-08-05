@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from typing import Any
 
 import httpx
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 
 from app.adapters.rest.base import RestClient
@@ -44,13 +42,26 @@ from app.workers.outbox import OutboxDispatcher
 from app.workers.reconciliation import ReconciliationWorker, RecoveryScanner
 
 
-def _ephemeral_private_key() -> str:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    return key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
+def _private_key(value: str | None, path: Path | None, name: str) -> str:
+    if value and path:
+        raise ValueError(f"configure only one of {name} or {name}_PATH")
+    if value:
+        return value
+    if path is None:
+        raise ValueError(f"{name} or {name}_PATH is required")
+    try:
+        key = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"cannot read {name}_PATH: {path}") from exc
+    if not key.strip():
+        raise ValueError(f"{name}_PATH is empty: {path}")
+    return key
+
+
+def _required_value(value: str | None, name: str) -> str:
+    if not value:
+        raise ValueError(f"{name} is required")
+    return value
 
 
 def _executor(settings: Settings) -> ResilienceExecutor:
@@ -73,8 +84,16 @@ def build_container(settings: Settings) -> RuntimeContainer:
     database = Database(settings.database_url)
     repositories = SqlRepositories(database)
     clock = SystemClock()
-    private_key = settings.internal_service_private_key or _ephemeral_private_key()
-    ws_key = settings.ws_ticket_private_key or private_key
+    private_key = _private_key(
+        settings.internal_service_private_key,
+        settings.internal_service_private_key_path,
+        "ESB_INTERNAL_SERVICE_PRIVATE_KEY",
+    )
+    ws_key = _private_key(
+        settings.ws_ticket_private_key,
+        settings.ws_ticket_private_key_path,
+        "ESB_WS_TICKET_PRIVATE_KEY",
+    )
     signer = JwtSigner(
         private_key,
         settings.internal_service_issuer,
@@ -83,7 +102,15 @@ def build_container(settings: Settings) -> RuntimeContainer:
     )
 
     def rest(url: str, audience: str) -> RestClient:
-        return RestClient(url, audience, http, signer, _executor(settings), repositories)
+        endpoint = _required_value(url, f"ESB_{audience.upper().replace('-', '_')}_URL")
+        return RestClient(
+            endpoint,
+            audience,
+            http,
+            signer,
+            _executor(settings),
+            repositories,
+        )
 
     customer = CustomerRestAdapter(rest(settings.customer_service_url, "customer-service"))
     events = EventRestAdapter(rest(settings.event_service_url, "event-service"))
@@ -91,21 +118,27 @@ def build_container(settings: Settings) -> RuntimeContainer:
     payments = PaymentRestAdapter(rest(settings.payment_service_url, "payment-service"))
     tickets = TicketRestAdapter(rest(settings.ticket_service_url, "ticket-service"))
     seats = SeatSoapAdapter(
-        settings.seat_service_url,
+        _required_value(settings.seat_service_url, "ESB_SEAT_SERVICE_URL"),
         http,
         _executor(settings),
         str(settings.seat_provider_xsd_path),
-        settings.seat_service_token,
+        _required_value(settings.seat_service_token, "ESB_SEAT_SERVICE_TOKEN"),
         repositories,
     )
-    notification_secret = settings.notification_webhook_secret or secrets.token_urlsafe(32)
+    notification_secret = _required_value(
+        settings.notification_webhook_secret,
+        "ESB_NOTIFICATION_WEBHOOK_SECRET",
+    )
     notification = NotificationRestAdapter(
         rest(settings.notification_service_url, "notification-service"),
         notification_secret,
     )
     realtime = RealtimeRestAdapter(
         rest(settings.realtime_service_url, "realtime-status-service"),
-        settings.realtime_internal_service_token,
+        _required_value(
+            settings.realtime_internal_service_token,
+            "ESB_REALTIME_INTERNAL_SERVICE_TOKEN",
+        ),
         settings.realtime_caller_service,
     )
     saga = BookingSaga(
@@ -135,7 +168,7 @@ def build_container(settings: Settings) -> RuntimeContainer:
     )
     queries = QueryService(events, bookings, repositories)
     auth = JwksVerifier(
-        settings.identity_jwks_url,
+        _required_value(settings.identity_jwks_url, "ESB_IDENTITY_JWKS_URL"),
         settings.identity_expected_issuer,
         settings.identity_expected_audience,
         settings.identity_jwks_cache_seconds,
@@ -192,13 +225,11 @@ def create_app(settings: Settings | None = None, container: RuntimeContainer | N
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        if runtime.database is not None and settings.create_schema_on_start:
-            await runtime.database.create_schema()
-            if runtime.reconciliation_worker is not None:
-                await RecoveryScanner(
-                    runtime.reconciliation_worker.workflows,
-                    runtime.reconciliation_worker.jobs,
-                ).recover()
+        if runtime.reconciliation_worker is not None:
+            await RecoveryScanner(
+                runtime.reconciliation_worker.workflows,
+                runtime.reconciliation_worker.jobs,
+            ).recover()
         if runtime.outbox_worker:
             tasks.append(asyncio.create_task(worker_loop(runtime.outbox_worker, settings.outbox_poll_seconds)))
         if runtime.reconciliation_worker:
@@ -268,6 +299,3 @@ def create_app(settings: Settings | None = None, container: RuntimeContainer | N
 
     app.openapi = contract_openapi
     return app
-
-
-app = create_app()

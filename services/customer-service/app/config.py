@@ -42,11 +42,10 @@ class Settings:
     sql_echo: bool
 
     @classmethod
-    def from_environment(cls) -> "Settings":
-        database_url = os.getenv(
-            "CUSTOMER_DATABASE_URL",
-            "postgresql+psycopg://customer_service:customer_service@localhost:5435/customer_service",
-        )
+    def from_environment(cls) -> Settings:
+        database_url = os.getenv("CUSTOMER_DATABASE_URL", "").strip()
+        if not database_url:
+            raise ValueError("CUSTOMER_DATABASE_URL is required")
         return cls(
             app_env=os.getenv("CUSTOMER_APP_ENV", "local"),
             log_level=os.getenv("CUSTOMER_LOG_LEVEL", "INFO").upper(),

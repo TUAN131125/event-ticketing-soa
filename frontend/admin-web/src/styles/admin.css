@@ -1,4 +1,4 @@
-@import "@event-ticketing/shared-ui/styles.css";
+@import '@event-ticketing/shared-ui/styles.css';
 
 :root {
   color: var(--color-text-primary);

@@ -1,0 +1,594 @@
+openapi: 3.1.0
+info:
+  title: Payment Service API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
+servers:
+- url: http://localhost:8005
+  description: Local contract endpoint; deployment host is supplied by configuration.
+security:
+- ServiceJwt: []
+paths:
+  /payments:
+    post:
+      summary: Tạo payment
+      operationId: createPayment
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/{paymentId}:
+    get:
+      summary: Lấy trạng thái payment
+      operationId: getPayment
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/{paymentId}/authorize:
+    post:
+      summary: Authorize payment
+      operationId: authorizePayment
+      responses:
+        '200':
+          description: Đã authorize
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '402':
+          description: Bị từ chối
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/{paymentId}/capture:
+    post:
+      summary: Capture payment
+      operationId: capturePayment
+      responses:
+        '200':
+          description: Đã capture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/{paymentId}/cancel:
+    post:
+      summary: Hủy payment
+      operationId: cancelPayment
+      responses:
+        '200':
+          description: Đã hủy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/{paymentId}/refunds:
+    post:
+      summary: Tạo refund
+      operationId: createRefund
+      responses:
+        '201':
+          description: Đã tạo refund
+          content:
+            application/json:
+              schema:
+                type: object
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundCreate'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /payments/provider-callback:
+    post:
+      summary: Callback provider giả lập
+      operationId: receiveProviderCallback
+      description: Signed provider callback. Provider event IDs are deduplicated and the timestamp is
+        checked against the replay window.
+      parameters:
+      - name: X-Provider-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+      - name: X-Provider-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^sha256=[A-Fa-f0-9]{64}$
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Đã nhận
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderCallback'
+      security:
+      - providerHmac: []
+  /payments/{paymentId}/reconcile:
+    post:
+      summary: Đối soát payment
+      operationId: reconcilePayment
+      responses:
+        '200':
+          description: Đã đối soát
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IfMatch'
+  /health/live:
+    get:
+      operationId: paymentLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: paymentReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    PageMeta:
+      $ref: '#/components/schemas/PageMeta'
+    PaymentCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - bookingId
+      - amount
+      - methodToken
+      properties:
+        bookingId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/Money'
+        methodToken:
+          type: string
+          minLength: 6
+          maxLength: 200
+    Payment:
+      type: object
+      additionalProperties: false
+      required:
+      - paymentId
+      - bookingId
+      - amount
+      - status
+      - resourceVersion
+      - createdAt
+      - updatedAt
+      properties:
+        paymentId:
+          type: string
+        bookingId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/Money'
+        status:
+          enum:
+          - CREATED
+          - AUTHORIZED
+          - CAPTURED
+          - FAILED
+          - CANCELLED
+          - UNKNOWN
+          - PARTIALLY_REFUNDED
+          - REFUNDED
+        providerReference:
+          type:
+          - string
+          - 'null'
+        resourceVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    RefundCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - amount
+      - reason
+      properties:
+        amount:
+          $ref: '#/components/schemas/Money'
+        reason:
+          type: string
+          maxLength: 300
+    ProviderCallback:
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - paymentId
+      - providerStatus
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        paymentId:
+          type: string
+        providerStatus:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    providerHmac:
+      type: apiKey
+      in: header
+      name: X-Provider-Signature
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

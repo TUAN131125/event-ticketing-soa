@@ -1,5 +1,4 @@
 """Use case: cap nhat thong tin lien he cua khach hang."""
-from typing import Optional
 
 from app.domain.entities import Customer
 from app.domain.exceptions import CustomerNotFoundError
@@ -9,9 +8,9 @@ from app.repositories.interfaces import CustomerRepository
 def update_customer(
     repo: CustomerRepository,
     customer_id: str,
-    name: Optional[str] = None,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
+    name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
 ) -> Customer:
     customer = repo.get(customer_id)
     if customer is None:

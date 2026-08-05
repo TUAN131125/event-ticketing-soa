@@ -1,26 +1,42 @@
 # Event Ticketing SOA
 
-Đây là bộ khung thư mục cho hệ thống đặt vé sự kiện theo kiến trúc SOA/ESB.
+Monorepo cho hệ thống đặt vé sự kiện theo kiến trúc SOA/ESB. Thư mục
+`contracts/` là nguồn sự thật duy nhất cho các contract runtime.
 
-## Trạng thái
+## Chạy local bằng Docker Compose
 
-- Chưa chứa mã nguồn triển khai.
-- Các tệp hiện tại chỉ là placeholder hợp lệ để mở và tổ chức trong Visual Studio Code.
-- Có thể xóa nội dung placeholder khi bắt đầu phát triển.
-- Dùng `event-ticketing-soa.code-workspace` để mở toàn bộ project trong VS Code.
+1. Build contract runtime:
 
-## Thành phần chính
+   ```powershell
+   python contracts/scripts/validate_contracts.py
+   python contracts/scripts/build_contracts.py
+   ```
 
-- `frontend/`: Customer Web và Admin Web.
-- `gateway/`: ESB / Booking Orchestrator.
-- `services/`: Các service nghiệp vụ.
-- `contracts/`: OpenAPI, WSDL/XSD và JSON Schema.
-- `database/`: Schema, migration, seed và script dữ liệu.
-- `tests/`: Contract, integration, fault, performance và security test.
-- `infra/`: Docker và hạ tầng AWS.
-- `monitoring/`: Log, metric, trace và dashboard.
-- `docs/`: Tài liệu từ Giai đoạn 1 đến Giai đoạn 8.
-- `evidence/`: Bằng chứng CI/CD, test, AWS và demo.
-- `.github/workflows/`: Pipeline GitHub Actions.
+2. Sao chép `.env.example` thành `.env`, thay các mật khẩu/token mẫu và đặt
+   các RSA key local trong `local-secrets/` theo các đường dẫn khai báo trong
+   `.env`. Repository không tự sinh signing key.
 
-Xem toàn bộ cây thư mục trong `PROJECT_TREE.txt`.
+3. Khởi động toàn hệ thống:
+
+   ```powershell
+   docker compose --profile all up --build --wait
+   ```
+
+   Có thể thay `all` bằng `identity`, `customer`, `event`, `seat`, `booking`,
+   `payment`, `ticket`, `notification`, `orchestrator`, `realtime`, `backend`
+   hoặc `frontend`. Mỗi backend có một migration job one-shot; application chỉ
+   khởi động sau khi migration hoàn thành thành công.
+
+4. Dọn môi trường local:
+
+   ```powershell
+   docker compose down --volumes --remove-orphans
+   ```
+
+## Cổng chuẩn
+
+ESB `8000`, Customer `8001`, Event `8002`, Seat `8003`, Booking `8004`,
+Payment `8005`, Ticket `8006`, Notification `8007`, Realtime `8008` và
+Identity `8009`. Customer Web dùng `3000`; Admin Web dùng `3001`.
+
+Không commit `.env`, private key, certificate, token hoặc artifact build.

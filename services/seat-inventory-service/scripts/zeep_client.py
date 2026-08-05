@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -183,11 +184,15 @@ def main() -> None:
             "ExpireReservations",
         ],
     )
-    parser.add_argument("--wsdl", default="http://localhost:8003/soap?wsdl")
-    parser.add_argument("--token", default="local-development-token")
+    parser.add_argument("--wsdl", default=os.getenv("SEAT_WSDL_URL"))
+    parser.add_argument("--token", default=os.getenv("SEAT_SERVICE_TOKEN"))
     parser.add_argument("--event-id", default="EVT-DEMO")
     parser.add_argument("--reservation-id")
     args = parser.parse_args()
+    if not args.wsdl:
+        parser.error("--wsdl or SEAT_WSDL_URL is required")
+    if not args.token:
+        parser.error("--token or SEAT_SERVICE_TOKEN is required")
 
     client = create_client(args.wsdl, args.token)
     if args.operation == "workflow":

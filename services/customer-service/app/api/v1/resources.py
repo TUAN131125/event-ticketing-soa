@@ -1,5 +1,6 @@
 """REST endpoint cho nghiep vu Customer - tang API, chi lam nhiem vu nhan
 request/tra response, moi logic thuc su nam o tang application/domain."""
+
 from fastapi import APIRouter, Depends, status
 
 from app.application.commands.create_customer import create_customer
@@ -14,7 +15,9 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 
 
 @router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
-def create(payload: CustomerCreateRequest, repo: CustomerRepository = Depends(get_repository)):
+def create(
+    payload: CustomerCreateRequest, repo: CustomerRepository = Depends(get_repository)
+):
     customer = create_customer(repo, payload.name, payload.email, payload.phone)
     return CustomerResponse.from_entity(customer)
 
@@ -26,8 +29,11 @@ def get(customer_id: str, repo: CustomerRepository = Depends(get_repository)):
 
 
 @router.put("/{customer_id}", response_model=CustomerResponse)
-def update(customer_id: str, payload: CustomerUpdateRequest,
-           repo: CustomerRepository = Depends(get_repository)):
+def update(
+    customer_id: str,
+    payload: CustomerUpdateRequest,
+    repo: CustomerRepository = Depends(get_repository),
+):
     customer = update_customer(
         repo, customer_id, name=payload.name, email=payload.email, phone=payload.phone
     )

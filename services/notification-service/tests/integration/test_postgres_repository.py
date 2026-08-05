@@ -6,6 +6,7 @@ sinh id dung tai tang DB, UNIQUE constraint that chan trung correlationId
 ke ca khi bypass kiem tra o tang application, va du lieu con lai sau khi
 "restart" (engine moi, ket noi moi).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,7 +30,9 @@ def _delivery(delivery_id: str, correlation_id: str) -> Delivery:
     )
 
 
-def test_next_id_increments_via_db_sequence(postgres_repo: PostgresDeliveryRepository) -> None:
+def test_next_id_increments_via_db_sequence(
+    postgres_repo: PostgresDeliveryRepository,
+) -> None:
     assert postgres_repo.next_id() == "N000001"
     assert postgres_repo.next_id() == "N000002"
     assert postgres_repo.next_id() == "N000003"
@@ -87,7 +90,9 @@ def test_data_survives_new_engine_connection(
     assert fetched.correlation_id == "corr-restart"
 
 
-def test_list_all_returns_every_delivery(postgres_repo: PostgresDeliveryRepository) -> None:
+def test_list_all_returns_every_delivery(
+    postgres_repo: PostgresDeliveryRepository,
+) -> None:
     postgres_repo.add(_delivery("N000001", "corr-a"))
     postgres_repo.add(_delivery("N000002", "corr-b"))
 

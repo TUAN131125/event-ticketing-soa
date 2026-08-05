@@ -1,4 +1,4 @@
-import "./styles/tokens.css";
+import './styles/tokens.css';
 
 export {
   Alert,
@@ -38,7 +38,7 @@ export {
   Tooltip,
   UnauthorizedState,
   useToast,
-} from "./components";
+} from './components';
 export type {
   AlertProps,
   AlertTone,
@@ -58,4 +58,4 @@ export type {
   LinkProps,
   TabItem,
   ToastMessage,
-} from "./components";
+} from './components';

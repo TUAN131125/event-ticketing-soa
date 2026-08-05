@@ -16,12 +16,12 @@ from app.security.tokens import TokenService
 
 @pytest.mark.integration
 @pytest.mark.concurrency
-def test_concurrent_refresh_allows_only_one_success(settings):
+def test_concurrent_refresh_allows_only_one_success(postgres_settings):
     service = IdentityService(
-        settings,
-        get_session_factory(settings),
-        PasswordService(settings),
-        TokenService(settings),
+        postgres_settings,
+        get_session_factory(postgres_settings),
+        PasswordService(postgres_settings),
+        TokenService(postgres_settings),
     )
     context = RequestContext("concurrency", "2" * 32, "127.0.0.1", "pytest")
     service.register("parallel@example.com", "Correct-Horse-9!Long", context)
@@ -37,7 +37,7 @@ def test_concurrent_refresh_allows_only_one_success(settings):
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(lambda _: refresh_once(), range(2)))
     assert sorted(result[0] for result in results) == ["reuse", "success"]
-    with get_session_factory(settings)() as session:
+    with get_session_factory(postgres_settings)() as session:
         active = session.scalar(
             select(RefreshSessionModel).where(
                 RefreshSessionModel.family_id

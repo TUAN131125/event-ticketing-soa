@@ -10,24 +10,24 @@ and uses the CSRF token returned by login/refresh for refresh and logout.
 
 ## ESB and realtime status
 
-`contracts/openapi/esb-public-api.yaml` and `contracts/openapi/realtime-service.yaml`
-are currently placeholders in this checkout, and the booking orchestrator
-endpoints are not implemented. The two web applications therefore use a typed
-API boundary with configurable paths and never manufacture events, seats,
-bookings, payments, or notifications. A non-2xx network/contract response is
-rendered as loading, unavailable, unauthorized, forbidden, or not-found state
-with retry where appropriate.
+`contracts/esb-public-api.yaml`, `contracts/realtime-service.openapi.yaml` and
+`contracts/realtime-service.asyncapi.yaml` are the canonical target contracts.
+The two web applications retain a typed API boundary and never manufacture
+events, seats, bookings, payments, or notifications. Known route, Money and
+WebSocket-frame drift is tracked in `contracts/CONTRACT_REVIEW.md`; frontend
+behavior is not changed by the contract-only alignment.
 
-When the ESB contract is published, update the path map in each app's API client
-and keep the page/domain types stable. The browser must continue to call only the
-public ESB URL; it must never call Seat Inventory SOAP or another private service.
+When implementing the remaining alignment, update the path map and Money types
+against the canonical files. The browser must call only the public ESB URL for
+HTTP business operations and use an ESB-issued one-time ticket for Realtime; it
+must never call Seat Inventory SOAP or another private service.
 
 ## Environment
 
 ```env
 VITE_IDENTITY_API_URL=http://localhost:8009
 VITE_ESB_API_URL=http://localhost:8000
-VITE_REALTIME_WS_URL=ws://localhost:8000/ws
+VITE_REALTIME_WS_URL=ws://localhost:8008
 VITE_AUTH_TRANSPORT=direct
 ```
 
