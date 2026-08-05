@@ -1,21 +1,22 @@
 """Closed request schemas."""
 
-from pydantic import Field, SecretStr
+from typing import Literal
 
-from app.domain.enums import RoleAction, RoleName
-from app.schemas.common import ClosedModel
+from pydantic import EmailStr, Field, SecretStr
+
+from app.schemas.common import ClosedModel, Role
 
 
 class RegisterRequest(ClosedModel):
-    email: str = Field(min_length=3, max_length=320)
+    email: EmailStr = Field(max_length=320)
     password: SecretStr = Field(min_length=12, max_length=128)
 
 
 class LoginRequest(ClosedModel):
-    email: str = Field(min_length=3, max_length=320)
+    email: EmailStr = Field(max_length=320)
     password: SecretStr = Field(min_length=12, max_length=128)
 
 
 class RoleChangeRequest(ClosedModel):
-    role: RoleName
-    action: RoleAction
+    role: Role
+    action: Literal["ASSIGN", "REVOKE"]

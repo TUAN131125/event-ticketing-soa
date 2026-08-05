@@ -221,6 +221,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             OPERATION_DURATION.labels(operation).observe(time.perf_counter() - started)
 
     return application
-
-
-app = create_app()

@@ -1,9 +1,8 @@
 :root {
   color-scheme: light;
   --ui-font-sans:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  --ui-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 
   --ui-brand-50: #eef2ff;
   --ui-brand-100: #e0e7ff;
@@ -270,10 +269,10 @@ a {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-brand-200) 65%, transparent);
   outline: none;
 }
-.ui-control[aria-invalid="true"] {
+.ui-control[aria-invalid='true'] {
   border-color: var(--ui-danger-600);
 }
-.ui-control[aria-invalid="true"]:focus {
+.ui-control[aria-invalid='true']:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-danger-50) 72%, transparent);
 }
 .ui-control:disabled {
@@ -312,7 +311,7 @@ a {
   position: relative;
 }
 .ui-select-wrap::after {
-  content: "";
+  content: '';
   position: absolute;
   pointer-events: none;
   right: 0.85rem;
@@ -586,7 +585,7 @@ a {
 .ui-tab:hover {
   color: var(--ui-text);
 }
-.ui-tab[aria-selected="true"] {
+.ui-tab[aria-selected='true'] {
   color: var(--ui-brand-700);
   border-bottom-color: var(--ui-brand-600);
 }
@@ -619,12 +618,7 @@ a {
 .ui-skeleton {
   display: block;
   border-radius: var(--ui-radius-sm);
-  background: linear-gradient(
-    90deg,
-    var(--ui-surface-subtle),
-    #e9edf5,
-    var(--ui-surface-subtle)
-  );
+  background: linear-gradient(90deg, var(--ui-surface-subtle), #e9edf5, var(--ui-surface-subtle));
   background-size: 200% 100%;
   animation: ui-shimmer 1.25s linear infinite;
 }

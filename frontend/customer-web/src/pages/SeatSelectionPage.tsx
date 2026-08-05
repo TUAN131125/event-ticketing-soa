@@ -1,17 +1,11 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Armchair, ArrowRight, Info } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Spinner,
-} from "@event-ticketing/shared-ui";
-import { useAuth } from "../app/auth";
-import { useEvent, useReserveSeats, useSeatMap } from "../app/hooks";
-import { ApiError } from "../api/auth-client";
-import { QueryState } from "./PageState";
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Armchair, ArrowRight, Info } from 'lucide-react';
+import { Badge, Button, Card, EmptyState, Spinner } from '@event-ticketing/shared-ui';
+import { useAuth } from '../app/auth';
+import { useEvent, useReserveSeats, useSeatMap } from '../app/hooks';
+import { ApiError } from '../api/auth-client';
+import { QueryState } from './PageState';
 
 export function SeatSelectionPage() {
   const { eventId } = useParams();
@@ -28,12 +22,8 @@ export function SeatSelectionPage() {
         <Spinner label="Loading live seat inventory" />
       </section>
     );
-  if (event.isError)
-    return (
-      <QueryState error={event.error} retry={() => void event.refetch()} />
-    );
-  if (map.isError)
-    return <QueryState error={map.error} retry={() => void map.refetch()} />;
+  if (event.isError) return <QueryState error={event.error} retry={() => void event.refetch()} />;
+  if (map.isError) return <QueryState error={map.error} retry={() => void map.refetch()} />;
   const seats = map.data?.seats ?? [];
   if (!seats.length)
     return (
@@ -60,9 +50,7 @@ export function SeatSelectionPage() {
         <div>
           <p className="eyebrow">Step 1 of 2</p>
           <h1>Choose your seats</h1>
-          <p className="lede">
-            Select available seats. Inventory is held only after you continue.
-          </p>
+          <p className="lede">Select available seats. Inventory is held only after you continue.</p>
         </div>
       </div>
       <div className="seat-layout">
@@ -70,16 +58,16 @@ export function SeatSelectionPage() {
           <div className="seat-stage">STAGE</div>
           <div className="seat-grid" role="group" aria-label="Seat map">
             {seats.map((seat) => {
-              const unavailable = seat.status !== "AVAILABLE";
+              const unavailable = seat.status !== 'AVAILABLE';
               const active = selected.includes(seat.seatId);
               return (
                 <button
                   key={seat.seatId}
                   type="button"
-                  className={`seat ${active ? "seat-selected" : ""} ${unavailable ? "seat-unavailable" : ""}`}
+                  className={`seat ${active ? 'seat-selected' : ''} ${unavailable ? 'seat-unavailable' : ''}`}
                   disabled={unavailable || reserve.isPending}
                   aria-pressed={active}
-                  aria-label={`${seat.label || seat.seatId}, ${unavailable ? seat.status.toLowerCase() : "available"}`}
+                  aria-label={`${seat.label || seat.seatId}, ${unavailable ? seat.status.toLowerCase() : 'available'}`}
                   onClick={() =>
                     setSelected((current) =>
                       active
@@ -118,8 +106,8 @@ export function SeatSelectionPage() {
                     <span>{seat?.label || id}</span>
                     <strong>
                       {seat?.price
-                        ? `${seat.currency ?? "VND"} ${seat.price.toLocaleString()}`
-                        : "Price on checkout"}
+                        ? `${seat.currency ?? 'VND'} ${seat.price.toLocaleString()}`
+                        : 'Price on checkout'}
                     </strong>
                   </li>
                 );
@@ -132,7 +120,7 @@ export function SeatSelectionPage() {
           )}
           <div className="total-row">
             <span>Estimated total</span>
-            <strong>{total ? `VND ${total.toLocaleString()}` : "—"}</strong>
+            <strong>{total ? `VND ${total.toLocaleString()}` : '—'}</strong>
           </div>
           <Button
             fullWidth
@@ -153,14 +141,13 @@ export function SeatSelectionPage() {
               )
             }
           >
-            {reserve.isPending ? "Holding seats…" : "Continue to checkout"}{" "}
-            <ArrowRight size={17} />
+            {reserve.isPending ? 'Holding seats…' : 'Continue to checkout'} <ArrowRight size={17} />
           </Button>
           {reserve.isError && (
             <p className="form-error">
               {reserve.error instanceof ApiError
                 ? reserve.error.message
-                : "Seats could not be held. Refresh and try again."}
+                : 'Seats could not be held. Refresh and try again.'}
             </p>
           )}
         </Card>

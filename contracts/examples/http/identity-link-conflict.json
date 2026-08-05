@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "IDENTITY_MAPPING_CONFLICT",
     "message": "The identity subject or customer already has an active mapping",

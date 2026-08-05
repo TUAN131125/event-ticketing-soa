@@ -1,0 +1,742 @@
+openapi: 3.1.0
+info:
+  title: Booking ESB Public API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Official v1 public baseline including the MAP-001 and RT-AUTH-001 endpoint that issues
+    a one-time Realtime WebSocket signed ticket. This endpoint is part of the official v1 baseline.
+servers:
+- url: http://localhost:8000
+  description: Local contract endpoint; deployment host is supplied by configuration.
+security:
+- UserJwt: []
+paths:
+  /api/events:
+    get:
+      summary: Danh sách sự kiện
+      operationId: publicListEvents
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicEvent'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /api/events/{eventId}:
+    get:
+      summary: Chi tiết sự kiện tổng hợp
+      operationId: publicGetEvent
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicEvent'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      security: []
+  /api/bookings:
+    post:
+      summary: Đặt vé
+      operationId: placeBooking
+      responses:
+        '201':
+          description: Đặt vé thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResult'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '202':
+          description: Đang đối soát
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResult'
+        '402':
+          description: Thanh toán bị từ chối
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceBookingRequest'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /api/bookings/{bookingId}:
+    get:
+      summary: Lấy trạng thái booking
+      operationId: publicGetBooking
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResult'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: bookingId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /api/bookings/{bookingId}/cancel:
+    post:
+      summary: Hủy booking
+      operationId: publicCancelBooking
+      responses:
+        '200':
+          description: Đã hủy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResult'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+      parameters:
+      - name: bookingId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IfMatch'
+  /api/health:
+    get:
+      summary: Health tổng hợp
+      operationId: aggregateHealth
+      responses:
+        '200':
+          description: UP
+          content:
+            application/json:
+              schema:
+                type: object
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /api/traces/{correlationId}:
+    get:
+      summary: Tra workflow theo Correlation ID
+      operationId: getWorkflowTrace
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TraceStep'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: correlationId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /api/realtime/ws-tickets:
+    post:
+      operationId: issueRealtimeWebSocketTicket
+      summary: Issue a short-lived one-time Realtime WebSocket ticket
+      x-interface-class: public
+      x-version: v1
+      x-rate-limit-required: true
+      description: Authenticates the browser JWT, takes only bookingId, calls Booking Service's authoritative
+        access-decision operation, and fails closed on missing/inactive mapping, denial, timeout or dependency
+        error. The browser must never submit customerId as ownership proof. The signed JWT/JWS ticket
+        is returned only in the response body. It is issued by booking-orchestrator, bound to bookingId,
+        verified identity subject, scope booking:status:read and Realtime audience, has a unique jti,
+        expires within 60 seconds, is single-use and cannot be refreshed.
+      security:
+      - UserJwt: []
+      parameters:
+      - $ref: '#/components/parameters/RequiredCorrelationId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WsTicketRequest'
+      responses:
+        '201':
+          description: Signed single-use JWT/JWS ticket issued after an allowed Booking decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WsTicketResponse'
+              example:
+                ticket: example-not-a-real-ticket
+                bookingId: BKG-001
+                expiresAt: '2026-08-03T03:00:45Z'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Booking access denied; no ticket issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: WS ticket issuance rate limit exceeded.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /health/live:
+    get:
+      operationId: esbLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: esbReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    PageMeta:
+      $ref: '#/components/schemas/PageMeta'
+    SafeIdentifier:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$
+    WsTicketRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - bookingId
+      properties:
+        bookingId:
+          $ref: '#/components/schemas/SafeIdentifier'
+    WsTicketResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - ticket
+      - bookingId
+      - expiresAt
+      properties:
+        ticket:
+          type: string
+          minLength: 16
+          maxLength: 4096
+          description: Signed compact JWT/JWS credential; never place in a URL or log it.
+        bookingId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        expiresAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    SignedWebSocketTicketClaims:
+      type: object
+      additionalProperties: false
+      description: Required signed JWT/JWS claims before compact serialization.
+      required:
+      - iss
+      - aud
+      - sub
+      - bookingId
+      - scope
+      - iat
+      - exp
+      - jti
+      properties:
+        iss:
+          type: string
+          const: booking-orchestrator
+        aud:
+          type: string
+          const: realtime-status-service
+        sub:
+          $ref: '#/components/schemas/SafeIdentifier'
+        bookingId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        scope:
+          type: string
+          const: booking:status:read
+        iat:
+          type: integer
+          format: int64
+          minimum: 0
+        exp:
+          type: integer
+          format: int64
+          minimum: 1
+        jti:
+          $ref: '#/components/schemas/SafeIdentifier'
+    WsTicketPolicy:
+      type: object
+      additionalProperties: false
+      description: Non-wire policy assertions for every issued ticket.
+      required:
+      - audience
+      - maximumTtlSeconds
+      - singleUse
+      - jtiRequired
+      - refreshable
+      - bookingBound
+      - identitySubjectBound
+      - signed
+      - issuer
+      - scope
+      - requiredClaims
+      properties:
+        audience:
+          type: string
+          const: realtime-status-service
+        maximumTtlSeconds:
+          type: integer
+          const: 60
+          maximum: 60
+        singleUse:
+          type: boolean
+          const: true
+        jtiRequired:
+          type: boolean
+          const: true
+        refreshable:
+          type: boolean
+          const: false
+        bookingBound:
+          type: boolean
+          const: true
+        identitySubjectBound:
+          type: boolean
+          const: true
+        signed:
+          type: boolean
+          const: true
+        issuer:
+          type: string
+          const: booking-orchestrator
+        scope:
+          type: string
+          const: booking:status:read
+        requiredClaims:
+          type: array
+          const:
+          - iss
+          - aud
+          - sub
+          - bookingId
+          - scope
+          - iat
+          - exp
+          - jti
+    PublicEvent:
+      type: object
+      required:
+      - eventId
+      - name
+      - venue
+      - startsAt
+      - status
+      - ticketTypes
+      properties:
+        eventId:
+          type: string
+        name:
+          type: string
+        venue:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        status:
+          type: string
+        ticketTypes:
+          type: array
+          items:
+            type: object
+    PlaceBookingRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - customerId
+      - eventId
+      - seatIds
+      - paymentMethodToken
+      properties:
+        customerId:
+          type: string
+        eventId:
+          type: string
+        seatIds:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+        paymentMethodToken:
+          type: string
+          minLength: 6
+    BookingResult:
+      type: object
+      additionalProperties: false
+      required:
+      - bookingId
+      - status
+      - total
+      - correlationId
+      properties:
+        bookingId:
+          type: string
+        status:
+          type: string
+        total:
+          $ref: '#/components/schemas/Money'
+        reservationId:
+          type:
+          - string
+          - 'null'
+        paymentId:
+          type:
+          - string
+          - 'null'
+        ticketIds:
+          type: array
+          items:
+            type: string
+        correlationId:
+          type: string
+    TraceStep:
+      type: object
+      properties:
+        service:
+          type: string
+        operation:
+          type: string
+        status:
+          type: string
+        durationMs:
+          type: integer
+        errorCode:
+          type:
+          - string
+          - 'null'
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    RequiredCorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

@@ -1,5 +1,5 @@
 version: 1.0.0
-contractFreezeId: event-ticketing-contracts-v1.0.0
+contractCatalogVersion: 1.0.0
 requestExamples:
   placeBooking: &placeBookingRequest
     customerId: browser-value-not-ownership-proof
@@ -52,11 +52,11 @@ scenarios:
 
   - scenarioId: ESB-SEAT-UNAVAILABLE-001
     publicOperationId: placeBooking
-    requestExample: contracts/soap/examples/check-availability.xml
+    requestExample: contracts/examples/soap/check-availability.xml
     providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability]
     providerResults: {CheckAvailability: SEAT_UNAVAILABLE}
     expectedPublicStatus: 409
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: null
     expectedCompensations: []
     expectedRetryClass: none
@@ -69,7 +69,7 @@ scenarios:
     providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingFail]
     providerResults: {createBooking: BKG-001-PENDING, ReserveSeats: DETERMINED_FAILURE, bookingFail: FAILED}
     expectedPublicStatus: 409
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: FAILED
     expectedCompensations: []
     expectedRetryClass: none
@@ -105,7 +105,7 @@ scenarios:
     providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, ReleaseSeats, bookingFail]
     providerResults: {capturePayment: FAILED, ReleaseSeats: RELEASED, bookingFail: FAILED}
     expectedPublicStatus: 402
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: FAILED
     expectedCompensations: [ReleaseSeats]
     scheduledCompensations: [ReleaseSeats]
@@ -133,7 +133,7 @@ scenarios:
     providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingReservation, createPayment, bookingPaymentStarted, authorizePayment, capturePayment, bookingPaymentResult, issueTickets, bookingFail]
     providerResults: {capturePayment: CAPTURED, issueTickets: FAILED, bookingFail: COMPENSATION_PENDING}
     expectedPublicStatus: 503
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: COMPENSATION_PENDING
     expectedCompensations: [createRefund, ReleaseSeats]
     scheduledCompensations: [createRefund, ReleaseSeats]
@@ -176,7 +176,7 @@ scenarios:
     providerSequence: [decideBookingResourceAccess]
     providerResults: {decideBookingResourceAccess: contracts/examples/http/booking-access-not-owner.json}
     expectedPublicStatus: 403
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: null
     expectedCompensations: []
     expectedRetryClass: none
@@ -211,11 +211,11 @@ scenarios:
 
   - scenarioId: ESB-SOAP-FAULT-MAP-001
     publicOperationId: placeBooking
-    requestExample: contracts/soap/examples/soap-fault.xml
+    requestExample: contracts/examples/soap/soap-fault.xml
     providerSequence: [resolveCustomerIdentityMapping, getCustomer, getEvent, getSaleEligibility, CheckAvailability, createBooking, ReserveSeats, bookingFail]
-    providerResults: {ReserveSeats: contracts/soap/examples/soap-fault.xml}
+    providerResults: {ReserveSeats: contracts/examples/soap/soap-fault.xml}
     expectedPublicStatus: 409
-    expectedPublicSchema: ../common/error-response.schema.json
+    expectedPublicSchema: '#/components/schemas/ErrorResponse'
     expectedBookingState: FAILED
     expectedCompensations: []
     expectedRetryClass: none

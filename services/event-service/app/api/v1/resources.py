@@ -1,4 +1,5 @@
 """REST endpoint doc/ghi thong tin su kien."""
+
 from fastapi import APIRouter, Depends, status
 
 from app.application.commands.create_event import create_event
@@ -20,9 +21,13 @@ def list_all(repo: EventRepository = Depends(get_repository)):
 
 
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
-def create(payload: EventCreateRequest, repo: EventRepository = Depends(get_repository)):
+def create(
+    payload: EventCreateRequest, repo: EventRepository = Depends(get_repository)
+):
     ticket_types = [TicketType(t.type, t.price) for t in payload.ticketTypes]
-    event = create_event(repo, payload.name, payload.location, payload.startTime, ticket_types)
+    event = create_event(
+        repo, payload.name, payload.location, payload.startTime, ticket_types
+    )
     return EventResponse.from_entity(event)
 
 
@@ -33,9 +38,18 @@ def get(event_id: str, repo: EventRepository = Depends(get_repository)):
 
 
 @router.put("/{event_id}", response_model=EventResponse)
-def update(event_id: str, payload: EventUpdateRequest, repo: EventRepository = Depends(get_repository)):
-    event = update_event(repo, event_id, name=payload.name, location=payload.location,
-                          start_time=payload.startTime)
+def update(
+    event_id: str,
+    payload: EventUpdateRequest,
+    repo: EventRepository = Depends(get_repository),
+):
+    event = update_event(
+        repo,
+        event_id,
+        name=payload.name,
+        location=payload.location,
+        start_time=payload.startTime,
+    )
     return EventResponse.from_entity(event)
 
 

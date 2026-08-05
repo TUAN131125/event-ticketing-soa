@@ -17,6 +17,11 @@ AUTH_EVENTS = Counter(
     "Authentication and authorization events",
     ("event", "result"),
 )
+ERROR_RESPONSES = Counter(
+    "identity_error_responses_total",
+    "Identity API error responses",
+    ("code", "status"),
+)
 ACTIVE_REFRESH_SESSIONS = Gauge(
     "identity_active_refresh_sessions",
     "Active, unexpired refresh sessions",

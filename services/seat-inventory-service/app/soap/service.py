@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, Header, Request
 from fastapi.concurrency import run_in_threadpool
@@ -30,7 +30,6 @@ from app.soap.operations import dispatch
 from app.soap.types import operation_name, request_context
 
 LOGGER = logging.getLogger(__name__)
-CONTRACT_DIR = Path(__file__).resolve().parents[2] / "contracts"
 
 
 def create_soap_router(settings: Settings) -> APIRouter:
@@ -38,16 +37,19 @@ def create_soap_router(settings: Settings) -> APIRouter:
 
     @router.get("/seat-inventory.xsd", include_in_schema=False)
     async def xsd() -> Response:
-        content = (CONTRACT_DIR / "seat-inventory.xsd").read_text(encoding="utf-8")
+        content = settings.xsd_path.read_text(encoding="utf-8")
         return Response(content=content, media_type="application/xml")
 
     @router.get("/soap", include_in_schema=False)
     async def wsdl(request: Request) -> Response:
         if "wsdl" not in request.query_params:
             return Response(status_code=405)
-        content = (CONTRACT_DIR / "seat-inventory.wsdl").read_text(encoding="utf-8")
-        content = content.replace(
-            "http://localhost:8003/soap", settings.soap_public_url
+        content = settings.wsdl_path.read_text(encoding="utf-8")
+        content = re.sub(
+            r'(<soap:address\s+location=")[^"]+("\s*/>)',
+            rf"\g<1>{settings.soap_public_url}\2",
+            content,
+            count=1,
         )
         return Response(content=content, media_type="text/xml")
 

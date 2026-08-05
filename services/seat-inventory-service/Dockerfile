@@ -6,25 +6,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup --system seat && adduser --system --ingroup seat seat
+RUN addgroup --system seat \
+    && adduser --system --ingroup seat --home /app seat \
+    && mkdir -p /app/contracts \
+    && chown seat:seat /app/contracts
 
-COPY requirements.txt ./
+COPY services/seat-inventory-service/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --requirement requirements.txt
 
-COPY alembic.ini ./
-COPY migrations ./migrations
-COPY contracts ./contracts
-COPY app ./app
-COPY docker-entrypoint.sh ./
+COPY --chown=seat:seat services/seat-inventory-service/alembic.ini ./
+COPY --chown=seat:seat services/seat-inventory-service/migrations ./migrations
+COPY --chown=seat:seat services/seat-inventory-service/app ./app
+COPY --chown=seat:seat services/seat-inventory-service/docker-entrypoint.sh ./docker-entrypoint.sh
+COPY --chown=seat:seat dist/contracts/seat-inventory.wsdl ./contracts/seat-inventory.wsdl
+COPY --chown=seat:seat dist/contracts/seat-inventory.xsd ./contracts/seat-inventory.xsd
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh \
-    && chmod 0555 docker-entrypoint.sh \
-    && chown -R seat:seat /app
+    && chmod 0555 docker-entrypoint.sh
 
 USER seat
-EXPOSE 8000
+EXPOSE 8003
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health/ready', timeout=2)"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

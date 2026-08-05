@@ -1,5 +1,4 @@
 """Pydantic request schema - tang bien doi du lieu vao/ra HTTP."""
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -11,6 +10,6 @@ class CustomerCreateRequest(BaseModel):
 
 
 class CustomerUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
+    name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None

@@ -1,6 +1,6 @@
 """Entity thuan nghiep vu cua Event Service."""
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.domain.enums import EventStatus
 from app.domain.value_objects import TicketType
@@ -14,7 +14,7 @@ class Event:
     start_time: str
     status: EventStatus
     ticket_types: list[TicketType] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def create(cls, event_id: str, name: str, location: str, start_time: str,

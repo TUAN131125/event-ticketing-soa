@@ -1,7 +1,7 @@
 """Fixture dung chung cho integration test - can PostgreSQL that dang
 chay (vi du qua `docker compose up postgres` hoac Laragon). Doc
 CUSTOMER_DATABASE_URL tu bien moi truong, mac dinh trung voi
-docker-compose.yml/.env.example cua service nay."""
+root compose.yaml/.env.example."""
 from __future__ import annotations
 
 import pytest

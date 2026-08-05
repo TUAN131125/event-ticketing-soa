@@ -10,9 +10,10 @@
   moi phuong thuc tu mo/dong 1 session (session_scope) nen an toan khi
   FastAPI goi dong thoi nhieu request cung luc.
 """
+
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -39,7 +40,7 @@ class InMemoryDeliveryRepository(DeliveryRepository):
         self._data[delivery.id] = delivery
         self._by_correlation.add(delivery.correlation_id)
 
-    def get(self, delivery_id: str) -> Optional[Delivery]:
+    def get(self, delivery_id: str) -> Delivery | None:
         return self._data.get(delivery_id)
 
     def exists_by_correlation_id(self, correlation_id: str) -> bool:
@@ -98,7 +99,7 @@ class PostgresDeliveryRepository(DeliveryRepository):
         except IntegrityError as exc:
             raise DuplicateCorrelationError(delivery.correlation_id) from exc
 
-    def get(self, delivery_id: str) -> Optional[Delivery]:
+    def get(self, delivery_id: str) -> Delivery | None:
         with session_scope() as session:
             row = session.get(DeliveryModel, delivery_id)
             return _to_entity(row) if row is not None else None
@@ -121,5 +122,7 @@ class PostgresDeliveryRepository(DeliveryRepository):
         # tang database - an toan khi nhieu worker/container cung goi
         # dong thoi (khac voi bien dem trong bo nho cua ban InMemory).
         with session_scope() as session:
-            next_value = session.execute(select(delivery_id_seq.next_value())).scalar_one()
+            next_value = session.execute(
+                select(delivery_id_seq.next_value())
+            ).scalar_one()
             return f"N{next_value:06d}"

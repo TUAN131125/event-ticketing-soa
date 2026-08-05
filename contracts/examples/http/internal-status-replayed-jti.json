@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "SERVICE_TOKEN_REPLAYED",
     "message": "The service credential has already been used",

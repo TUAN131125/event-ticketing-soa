@@ -5,6 +5,8 @@ from pathlib import Path
 import jwt
 import pytest
 import yaml
+from alembic import command
+from alembic.config import Config
 from app.application.queries import QueryService
 from app.config import Settings
 from app.dependencies import RuntimeContainer
@@ -16,6 +18,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fakes import FakeProviders
 from fastapi.testclient import TestClient
+
+GATEWAY_ROOT = Path(__file__).resolve().parents[3] / "gateway" / "booking-orchestrator"
 
 
 class FakeAuth:
@@ -97,7 +101,6 @@ def api() -> tuple[TestClient, FakeProviders, str]:
         Settings(
             environment="test",
             verify_contract_freeze=False,
-            create_schema_on_start=False,
         ),
         container,
     )
@@ -216,7 +219,7 @@ def test_generated_runtime_openapi_matches_canonical_routes_security_headers_and
     generated = client.get("/openapi.json").json()
     root = Path(__file__).resolve().parents[3]
     canonical = yaml.safe_load(
-        (root / "contracts" / "openapi" / "esb-public-api.yaml").read_text(
+        (root / "contracts" / "esb-public-api.yaml").read_text(
             encoding="utf-8"
         )
     )
@@ -264,11 +267,30 @@ def test_generated_runtime_openapi_matches_canonical_routes_security_headers_and
 def test_real_composition_root_starts_with_sql_persistence_and_clean_shutdown(
     tmp_path: Path,
 ) -> None:
+    key = private_key()
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'runtime.db'}"
+    migration = Config(str(GATEWAY_ROOT / "alembic.ini"))
+    migration.set_main_option("script_location", str(GATEWAY_ROOT / "alembic"))
+    migration.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(migration, "head")
     settings = Settings(
         environment="test",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'runtime.db'}",
+        database_url=database_url,
         verify_contract_freeze=True,
-        create_schema_on_start=True,
+        internal_service_private_key=key,
+        ws_ticket_private_key=key,
+        notification_webhook_secret="n" * 32,
+        identity_jwks_url="http://identity.test/jwks",
+        customer_service_url="http://customer.test",
+        event_service_url="http://event.test",
+        seat_service_url="http://seat.test/soap",
+        seat_service_token="seat-test-token",
+        booking_service_url="http://booking.test",
+        payment_service_url="http://payment.test",
+        ticket_service_url="http://ticket.test",
+        notification_service_url="http://notification.test",
+        realtime_service_url="http://realtime.test",
+        realtime_internal_service_token="realtime-test-token",
         outbox_poll_seconds=0.01,
         reconciliation_poll_seconds=0.01,
     )

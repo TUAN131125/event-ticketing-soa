@@ -36,7 +36,13 @@ class FakeAccessChecker:
 def settings() -> Settings:
     return Settings(
         app_env="test",
+        host="127.0.0.1",
+        allowed_ws_origins=("http://localhost:3000",),
+        jwt_issuer="http://identity.test",
+        jwt_audience="public-esb",
+        jwks_url="http://identity.test/jwks",
         internal_service_token="test-internal-token",
+        booking_authorization_url="http://booking.test/bookings/{bookingId}",
         booking_service_token="test-booking-token",
         heartbeat_interval_seconds=0.05,
         idle_timeout_seconds=0.2,

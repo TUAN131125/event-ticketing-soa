@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { CalendarDays, MapPin, Search, SlidersHorizontal } from "lucide-react";
+import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CalendarDays, MapPin, Search, SlidersHorizontal } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -9,33 +9,33 @@ import {
   Input,
   Select,
   Skeleton,
-} from "@event-ticketing/shared-ui";
-import { useEvents } from "../app/hooks";
-import { QueryState } from "./PageState";
+} from '@event-ticketing/shared-ui';
+import { useEvents } from '../app/hooks';
+import { QueryState } from './PageState';
 
 function formatDate(value?: string) {
-  if (!value) return "Date to be announced";
+  if (!value) return 'Date to be announced';
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
+        dateStyle: 'medium',
+        timeStyle: 'short',
       }).format(date);
 }
 export function EventListPage() {
   const [params, setParams] = useSearchParams();
-  const [query, setQuery] = useState(params.get("q") ?? "");
+  const [query, setQuery] = useState(params.get('q') ?? '');
   const result = useEvents({
-    query: params.get("q") ?? undefined,
-    category: params.get("category") ?? undefined,
-    page: Number(params.get("page") ?? 1),
+    query: params.get('q') ?? undefined,
+    category: params.get('category') ?? undefined,
+    page: Number(params.get('page') ?? 1),
   });
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     const next = new URLSearchParams(params);
-    if (query) next.set("q", query);
-    else next.delete("q");
+    if (query) next.set('q', query);
+    else next.delete('q');
     setParams(next);
   };
   return (
@@ -45,8 +45,7 @@ export function EventListPage() {
           <p className="eyebrow">Find your next night out</p>
           <h1>Events worth showing up for</h1>
           <p className="lede">
-            Explore live music, theatre, sport and ideas from trusted
-            organisers.
+            Explore live music, theatre, sport and ideas from trusted organisers.
           </p>
         </div>
       </div>
@@ -63,13 +62,13 @@ export function EventListPage() {
         />
         <Select
           aria-label="Filter by category"
-          value={params.get("category") ?? ""}
+          value={params.get('category') ?? ''}
           onChange={(event) => {
             const next = new URLSearchParams(params);
             if (event.target.value) {
-              next.set("category", event.target.value);
+              next.set('category', event.target.value);
             } else {
-              next.delete("category");
+              next.delete('category');
             }
             setParams(next);
           }}
@@ -105,30 +104,21 @@ export function EventListPage() {
             {result.data.items.map((item) => (
               <Card key={item.eventId} className="event-card">
                 <div className="event-cover">
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt="" />
-                  ) : (
-                    <CalendarDays size={32} />
-                  )}
+                  {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <CalendarDays size={32} />}
                 </div>
                 <div className="event-card-body">
                   <div className="event-card-meta">
-                    <Badge tone="information">
-                      {item.category || "Live event"}
-                    </Badge>
+                    <Badge tone="information">{item.category || 'Live event'}</Badge>
                     {item.status && <span>{item.status}</span>}
                   </div>
                   <h2>
-                    <Link to={`/events/${encodeURIComponent(item.eventId)}`}>
-                      {item.name}
-                    </Link>
+                    <Link to={`/events/${encodeURIComponent(item.eventId)}`}>{item.name}</Link>
                   </h2>
                   <p>
                     <CalendarDays size={15} /> {formatDate(item.startsAt)}
                   </p>
                   <p>
-                    <MapPin size={15} />{" "}
-                    {item.venue || "Venue details to be announced"}
+                    <MapPin size={15} /> {item.venue || 'Venue details to be announced'}
                   </p>
                 </div>
               </Card>
@@ -143,7 +133,7 @@ export function EventListPage() {
             <Button
               variant="secondary"
               onClick={() => {
-                setQuery("");
+                setQuery('');
                 setParams({});
               }}
             >

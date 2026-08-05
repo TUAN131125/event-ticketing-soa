@@ -7,11 +7,11 @@ import pytest
 from app.domain.exceptions import InvalidRequest
 from app.security.xml_hardening import parse_soap
 
-ROOT = Path(__file__).resolve().parents[2]
+CONTRACTS = Path(__file__).resolve().parents[4] / "contracts"
 
 
 def valid_payload() -> bytes:
-    return (ROOT / "contracts" / "examples" / "get-seat-map-request.xml").read_bytes()
+    return (CONTRACTS / "examples" / "soap" / "get-seat-map.xml").read_bytes()
 
 
 @pytest.mark.security
@@ -32,7 +32,7 @@ def test_dtd_and_xxe_are_rejected_before_parsing() -> None:
 @pytest.mark.security
 def test_wrong_namespace_or_schema_is_rejected() -> None:
     payload = valid_payload().replace(
-        b"urn:event-ticketing:seat-inventory:v1", b"urn:wrong"
+        b"urn:event-ticketing:seat:v1", b"urn:wrong"
     )
     with pytest.raises(InvalidRequest, match="XSD"):
         parse_soap(payload, 262_144)

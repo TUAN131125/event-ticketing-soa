@@ -56,7 +56,7 @@ Gateway tin cậy phải xác minh access token, loại bỏ mọi `X-Actor-*` d
 gửi rồi mới thêm actor context nội bộ.
 
 Hợp đồng đầy đủ:
-[`contracts/openapi/ticket-service.yaml`](../../contracts/openapi/ticket-service.yaml).
+[`contracts/ticket-service.yaml`](../../contracts/ticket-service.yaml).
 
 ## Phát hành từ Booking Orchestrator
 
@@ -101,7 +101,7 @@ Các event:
 - `ticket.cancelled`
 - `ticket.qr-regenerated`
 
-JSON Schema nằm trong [`contracts/events`](../../contracts/events). Broker relay là
+JSON Schema nằm trong [`contracts/event-messages.schema.json`](../../contracts/event-messages.schema.json). Broker relay là
 adapter riêng, publish các row `published_at IS NULL`; consumer deduplicate theo
 `eventId`.
 
@@ -120,11 +120,11 @@ DB constraint kiểm tra state consistency: `CHECKED_IN` phải có thời gian/
 ## Chạy local
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up --build
+Copy-Item ..\..\.env.example ..\..\.env
+docker compose --profile ticket up --build --wait
 ```
 
-Service: `http://localhost:8006`; PostgreSQL: `localhost:5439`.
+Service: `http://localhost:8006`; PostgreSQL không được publish ra host.
 
 Chạy trực tiếp:
 
@@ -145,7 +145,7 @@ $env:TICKET_DATABASE_URL='postgresql+psycopg://ticket:ticket@localhost:5439/tick
 Integration/concurrency test:
 
 ```powershell
-docker compose -f docker-compose.test.yml up -d
+docker compose --profile ticket up -d --wait
 $env:TICKET_TEST_DATABASE_URL='postgresql+psycopg://ticket:ticket@localhost:55436/ticket_test'
 .\.venv\Scripts\python.exe -m pytest
 ```

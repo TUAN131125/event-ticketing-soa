@@ -6,8 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-
 
 class Settings(BaseModel):
     environment: Literal["development", "test", "production"] = "development"
@@ -15,30 +13,32 @@ class Settings(BaseModel):
     docs_enabled: bool = True
     log_level: str = "INFO"
     request_timeout_seconds: float = 15.0
-    identity_jwks_url: str = "http://localhost:8009/.well-known/jwks.json"
+    identity_jwks_url: str = ""
     identity_expected_issuer: str = "identity-service"
     identity_expected_audience: str = "public-esb"
     identity_jwks_cache_seconds: int = 300
-    customer_service_url: str = "http://localhost:8001"
-    event_service_url: str = "http://localhost:8002"
-    seat_service_url: str = "http://localhost:8003/soap"
+    customer_service_url: str = ""
+    event_service_url: str = ""
+    seat_service_url: str = ""
     seat_service_token: str | None = None
-    booking_service_url: str = "http://localhost:8004"
-    payment_service_url: str = "http://localhost:8005"
-    ticket_service_url: str = "http://localhost:8006"
-    notification_service_url: str = "http://localhost:8007"
+    booking_service_url: str = ""
+    payment_service_url: str = ""
+    ticket_service_url: str = ""
+    notification_service_url: str = ""
     notification_webhook_secret: str | None = None
-    realtime_service_url: str = "http://localhost:8008"
+    realtime_service_url: str = ""
     realtime_internal_service_token: str | None = None
     realtime_caller_service: str = "booking-orchestrator"
     internal_service_issuer: str = "booking-orchestrator"
     internal_service_subject: str = "booking-orchestrator"
     internal_service_audience: str = "provider-services"
     internal_service_private_key: str | None = None
+    internal_service_private_key_path: Path | None = None
     internal_service_key_id: str = "esb-internal-1"
     ws_ticket_issuer: str = "booking-orchestrator"
     ws_ticket_audience: str = "realtime-status-service"
     ws_ticket_private_key: str | None = None
+    ws_ticket_private_key_path: Path | None = None
     ws_ticket_key_id: str = "esb-ws-1"
     ws_ticket_ttl_seconds: int = Field(default=45, ge=1, le=60)
     safe_read_attempts: int = Field(default=2, ge=1, le=5)
@@ -49,16 +49,18 @@ class Settings(BaseModel):
     bulkhead_limit: int = Field(default=20, ge=1)
     outbox_poll_seconds: float = Field(default=1.0, gt=0)
     reconciliation_poll_seconds: float = Field(default=1.0, gt=0)
-    create_schema_on_start: bool = True
     verify_contract_freeze: bool = True
-    seat_provider_xsd_path: Path = REPOSITORY_ROOT / "services" / "seat-inventory-service" / "contracts" / "seat-inventory.xsd"
+    seat_provider_xsd_path: Path = Path("contracts/seat-inventory.xsd")
 
     @model_validator(mode="after")
     def production_security(self) -> Settings:
         if self.environment == "production":
             if not self.database_url.startswith("postgresql+"):
                 raise ValueError("production requires PostgreSQL")
-            if not self.internal_service_private_key or not self.ws_ticket_private_key:
+            if not (
+                self.internal_service_private_key
+                or self.internal_service_private_key_path
+            ) or not (self.ws_ticket_private_key or self.ws_ticket_private_key_path):
                 raise ValueError("production signing keys must be supplied by secret reference")
             if not self.notification_webhook_secret or len(self.notification_webhook_secret) < 32:
                 raise ValueError("production notification webhook secret must be at least 32 characters")
@@ -68,8 +70,6 @@ class Settings(BaseModel):
                 raise ValueError("production Realtime internal service token must be at least 32 characters")
             if self.docs_enabled:
                 raise ValueError("production docs must be disabled")
-            if self.create_schema_on_start:
-                raise ValueError("production schema changes must run through Alembic")
         return self
 
     @classmethod

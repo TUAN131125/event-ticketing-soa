@@ -1,9 +1,0 @@
-.env
-.venv
-__pycache__
-*.pyc
-keys
-.git
-.pytest_cache
-htmlcov
-tests

@@ -9,9 +9,14 @@ from app.application.service import IdentityService
 from app.domain.exceptions import Forbidden, Unauthenticated
 from app.domain.value_objects import Principal, RequestContext
 
-bearer = HTTPBearer(scheme_name="BearerAuth", auto_error=False)
+browser_bearer = HTTPBearer(
+    scheme_name="BrowserBearerAuth",
+    auto_error=False,
+)
 refresh_cookie = APIKeyCookie(
-    scheme_name="RefreshCookie", name="identity_refresh", auto_error=False
+    scheme_name="RefreshCookie",
+    name="identity_refresh",
+    auto_error=False,
 )
 
 
@@ -30,10 +35,10 @@ def get_service(request: Request) -> IdentityService:
 
 
 def current_principal(
-    credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+    credentials: HTTPAuthorizationCredentials | None = Security(browser_bearer),
     service: IdentityService = Depends(get_service),
 ) -> Principal:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    if credentials is None or credentials.scheme.casefold() != "bearer":
         raise Unauthenticated()
     return service.authenticate_access_token(credentials.credentials)
 

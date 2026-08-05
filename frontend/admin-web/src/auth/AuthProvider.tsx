@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { authClient } from '../api/auth';
 import type { AuthSession, Role, User } from '../types';
 
@@ -21,22 +29,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    authClient.refresh().then((value) => { if (alive) setSession(value); }).catch(() => { /* first visit or expired cookie */ }).finally(() => { if (alive) setRestoring(false); });
-    return () => { alive = false; };
+    authClient
+      .refresh()
+      .then((value) => {
+        if (alive) setSession(value);
+      })
+      .catch(() => {
+        /* first visit or expired cookie */
+      })
+      .finally(() => {
+        if (alive) setRestoring(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => { setSession(await authClient.login({ email, password })); }, []);
-  const register = useCallback(async (email: string, password: string, displayName?: string) => { await authClient.register({ email, password, displayName }); }, []);
+  const login = useCallback(async (email: string, password: string) => {
+    setSession(await authClient.login({ email, password }));
+  }, []);
+  const register = useCallback(async (email: string, password: string, displayName?: string) => {
+    await authClient.register({ email, password, displayName });
+  }, []);
   const logout = useCallback(async () => {
     const token = session?.accessToken;
     setSession(null);
-    if (token) { try { await authClient.logout(token); } catch { /* local session remains cleared */ } }
+    if (token) {
+      try {
+        await authClient.logout(token);
+      } catch {
+        /* local session remains cleared */
+      }
+    }
   }, [session?.accessToken]);
-  const assignRole = useCallback(async (userId: string, role: Role, action: 'assign' | 'revoke') => {
-    if (!session) throw new Error('You need to sign in again.');
-    await authClient.assignRole(session.accessToken, userId, role, action);
-  }, [session]);
-  const value = useMemo<AuthContextValue>(() => ({ session, user: session?.user ?? null, isRestoring, isAuthenticated: Boolean(session), login, register, logout, assignRole }), [assignRole, isRestoring, login, logout, register, session]);
+  const assignRole = useCallback(
+    async (userId: string, role: Role, action: 'assign' | 'revoke') => {
+      if (!session) throw new Error('You need to sign in again.');
+      await authClient.assignRole(session.accessToken, userId, role, action);
+    },
+    [session],
+  );
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      isRestoring,
+      isAuthenticated: Boolean(session),
+      login,
+      register,
+      logout,
+      assignRole,
+    }),
+    [assignRole, isRestoring, login, logout, register, session],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

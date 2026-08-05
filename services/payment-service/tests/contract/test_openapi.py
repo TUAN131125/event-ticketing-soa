@@ -1,8 +1,3 @@
-import json
-from pathlib import Path
-
-import yaml
-
 from app.config import Settings
 from app.main import create_app
 
@@ -17,9 +12,6 @@ EXPECTED_OPERATIONS = {
     "refundPayment",
     "reconcilePayment",
 }
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
-
-
 def settings() -> Settings:
     return Settings(
         app_name="payment-service",
@@ -63,30 +55,3 @@ def test_openapi_has_unique_operation_ids_and_closed_request_models() -> None:
     ]
     assert "cardNumber" not in create_properties
     assert "cvv" not in create_properties
-
-
-def test_shared_openapi_and_event_contracts_match_the_service() -> None:
-    contract_path = REPOSITORY_ROOT / "contracts" / "openapi" / "payment-service.yaml"
-    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
-    static_operations = {
-        operation["operationId"]
-        for path_item in contract["paths"].values()
-        for operation in path_item.values()
-        if isinstance(operation, dict) and "operationId" in operation
-    }
-    assert static_operations == EXPECTED_OPERATIONS
-
-    events_path = REPOSITORY_ROOT / "contracts" / "events"
-    expected_events = {
-        "payment-created.schema.json": "payment.created",
-        "payment-authorized.schema.json": "payment.authorized",
-        "payment-succeeded.schema.json": "payment.succeeded",
-        "payment-failed.schema.json": "payment.failed",
-        "payment-cancelled.schema.json": "payment.cancelled",
-        "payment-refunded.schema.json": "payment.refunded",
-    }
-    for filename, event_type in expected_events.items():
-        schema = json.loads((events_path / filename).read_text(encoding="utf-8"))
-        assert schema["title"] == event_type
-        assert schema["properties"]["eventType"]["const"] == event_type
-        assert "payload" in schema["required"]

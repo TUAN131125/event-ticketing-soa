@@ -167,7 +167,6 @@ def test_production_config_rejects_insecure_defaults() -> None:
         "internal_service_private_key": "key",
         "ws_ticket_private_key": "key",
         "docs_enabled": False,
-        "create_schema_on_start": False,
         "notification_webhook_secret": "n" * 32,
         "seat_service_token": "s" * 32,
         "realtime_internal_service_token": "r" * 32,

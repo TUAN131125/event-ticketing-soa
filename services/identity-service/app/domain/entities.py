@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.domain.enums import RoleAction
+
 
 @dataclass(frozen=True, slots=True)
 class UserView:
@@ -29,5 +31,5 @@ class TokenPair:
 class RoleChange:
     user: UserView
     role: str
-    action: str
+    action: RoleAction
     changed: bool

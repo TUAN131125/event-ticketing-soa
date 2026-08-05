@@ -1,0 +1,716 @@
+openapi: 3.1.0
+info:
+  title: Customer Service API
+  version: 1.0.0
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+  description: Official v1 baseline including the MAP-001 internal mapping extension. Customer Service
+    is authoritative for identitySubject-to-customerId mappings. These internal operations are part of
+    the official v1 baseline.
+servers:
+- url: http://localhost:8001
+  description: Local contract endpoint; deployment host is supplied by configuration.
+security:
+- ServiceJwt: []
+paths:
+  /customers:
+    post:
+      summary: Tạo hồ sơ khách hàng
+      operationId: createCustomer
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /customers/{customerId}:
+    get:
+      summary: Lấy chi tiết khách hàng
+      operationId: getCustomer
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+    put:
+      summary: Cập nhật hồ sơ
+      operationId: replaceCustomer
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdate'
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /customers:lookup:
+    get:
+      summary: Tìm theo email/điện thoại
+      operationId: lookupCustomer
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: email
+        in: query
+        required: false
+        schema:
+          type: string
+          format: email
+      - name: phone
+        in: query
+        required: false
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /customers/{customerId}/consents:
+    post:
+      summary: Cập nhật consent
+      operationId: updateCustomerConsent
+      responses:
+        '204':
+          description: Đã cập nhật
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentUpdate'
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IfMatch'
+  /customers/{customerId}/deactivate:
+    post:
+      summary: Vô hiệu hóa khách hàng
+      operationId: deactivateCustomer
+      responses:
+        '200':
+          description: Đã vô hiệu hóa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /internal/customers/{customerId}/identity-link:
+    put:
+      operationId: linkCustomerIdentitySubject
+      summary: Create or idempotently confirm an Identity-to-Customer mapping
+      x-interface-class: internal
+      x-version: v1
+      description: Customer Service is authoritative for the one-to-one active mapping. The same identitySubject
+        or customerId cannot have another active mapping. Browser callers are forbidden and no contact/profile
+        PII is returned. Re-linking the same pair with the same Idempotency-Key is safe.
+      security:
+      - ServiceJwt: []
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/SafeIdentifier'
+      - $ref: '#/components/parameters/RequiredCorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityLinkRequest'
+      responses:
+        '200':
+          description: Mapping linked or idempotently confirmed.
+          headers:
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[0-9]+"$
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityMapping'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: IDENTITY_SUBJECT_ALREADY_LINKED, CUSTOMER_ALREADY_LINKED or IDEMPOTENCY_KEY_REUSED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+    delete:
+      operationId: unlinkCustomerIdentitySubject
+      summary: Versioned unlink preserving audit history
+      x-interface-class: internal
+      x-version: v1
+      description: Marks the mapping UNLINKED without deleting audit evidence. Concurrent changes fail
+        via If-Match. Browser callers are forbidden.
+      security:
+      - ServiceJwt: []
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/SafeIdentifier'
+      - $ref: '#/components/parameters/RequiredCorrelationId'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Mapping is now UNLINKED.
+          headers:
+            ETag:
+              schema:
+                type: string
+                pattern: ^"[0-9]+"$
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityMapping'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/identity-mappings/{identitySubject}:
+    get:
+      operationId: resolveCustomerIdentityMapping
+      summary: Resolve an Identity subject to a non-PII Customer mapping
+      x-interface-class: internal
+      x-version: v1
+      description: Returns ACTIVE, INACTIVE or UNLINKED mapping state without profile or contact PII.
+        Customer deactivation retains the mapping but returns INACTIVE. Missing mapping returns 404. Timeout
+        or dependency failure is an error and every downstream ownership decision must fail closed.
+      security:
+      - ServiceJwt: []
+      parameters:
+      - name: identitySubject
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/SafeIdentifier'
+      - $ref: '#/components/parameters/RequiredCorrelationId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          description: Mapping resolved, including inactive/unlinked audit state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityMapping'
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: IDENTITY_MAPPING_NOT_FOUND.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /health/live:
+    get:
+      operationId: customerLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: customerReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    PageMeta:
+      $ref: '#/components/schemas/PageMeta'
+    SafeIdentifier:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$
+    IdentityLinkRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - identitySubject
+      properties:
+        identitySubject:
+          $ref: '#/components/schemas/SafeIdentifier'
+    IdentityMapping:
+      type: object
+      additionalProperties: false
+      description: Mapping metadata only; email, phone, name and profile fields are forbidden.
+      required:
+      - identitySubject
+      - customerId
+      - status
+      - resourceVersion
+      - linkedAt
+      - updatedAt
+      properties:
+        identitySubject:
+          $ref: '#/components/schemas/SafeIdentifier'
+        customerId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - INACTIVE
+          - UNLINKED
+        resourceVersion:
+          type: integer
+          minimum: 1
+        linkedAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    CustomerCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - email
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        phone:
+          type:
+          - string
+          - 'null'
+          maxLength: 30
+    CustomerUpdate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - email
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        phone:
+          type:
+          - string
+          - 'null'
+    Customer:
+      type: object
+      additionalProperties: false
+      required:
+      - customerId
+      - name
+      - email
+      - status
+      - resourceVersion
+      - createdAt
+      - updatedAt
+      properties:
+        customerId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type:
+          - string
+          - 'null'
+        status:
+          enum:
+          - ACTIVE
+          - INACTIVE
+          - ANONYMIZED
+        resourceVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    ConsentUpdate:
+      type: object
+      additionalProperties: false
+      required:
+      - channel
+      - granted
+      properties:
+        channel:
+          enum:
+          - EMAIL
+          - SMS
+        granted:
+          type: boolean
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    RequiredCorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  securitySchemes:
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

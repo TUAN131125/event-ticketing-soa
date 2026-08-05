@@ -67,7 +67,7 @@ Mọi endpoint nghiệp vụ yêu cầu:
 | `POST` | `/payments/{paymentId}/reconcile` | Đồng bộ kết quả provider mà không cho state regression |
 
 Hợp đồng đầy đủ nằm tại
-[`contracts/openapi/payment-service.yaml`](../../contracts/openapi/payment-service.yaml).
+[`contracts/payment-service.yaml`](../../contracts/payment-service.yaml).
 Swagger UI được mở ở `/docs` ngoài production.
 
 ## Tính nhất quán và khả năng retry
@@ -104,7 +104,7 @@ Các event được ghi atomically với thay đổi aggregate:
 - `payment.cancelled`
 - `payment.refunded` (cả partial và full)
 
-JSON Schema nằm trong [`contracts/events`](../../contracts/events). Broker relay là
+JSON Schema nằm trong [`contracts/event-messages.schema.json`](../../contracts/event-messages.schema.json). Broker relay là
 thành phần triển khai riêng: đọc các row `published_at IS NULL`, publish envelope,
 rồi cập nhật trạng thái gửi. Nhờ vậy code lõi không bị khóa vào Kafka/RabbitMQ cụ
 thể.
@@ -134,12 +134,12 @@ phải đạt `REFUNDED` trước khi Booking Service nhận lệnh cancel.
 Yêu cầu Docker hoặc Python 3.12 và PostgreSQL 16.
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up --build
+Copy-Item ..\..\.env.example ..\..\.env
+docker compose --profile payment up --build --wait
 ```
 
-Service: `http://localhost:8005`; PostgreSQL: `localhost:5438`.
-Container chạy `alembic upgrade head` trước khi nhận traffic.
+Service: `http://localhost:8005`. Root Compose chạy `payment-migrate` trước khi
+application nhận traffic; PostgreSQL không được publish ra host.
 
 Chạy trực tiếp:
 
@@ -162,7 +162,7 @@ Unit, contract và security test không cần database:
 Integration/concurrency test dùng PostgreSQL test riêng:
 
 ```powershell
-docker compose -f docker-compose.test.yml up -d
+docker compose --profile payment up -d --wait
 $env:PAYMENT_TEST_DATABASE_URL='postgresql+psycopg://payment:payment@localhost:55435/payment_test'
 .\.venv\Scripts\python.exe -m pytest
 ```

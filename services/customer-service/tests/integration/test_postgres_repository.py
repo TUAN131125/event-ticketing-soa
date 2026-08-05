@@ -6,6 +6,7 @@ sinh id dung tai tang DB, UNIQUE constraint that chan trung email ke ca
 khi bypass kiem tra o tang application, va du lieu con lai sau khi
 "restart" (engine moi, ket noi moi).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,7 +18,9 @@ from app.infrastructure.database.repositories import PostgresCustomerRepository
 pytestmark = pytest.mark.integration
 
 
-def test_next_id_increments_via_db_sequence(postgres_repo: PostgresCustomerRepository) -> None:
+def test_next_id_increments_via_db_sequence(
+    postgres_repo: PostgresCustomerRepository,
+) -> None:
     assert postgres_repo.next_id() == "C001"
     assert postgres_repo.next_id() == "C002"
     assert postgres_repo.next_id() == "C003"
@@ -44,17 +47,25 @@ def test_unique_email_enforced_at_database_level(
     tra o tang application (ensure_email_unique). UNIQUE constraint tren
     cot email phai la hang rao cuoi cung chan duoc, khong duoc phep tao
     ra 2 ban ghi trung email."""
-    postgres_repo.add(Customer.create("C001", "Nguoi A", "trung@example.com", "0900000001"))
+    postgres_repo.add(
+        Customer.create("C001", "Nguoi A", "trung@example.com", "0900000001")
+    )
 
     with pytest.raises(DuplicateEmailError):
-        postgres_repo.add(Customer.create("C002", "Nguoi B", "trung@example.com", "0900000002"))
+        postgres_repo.add(
+            Customer.create("C002", "Nguoi B", "trung@example.com", "0900000002")
+        )
 
     # Dam bao ban ghi thu 2 khong duoc tao du transaction that bai.
     assert postgres_repo.get("C002") is None
 
 
-def test_get_by_email_is_case_insensitive(postgres_repo: PostgresCustomerRepository) -> None:
-    postgres_repo.add(Customer.create("C001", "Vo E", "MixedCase@Example.com", "0933333333"))
+def test_get_by_email_is_case_insensitive(
+    postgres_repo: PostgresCustomerRepository,
+) -> None:
+    postgres_repo.add(
+        Customer.create("C001", "Vo E", "MixedCase@Example.com", "0933333333")
+    )
     found = postgres_repo.get_by_email("mixedcase@example.com")
     assert found is not None
     assert found.id == "C001"
@@ -80,7 +91,9 @@ def test_data_survives_new_engine_connection(
     restart)."""
     from app.infrastructure.database.session import dispose_engine
 
-    postgres_repo.add(Customer.create("C001", "Ton Tai Sau Restart", "f@example.com", "0955555555"))
+    postgres_repo.add(
+        Customer.create("C001", "Ton Tai Sau Restart", "f@example.com", "0955555555")
+    )
 
     dispose_engine()  # dong het connection pool hien tai
 
@@ -90,7 +103,9 @@ def test_data_survives_new_engine_connection(
     assert fetched.name == "Ton Tai Sau Restart"
 
 
-def test_list_all_returns_every_customer(postgres_repo: PostgresCustomerRepository) -> None:
+def test_list_all_returns_every_customer(
+    postgres_repo: PostgresCustomerRepository,
+) -> None:
     postgres_repo.add(Customer.create("C001", "A", "a1@example.com", "0900000001"))
     postgres_repo.add(Customer.create("C002", "B", "b1@example.com", "0900000002"))
 

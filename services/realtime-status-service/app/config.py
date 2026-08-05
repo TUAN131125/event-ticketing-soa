@@ -56,28 +56,28 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    host: str
+    allowed_ws_origins: tuple[str, ...]
+    jwt_issuer: str
+    jwt_audience: str
+    jwks_url: str
+    internal_service_token: str
+    booking_authorization_url: str
+    booking_service_token: str
     app_name: str = "realtime-status-service"
     app_env: Literal["local", "test", "development", "staging", "production"] = "local"
-    host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 8008
     log_level: str = "INFO"
     docs_enabled: bool = True
-    allowed_ws_origins: tuple[str, ...] = ("http://localhost:3000", "http://localhost:3001")
-    jwt_issuer: str = "http://localhost:8009"
-    jwt_audience: str = "event-ticketing-api"
-    jwks_url: str = "http://localhost:8009/.well-known/jwks.json"
     jwt_algorithm: str = "RS256"
     jwks_timeout_seconds: float = 2.0
     jwks_cache_ttl_seconds: int = 300
-    internal_service_token: str = ""
     allowed_internal_callers: tuple[str, ...] = (
         "booking-orchestrator",
         "booking-service",
         "payment-service",
         "ticket-service",
     )
-    booking_authorization_url: str = "http://localhost:8004/bookings/{bookingId}"
-    booking_service_token: str = ""
     booking_client_timeout_seconds: float = 2.0
     admin_roles: tuple[str, ...] = ("ADMIN",)
     redis_url: str | None = None
@@ -163,31 +163,48 @@ class Settings:
         env = os.getenv("REALTIME_APP_ENV", "local").strip().lower()
         if env not in {"local", "test", "development", "staging", "production"}:
             raise ValueError("REALTIME_APP_ENV is invalid")
+        required = {
+            name: os.getenv(name, "").strip()
+            for name in (
+                "REALTIME_HOST",
+                "REALTIME_ALLOWED_WS_ORIGINS",
+                "REALTIME_JWT_ISSUER",
+                "REALTIME_JWT_AUDIENCE",
+                "REALTIME_JWKS_URL",
+                "REALTIME_INTERNAL_SERVICE_TOKEN",
+                "REALTIME_BOOKING_AUTHORIZATION_URL",
+                "REALTIME_BOOKING_SERVICE_TOKEN",
+            )
+        }
+        missing = next((name for name, value in required.items() if not value), None)
+        if missing is not None:
+            raise ValueError(f"{missing} is required")
         redis = os.getenv("REALTIME_REDIS_URL") or None
         return cls(
             app_env=env,  # type: ignore[arg-type]
-            host=os.getenv("REALTIME_HOST", "127.0.0.1"),
-            port=_int("REALTIME_PORT", 8000, 1, 65535),
+            host=required["REALTIME_HOST"],
+            port=_int("REALTIME_PORT", 8008, 1, 65535),
             log_level=os.getenv("REALTIME_LOG_LEVEL", "INFO").upper(),
             docs_enabled=_bool("REALTIME_DOCS_ENABLED", env != "production"),
             allowed_ws_origins=_csv(
-                "REALTIME_ALLOWED_WS_ORIGINS", "http://localhost:3000,http://localhost:3001"
+                "REALTIME_ALLOWED_WS_ORIGINS",
+                required["REALTIME_ALLOWED_WS_ORIGINS"],
             ),
-            jwt_issuer=os.getenv("REALTIME_JWT_ISSUER", "http://localhost:8009").rstrip("/"),
-            jwt_audience=os.getenv("REALTIME_JWT_AUDIENCE", "event-ticketing-api"),
-            jwks_url=os.getenv("REALTIME_JWKS_URL", "http://localhost:8009/.well-known/jwks.json"),
+            jwt_issuer=required["REALTIME_JWT_ISSUER"].rstrip("/"),
+            jwt_audience=required["REALTIME_JWT_AUDIENCE"],
+            jwks_url=required["REALTIME_JWKS_URL"],
             jwt_algorithm=os.getenv("REALTIME_JWT_ALGORITHM", "RS256"),
             jwks_timeout_seconds=_float("REALTIME_JWKS_TIMEOUT_SECONDS", 2, 0.1, 30),
             jwks_cache_ttl_seconds=_int("REALTIME_JWKS_CACHE_TTL_SECONDS", 300, 10, 86400),
-            internal_service_token=os.getenv("REALTIME_INTERNAL_SERVICE_TOKEN", ""),
+            internal_service_token=required["REALTIME_INTERNAL_SERVICE_TOKEN"],
             allowed_internal_callers=_csv(
                 "REALTIME_ALLOWED_INTERNAL_CALLERS",
                 "booking-orchestrator,booking-service,payment-service,ticket-service",
             ),
-            booking_authorization_url=os.getenv(
-                "REALTIME_BOOKING_AUTHORIZATION_URL", "http://localhost:8004/bookings/{bookingId}"
-            ),
-            booking_service_token=os.getenv("REALTIME_BOOKING_SERVICE_TOKEN", ""),
+            booking_authorization_url=required[
+                "REALTIME_BOOKING_AUTHORIZATION_URL"
+            ],
+            booking_service_token=required["REALTIME_BOOKING_SERVICE_TOKEN"],
             booking_client_timeout_seconds=_float(
                 "REALTIME_BOOKING_CLIENT_TIMEOUT_SECONDS", 2, 0.1, 30
             ),

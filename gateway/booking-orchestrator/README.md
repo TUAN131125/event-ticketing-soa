@@ -1,10 +1,12 @@
 # Booking Orchestrator
 
-Contract-first FastAPI ESB implementing the eight public operations frozen in `contracts/openapi/esb-public-api.yaml`. It coordinates provider capabilities through typed ports and never reads provider databases or owns provider domain state.
+Contract-first FastAPI ESB implementing the eight business operations in canonical `contracts/esb-public-api.yaml`. It coordinates provider capabilities through typed ports and never reads provider databases or owns provider domain state.
 
 The booking Saga resolves authoritative Customer/Event data, creates Booking before reserving seats, uses same-key/same-payload `ReserveSeats` replay, distinguishes payment failure from uncertainty, persists evidence, and delivers Notification/Realtime through an outbox. Cancellation is evidence-driven and remains `COMPENSATION_PENDING` until required actions complete.
 
-Production uses PostgreSQL through SQLAlchemy/Alembic. SQLite is supported only for local tests. Signing keys are injected through environment/secret references; development keys are ephemeral and never stored.
+Production uses PostgreSQL through SQLAlchemy/Alembic. SQLite is supported only
+for local tests. Signing keys must be injected through environment or file-based
+secret references; the orchestrator never generates fallback keys.
 
 ```bash
 python -m pip install -r requirements-dev.txt

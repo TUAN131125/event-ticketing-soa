@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 class SeatSoapAdapter:
     normalized_contract = (
-        "soap.seat-inventory.wsdl",
-        "soap/seat-inventory.wsdl",
+        "seat-inventory",
+        "seat-inventory.wsdl",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
-    provider_contract = "services/seat-inventory-service/contracts/seat-inventory.wsdl"
+    provider_contract = "contracts/seat-inventory.wsdl"
 
     def __init__(
         self,

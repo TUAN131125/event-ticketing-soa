@@ -16,8 +16,8 @@ from app.resilience.policies import RetryClass
 
 class CustomerRestAdapter:
     contract = (
-        "openapi.customer-service",
-        "openapi/customer-service.yaml",
+        "customer-service",
+        "customer-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -44,8 +44,8 @@ class CustomerRestAdapter:
 
 class EventRestAdapter:
     contract = (
-        "openapi.event-service",
-        "openapi/event-service.yaml",
+        "event-service",
+        "event-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -70,8 +70,8 @@ class EventRestAdapter:
 
 class BookingRestAdapter:
     contract = (
-        "openapi.booking-service",
-        "openapi/booking-service.yaml",
+        "booking-service",
+        "booking-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -135,8 +135,8 @@ class BookingRestAdapter:
 
 class PaymentRestAdapter:
     contract = (
-        "openapi.payment-service",
-        "openapi/payment-service.yaml",
+        "payment-service",
+        "payment-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -198,8 +198,8 @@ class PaymentRestAdapter:
 
 class TicketRestAdapter:
     contract = (
-        "openapi.ticket-service",
-        "openapi/ticket-service.yaml",
+        "ticket-service",
+        "ticket-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -237,8 +237,8 @@ class TicketRestAdapter:
 
 class NotificationRestAdapter:
     contract = (
-        "openapi.notification-service",
-        "openapi/notification-service.yaml",
+        "notification-service",
+        "notification-service.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )
@@ -275,8 +275,8 @@ class NotificationRestAdapter:
 
 class RealtimeRestAdapter:
     contract = (
-        "openapi.realtime-service",
-        "openapi/realtime-service.yaml",
+        "realtime-service",
+        "realtime-service.openapi.yaml",
         EXPECTED_FREEZE_ID,
         EXPECTED_CATALOG_SHA,
     )

@@ -193,6 +193,9 @@ Trước production:
 - cấu hình reverse proxy không log credential/query và giới hạn request/frame;
 - frontend xử lý mọi `resync_required` bằng authoritative REST refetch.
 
-## Integration còn ngoài phạm vi
+## Contract canonical và alignment còn lại
 
-`contracts/openapi/realtime-service.yaml`, `contracts/openapi/esb-public-api.yaml`, gateway/ESB route, frontend subprotocol client, compose/deployment và Identity–Customer mapping đều nằm ngoài scope thay đổi này. Central realtime contract hiện vẫn là placeholder và cần được đồng bộ trong một thay đổi riêng; service không tuyên bố model nội bộ là contract authoritative. Không file nào ngoài `services/realtime-status-service/` được sửa trong implementation này.
+HTTP contract canonical là `contracts/realtime-service.openapi.yaml`; WebSocket
+contract canonical là `contracts/realtime-service.asyncapi.yaml`. Các mismatch
+giữa runtime, gateway và frontend được ghi trong `contracts/CONTRACT_REVIEW.md`.
+Service không tuyên bố model nội bộ là contract authoritative.

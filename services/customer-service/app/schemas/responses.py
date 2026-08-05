@@ -15,7 +15,7 @@ class CustomerResponse(BaseModel):
     createdAt: str
 
     @classmethod
-    def from_entity(cls, customer: Customer) -> "CustomerResponse":
+    def from_entity(cls, customer: Customer) -> CustomerResponse:
         return cls(
             id=customer.id,
             name=customer.name,

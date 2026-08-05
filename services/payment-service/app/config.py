@@ -31,10 +31,9 @@ def _boolean(name: str, default: bool) -> bool:
 
 
 def _database_url() -> str:
-    value = os.getenv(
-        "PAYMENT_DATABASE_URL",
-        "postgresql+psycopg://payment:payment@localhost:5438/payment",
-    )
+    value = os.getenv("PAYMENT_DATABASE_URL", "").strip()
+    if not value:
+        raise ValueError("PAYMENT_DATABASE_URL is required")
     if value.startswith("postgres://"):
         return value.replace("postgres://", "postgresql+psycopg://", 1)
     if value.startswith("postgresql://"):
@@ -61,11 +60,10 @@ class Settings:
     @classmethod
     def from_environment(cls) -> Settings:
         app_env = os.getenv("PAYMENT_APP_ENV", "local").strip().lower()
-        configured_token = os.getenv("PAYMENT_SERVICE_TOKEN")
-        service_token = configured_token or "local-development-token"
-        if app_env == "production" and (
-            configured_token is None or len(configured_token) < 32
-        ):
+        service_token = os.getenv("PAYMENT_SERVICE_TOKEN", "").strip()
+        if not service_token:
+            raise ValueError("PAYMENT_SERVICE_TOKEN is required")
+        if app_env == "production" and len(service_token) < 32:
             raise ValueError(
                 "PAYMENT_SERVICE_TOKEN must be a non-default value of at least "
                 "32 characters in production"

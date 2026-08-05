@@ -1,6 +1,14 @@
 import type { RealtimeWsTicket } from './esb-client';
 
-export interface StatusEvent { messageId: string; bookingId: string; status: string; sequence: number; occurredAt: string; correlationId: string; message?: string; }
+export interface StatusEvent {
+  messageId: string;
+  bookingId: string;
+  status: string;
+  sequence: number;
+  occurredAt: string;
+  correlationId: string;
+  message?: string;
+}
 export type SocketState = 'connecting' | 'open' | 'closed' | 'error';
 type TicketMode = { mode?: 'esb-ticket'; ticketProvider: () => Promise<RealtimeWsTicket> };
 type NativeMode = { mode: 'native-subprotocol'; token: string };
@@ -9,7 +17,10 @@ export class BookingStatusSocket {
   private socket: WebSocket | null = null;
   private closedByClient = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  constructor(private readonly url: string, private readonly authentication: TicketMode | NativeMode) {}
+  constructor(
+    private readonly url: string,
+    private readonly authentication: TicketMode | NativeMode,
+  ) {}
 
   connect(
     onMessage: (event: StatusEvent) => void,
@@ -20,13 +31,15 @@ export class BookingStatusSocket {
     const open = async (): Promise<void> => {
       onState('connecting');
       try {
-        const ticket = this.authentication.mode === 'native-subprotocol'
-          ? null
-          : await this.authentication.ticketProvider();
+        const ticket =
+          this.authentication.mode === 'native-subprotocol'
+            ? null
+            : await this.authentication.ticketProvider();
         if (this.closedByClient) return;
-        const protocols = this.authentication.mode === 'native-subprotocol'
-          ? ['bearer', this.authentication.token]
-          : undefined;
+        const protocols =
+          this.authentication.mode === 'native-subprotocol'
+            ? ['bearer', this.authentication.token]
+            : undefined;
         const socket = protocols ? new WebSocket(this.url, protocols) : new WebSocket(this.url);
         this.socket = socket;
         socket.onopen = () => {
@@ -48,10 +61,15 @@ export class BookingStatusSocket {
               }
             } else if (payload.type === 'resync_required') {
               onResync?.();
-            } else if (typeof payload.bookingId === 'string' && typeof payload.status === 'string') {
+            } else if (
+              typeof payload.bookingId === 'string' &&
+              typeof payload.status === 'string'
+            ) {
               onMessage(payload as unknown as StatusEvent);
             }
-          } catch { /* malformed messages are ignored */ }
+          } catch {
+            /* malformed messages are ignored */
+          }
         };
       } catch {
         onState('error');

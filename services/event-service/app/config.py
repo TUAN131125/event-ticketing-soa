@@ -42,11 +42,10 @@ class Settings:
     sql_echo: bool
 
     @classmethod
-    def from_environment(cls) -> "Settings":
-        database_url = os.getenv(
-            "EVENT_DATABASE_URL",
-            "postgresql+psycopg://event_service:event_service@localhost:5436/event_service",
-        )
+    def from_environment(cls) -> Settings:
+        database_url = os.getenv("EVENT_DATABASE_URL", "").strip()
+        if not database_url:
+            raise ValueError("EVENT_DATABASE_URL is required")
         return cls(
             app_env=os.getenv("EVENT_APP_ENV", "local"),
             log_level=os.getenv("EVENT_LOG_LEVEL", "INFO").upper(),

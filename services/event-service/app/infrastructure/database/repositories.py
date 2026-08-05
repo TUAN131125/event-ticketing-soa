@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -43,7 +43,7 @@ class InMemoryEventRepository(EventRepository):
     def add(self, event: Event) -> None:
         self._data[event.id] = event
 
-    def get(self, event_id: str) -> Optional[Event]:
+    def get(self, event_id: str) -> Event | None:
         return self._data.get(event_id)
 
     def update(self, event: Event) -> None:
@@ -90,7 +90,7 @@ class PostgresEventRepository(EventRepository):
                 )
             )
 
-    def get(self, event_id: str) -> Optional[Event]:
+    def get(self, event_id: str) -> Event | None:
         with session_scope() as session:
             row = session.get(
                 EventModel, event_id, options=[selectinload(EventModel.ticket_types)]

@@ -20,7 +20,7 @@ class DeliveryResponse(BaseModel):
     createdAt: str
 
     @classmethod
-    def from_entity(cls, delivery: Delivery) -> "DeliveryResponse":
+    def from_entity(cls, delivery: Delivery) -> DeliveryResponse:
         return cls(
             id=delivery.id,
             type=delivery.type.value,

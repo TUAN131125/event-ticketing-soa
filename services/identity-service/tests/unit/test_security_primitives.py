@@ -11,8 +11,8 @@ from app.security.passwords import PasswordService
 from app.security.tokens import TokenService
 
 
-def test_password_hash_is_argon2_and_verifies(settings):
-    passwords = PasswordService(settings)
+def test_password_hash_is_argon2_and_verifies(unit_settings):
+    passwords = PasswordService(unit_settings)
     encoded = passwords.hash("Correct-Horse-9!Long")
     assert encoded.startswith("$argon2id$")
     assert passwords.verify(encoded, "Correct-Horse-9!Long")
@@ -32,32 +32,39 @@ def test_email_normalization_is_case_insensitive():
     assert normalized == "customer@example.com"
 
 
-def test_rs256_token_claims_and_jwks(settings):
-    tokens = TokenService(settings)
+def test_rs256_token_claims_and_jwks(unit_settings):
+    tokens = TokenService(unit_settings)
     encoded = tokens.issue_access_token(
         user_id="user-1", roles=("CUSTOMER",), token_version=1
     )
     principal = tokens.decode_access_token(encoded)
     assert principal.user_id == "user-1"
     assert principal.roles == ("CUSTOMER",)
+    unverified = jwt.decode(encoded, options={"verify_signature": False})
+    assert unverified["iss"] == "http://localhost:8009"
+    assert unverified["aud"] == "public-esb"
+    assert unverified["sub"] == "user-1"
+    assert isinstance(unverified["jti"], str)
+    assert unverified["tokenVersion"] == 1
+    assert "customerId" not in unverified
     key = tokens.jwks()["keys"][0]
     assert key["alg"] == "RS256"
-    assert key["kid"] == settings.key_id
-    assert jwt.get_unverified_header(encoded)["kid"] == settings.key_id
+    assert key["kid"] == unit_settings.key_id
+    assert jwt.get_unverified_header(encoded)["kid"] == unit_settings.key_id
 
 
-def test_token_rejects_wrong_audience(settings):
-    tokens = TokenService(settings)
+def test_token_rejects_wrong_audience(unit_settings):
+    tokens = TokenService(unit_settings)
     encoded = tokens.issue_access_token(
         user_id="user-1", roles=("CUSTOMER",), token_version=1
     )
-    altered = replace(settings, audience="another-api")
+    altered = replace(unit_settings, audience="another-api")
     with pytest.raises(Unauthenticated):
         TokenService(altered).decode_access_token(encoded)
 
 
-def test_expired_token_is_distinguished(settings):
-    tokens = TokenService(settings)
+def test_expired_token_is_distinguished(unit_settings):
+    tokens = TokenService(unit_settings)
     import datetime
 
     encoded = tokens.issue_access_token(

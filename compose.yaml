@@ -1,0 +1,382 @@
+name: event-ticketing-soa
+
+x-backend: &backend
+  restart: unless-stopped
+  env_file:
+    - .env.example
+    - path: .env
+      required: false
+  networks:
+    - event-ticketing
+
+x-migration: &migration
+  restart: "no"
+  env_file:
+    - .env.example
+    - path: .env
+      required: false
+  networks:
+    - event-ticketing
+  depends_on:
+    postgres:
+      condition: service_healthy
+  entrypoint:
+    - alembic
+  command:
+    - upgrade
+    - head
+  healthcheck:
+    disable: true
+
+x-identity-image: &identity-image
+  image: event-ticketing/identity:local
+  build:
+    context: .
+    dockerfile: services/identity-service/Dockerfile
+
+x-customer-image: &customer-image
+  image: event-ticketing/customer:local
+  build:
+    context: .
+    dockerfile: services/customer-service/Dockerfile
+
+x-event-image: &event-image
+  image: event-ticketing/event:local
+  build:
+    context: .
+    dockerfile: services/event-service/Dockerfile
+
+x-seat-image: &seat-image
+  image: event-ticketing/seat:local
+  build:
+    context: .
+    dockerfile: services/seat-inventory-service/Dockerfile
+
+x-booking-image: &booking-image
+  image: event-ticketing/booking:local
+  build:
+    context: .
+    dockerfile: services/booking-service/Dockerfile
+
+x-payment-image: &payment-image
+  image: event-ticketing/payment:local
+  build:
+    context: .
+    dockerfile: services/payment-service/Dockerfile
+
+x-ticket-image: &ticket-image
+  image: event-ticketing/ticket:local
+  build:
+    context: .
+    dockerfile: services/ticket-service/Dockerfile
+
+x-notification-image: &notification-image
+  image: event-ticketing/notification:local
+  build:
+    context: .
+    dockerfile: services/notification-service/Dockerfile
+
+x-orchestrator-image: &orchestrator-image
+  image: event-ticketing/orchestrator:local
+  build:
+    context: .
+    dockerfile: gateway/booking-orchestrator/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init/00-create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - event-ticketing
+
+  identity-migrate:
+    <<: [*migration, *identity-image]
+    profiles: [all, backend, identity]
+    environment:
+      IDENTITY_PRIVATE_KEY_PATH: /tmp/migration-private-key-not-used
+      IDENTITY_PUBLIC_KEY_PATH: /tmp/migration-public-key-not-used
+
+  identity:
+    <<: [*backend, *identity-image]
+    profiles: [all, backend, identity]
+    depends_on:
+      identity-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8009:8009"
+    volumes:
+      - ./local-secrets:/run/secrets:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  customer-migrate:
+    <<: [*migration, *customer-image]
+    profiles: [all, backend, customer]
+
+  customer:
+    <<: [*backend, *customer-image]
+    profiles: [all, backend, customer]
+    depends_on:
+      customer-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2); assert database_ready()
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  event-migrate:
+    <<: [*migration, *event-image]
+    profiles: [all, backend, event]
+
+  event:
+    <<: [*backend, *event-image]
+    profiles: [all, backend, event]
+    depends_on:
+      event-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=2); assert database_ready()
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  seat-migrate:
+    <<: [*migration, *seat-image]
+    profiles: [all, backend, seat]
+
+  seat:
+    <<: [*backend, *seat-image]
+    profiles: [all, backend, seat]
+    depends_on:
+      seat-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  booking-migrate:
+    <<: [*migration, *booking-image]
+    profiles: [all, backend, booking]
+
+  booking:
+    <<: [*backend, *booking-image]
+    profiles: [all, backend, booking]
+    depends_on:
+      booking-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  payment-migrate:
+    <<: [*migration, *payment-image]
+    profiles: [all, backend, payment]
+
+  payment:
+    <<: [*backend, *payment-image]
+    profiles: [all, backend, payment]
+    depends_on:
+      payment-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  ticket-migrate:
+    <<: [*migration, *ticket-image]
+    profiles: [all, backend, ticket]
+
+  ticket:
+    <<: [*backend, *ticket-image]
+    profiles: [all, backend, ticket]
+    depends_on:
+      ticket-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8006:8006"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  notification-migrate:
+    <<: [*migration, *notification-image]
+    profiles: [all, backend, notification]
+
+  notification:
+    <<: [*backend, *notification-image]
+    profiles: [all, backend, notification]
+    depends_on:
+      notification-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8007:8007"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; from app.infrastructure.database.session import database_ready; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=2); assert database_ready()
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  orchestrator-migrate:
+    <<: [*migration, *orchestrator-image]
+    profiles: [all, backend, orchestrator]
+
+  orchestrator:
+    <<: [*backend, *orchestrator-image]
+    profiles: [all, backend, orchestrator]
+    depends_on:
+      orchestrator-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./local-secrets:/run/secrets:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  realtime:
+    <<: *backend
+    image: event-ticketing/realtime:local
+    build:
+      context: .
+      dockerfile: services/realtime-status-service/Dockerfile
+    profiles: [all, backend, realtime]
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./local-secrets:/run/secrets:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  customer-web:
+    image: event-ticketing/customer-web:local
+    build:
+      context: ./frontend
+      dockerfile: customer-web/Dockerfile
+      args:
+        VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
+        VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
+        VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
+        VITE_AUTH_TRANSPORT: ${VITE_AUTH_TRANSPORT:-direct}
+    profiles: [all, frontend]
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - event-ticketing
+
+  admin-web:
+    image: event-ticketing/admin-web:local
+    build:
+      context: ./frontend
+      dockerfile: admin-web/Dockerfile
+      args:
+        VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
+        VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
+        VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
+        VITE_AUTH_TRANSPORT: ${VITE_AUTH_TRANSPORT:-direct}
+    profiles: [all, frontend]
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    networks:
+      - event-ticketing
+
+volumes:
+  postgres-data:
+
+networks:
+  event-ticketing:
+    driver: bridge

@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
+from uuid import UUID
 
-from pydantic import Field
+from pydantic import EmailStr, Field
 
 from app.domain.entities import RoleChange, TokenPair, UserView
-from app.schemas.common import ClosedModel
+from app.schemas.common import ClosedModel, Role
 
 
-class UserResponse(ClosedModel):
-    user_id: str = Field(alias="userId")
-    email: str
-    status: str
-    roles: list[str]
-    token_version: int = Field(alias="tokenVersion")
+class User(ClosedModel):
+    user_id: UUID = Field(alias="userId")
+    email: EmailStr
+    status: Literal["ACTIVE", "DISABLED"]
+    roles: list[Role] = Field(json_schema_extra={"uniqueItems": True})
+    token_version: int = Field(alias="tokenVersion", ge=1)
     created_at: datetime = Field(alias="createdAt")
 
     @classmethod
-    def from_view(cls, user: UserView) -> UserResponse:
+    def from_view(cls, user: UserView) -> User:
         return cls(
             userId=user.user_id,
             email=user.email,
@@ -31,11 +33,15 @@ class UserResponse(ClosedModel):
 
 
 class TokenResponse(ClosedModel):
-    access_token: str = Field(alias="accessToken")
-    token_type: str = Field(default="Bearer", alias="tokenType")
-    expires_in: int = Field(alias="expiresIn")
-    csrf_token: str = Field(alias="csrfToken")
-    user: UserResponse
+    access_token: str = Field(
+        alias="accessToken", min_length=1, json_schema_extra={"readOnly": True}
+    )
+    token_type: Literal["Bearer"] = Field(default="Bearer", alias="tokenType")
+    expires_in: int = Field(alias="expiresIn", ge=1)
+    csrf_token: str = Field(
+        alias="csrfToken", min_length=32, json_schema_extra={"readOnly": True}
+    )
+    user: User
 
     @classmethod
     def from_pair(cls, pair: TokenPair, csrf_token: str) -> TokenResponse:
@@ -44,25 +50,34 @@ class TokenResponse(ClosedModel):
             tokenType="Bearer",
             expiresIn=pair.access_expires_in,
             csrfToken=csrf_token,
-            user=UserResponse.from_view(pair.user),
+            user=User.from_view(pair.user),
         )
 
 
 class RoleChangeResponse(ClosedModel):
-    user: UserResponse
-    role: str
-    action: str
+    user: User
+    role: Role
+    action: Literal["ASSIGN", "REVOKE"]
     changed: bool
 
     @classmethod
     def from_result(cls, result: RoleChange) -> RoleChangeResponse:
         return cls(
-            user=UserResponse.from_view(result.user),
+            user=User.from_view(result.user),
             role=result.role,
             action=result.action,
             changed=result.changed,
         )
 
 
-class LogoutResponse(ClosedModel):
-    status: str = "LOGGED_OUT"
+class Jwk(ClosedModel):
+    kty: Literal["RSA"]
+    use: Literal["sig"]
+    alg: Literal["RS256"]
+    kid: str
+    n: str
+    e: str
+
+
+class JwkSet(ClosedModel):
+    keys: list[Jwk]

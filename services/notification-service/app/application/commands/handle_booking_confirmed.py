@@ -1,5 +1,6 @@
 """Use case: xu ly webhook booking.confirmed tu ESB - gui email xac nhan
 dat ve thanh cong, chong gui trung neu ESB retry cung correlationId."""
+
 from app.domain.entities import Delivery
 from app.domain.enums import NotificationType
 from app.domain.exceptions import DuplicateCorrelationError
@@ -33,7 +34,12 @@ def handle_booking_confirmed(
     )
 
     delivery = Delivery.create(
-        repo.next_id(), NotificationType.BOOKING_CONFIRMED, correlation_id, to_email, SUBJECT, body
+        repo.next_id(),
+        NotificationType.BOOKING_CONFIRMED,
+        correlation_id,
+        to_email,
+        SUBJECT,
+        body,
     )
     try:
         repo.add(delivery)

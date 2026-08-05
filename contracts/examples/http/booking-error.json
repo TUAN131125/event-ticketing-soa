@@ -1,6 +1,5 @@
 {
   "correlationId": "corr-1234567890abcdef",
-  "traceId": null,
   "error": {
     "code": "INVALID_BOOKING_STATE",
     "message": "Booking transition is not allowed",

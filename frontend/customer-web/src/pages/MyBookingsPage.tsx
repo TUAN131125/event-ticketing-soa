@@ -1,19 +1,14 @@
-import { Link } from "react-router-dom";
-import { CalendarDays, Ticket } from "lucide-react";
-import {
-  Badge,
-  Card,
-  EmptyState,
-  Skeleton,
-} from "@event-ticketing/shared-ui";
-import { useBookings } from "../app/hooks";
-import { QueryState } from "./PageState";
+import { Link } from 'react-router-dom';
+import { CalendarDays, Ticket } from 'lucide-react';
+import { Badge, Card, EmptyState, Skeleton } from '@event-ticketing/shared-ui';
+import { useBookings } from '../app/hooks';
+import { QueryState } from './PageState';
 function formatDate(value?: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
 }
 export function MyBookingsPage() {
   const result = useBookings(true);
@@ -27,9 +22,7 @@ export function MyBookingsPage() {
       </section>
     );
   if (result.isError)
-    return (
-      <QueryState error={result.error} retry={() => void result.refetch()} />
-    );
+    return <QueryState error={result.error} retry={() => void result.refetch()} />;
   if (!result.data?.items.length)
     return (
       <section className="container page-section">
@@ -49,9 +42,7 @@ export function MyBookingsPage() {
       <div className="page-heading">
         <p className="eyebrow">Your plans</p>
         <h1>My bookings</h1>
-        <p className="lede">
-          Keep every ticket and booking status in one place.
-        </p>
+        <p className="lede">Keep every ticket and booking status in one place.</p>
       </div>
       <div className="stack-list">
         {result.data.items.map((booking) => (
@@ -68,26 +59,23 @@ export function MyBookingsPage() {
                 </h2>
                 <Badge
                   tone={
-                    booking.status === "CONFIRMED"
-                      ? "success"
-                      : booking.status === "CANCELLED"
-                        ? "danger"
-                        : "warning"
+                    booking.status === 'CONFIRMED'
+                      ? 'success'
+                      : booking.status === 'CANCELLED'
+                        ? 'danger'
+                        : 'warning'
                   }
                 >
                   {booking.status}
                 </Badge>
               </div>
               <p>
-                <CalendarDays size={15} />{" "}
-                {formatDate(booking.event?.startsAt ?? booking.createdAt)}{" "}
-                {booking.event?.venue ? ` · ${booking.event.venue}` : ""}
+                <CalendarDays size={15} />{' '}
+                {formatDate(booking.event?.startsAt ?? booking.createdAt)}{' '}
+                {booking.event?.venue ? ` · ${booking.event.venue}` : ''}
               </p>
             </div>
-            <Link
-              to={`/bookings/${booking.bookingId}`}
-              className="button button-secondary"
-            >
+            <Link to={`/bookings/${booking.bookingId}`} className="button button-secondary">
               View
             </Link>
           </Card>

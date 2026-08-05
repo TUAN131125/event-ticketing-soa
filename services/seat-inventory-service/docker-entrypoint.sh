@@ -1,5 +1,4 @@
 #!/bin/sh
 set -eu
 
-alembic upgrade head
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers "${SEAT_WEB_WORKERS:-1}" --proxy-headers --no-access-log
+exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8003 --workers "${SEAT_WEB_WORKERS:-1}" --proxy-headers --no-access-log

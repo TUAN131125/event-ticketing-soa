@@ -23,8 +23,7 @@ concurrency control, ngăn hai bước saga cùng ghi đè một phiên bản bo
 
 ## API nội bộ
 
-Service lắng nghe cổng `8000` trong container và được ánh xạ sang `8004` khi chạy
-file Compose của service.
+Service lắng nghe cổng chuẩn `8004` trong container và trên host.
 
 | Phương thức | Đường dẫn | Công dụng |
 | --- | --- | --- |
@@ -113,12 +112,11 @@ broker xác nhận.
 Yêu cầu Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose --profile booking up --build --wait
 ```
 
-Container tự chạy `alembic upgrade head` trước khi khởi động API. Cấu hình mẫu nằm
-trong `.env.example`. Trong production phải đặt `BOOKING_SERVICE_TOKEN` khác mặc
-định và dài ít nhất 32 ký tự.
+Root Compose chạy `booking-migrate` trước khi khởi động API. Cấu hình local nằm
+trong root `.env.example`.
 
 Chạy trực tiếp bằng Python 3.12:
 
@@ -146,7 +144,7 @@ python -m pytest -m "not integration"
 Integration và concurrency test cần PostgreSQL thật:
 
 ```powershell
-docker compose -f docker-compose.test.yml up -d
+docker compose --profile booking up -d --wait
 $env:BOOKING_TEST_DATABASE_URL = "postgresql+psycopg://booking:booking@localhost:55434/booking_test"
 python -m pytest -m integration
 ```

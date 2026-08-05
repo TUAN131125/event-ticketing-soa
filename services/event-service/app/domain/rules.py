@@ -1,11 +1,20 @@
 """Quy tac chuyen trang thai su kien (state machine)."""
+
 from app.domain.enums import EventStatus
 from app.domain.exceptions import InvalidStateTransitionError
 
 ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
     EventStatus.DRAFT: {EventStatus.ON_SALE, EventStatus.CANCELLED},
-    EventStatus.ON_SALE: {EventStatus.PAUSED, EventStatus.CLOSED, EventStatus.CANCELLED},
-    EventStatus.PAUSED: {EventStatus.ON_SALE, EventStatus.CLOSED, EventStatus.CANCELLED},
+    EventStatus.ON_SALE: {
+        EventStatus.PAUSED,
+        EventStatus.CLOSED,
+        EventStatus.CANCELLED,
+    },
+    EventStatus.PAUSED: {
+        EventStatus.ON_SALE,
+        EventStatus.CLOSED,
+        EventStatus.CANCELLED,
+    },
     EventStatus.CLOSED: set(),
     EventStatus.CANCELLED: set(),
 }
