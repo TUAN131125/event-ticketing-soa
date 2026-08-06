@@ -12,6 +12,8 @@ import { BookingResultPage } from './pages/BookingResultPage';
 import { MyBookingsPage } from './pages/MyBookingsPage';
 import { BookingDetailPage } from './pages/BookingDetailPage';
 import { TicketDetailPage } from './pages/TicketDetailPage';
+import { TicketWalletPage } from './pages/TicketWalletPage';
+import { ContactDetailsPage } from './pages/ContactDetailsPage';
 import { LoginPage, RegisterPage, AccountPage } from './pages/AuthPages';
 import { NotFoundState } from '@event-ticketing/shared-ui';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
@@ -71,6 +73,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="checkout/contact"
+                  element={
+                    <RequireAuth>
+                      <ContactDetailsPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
                   path="checkout"
                   element={
                     <RequireAuth>
@@ -99,6 +109,14 @@ export default function App() {
                   element={
                     <RequireAuth>
                       <BookingResultPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="tickets"
+                  element={
+                    <RequireAuth>
+                      <TicketWalletPage />
                     </RequireAuth>
                   }
                 />

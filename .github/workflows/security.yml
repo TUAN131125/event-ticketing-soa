@@ -37,7 +37,7 @@ jobs:
             python -m pip_audit -r "$file"
           done
       - working-directory: frontend
-        run: npm ci && npm audit --audit-level=high
+        run: npm ci && npm audit --audit-level=hight
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

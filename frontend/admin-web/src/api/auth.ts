@@ -1,7 +1,7 @@
 import { request } from './http';
 import type { AuthSession, TokenResponse, User } from '../types';
 
-const identityBase = () => import.meta.env.VITE_IDENTITY_API_URL || '';
+const esbBase = () => String(import.meta.env.VITE_ESB_API_URL ?? '');
 const csrfKey = 'event-ticketing.identity.csrf';
 
 const readCsrf = (): string | null => {
@@ -22,14 +22,14 @@ const storeSession = (value: TokenResponse): AuthSession => {
 };
 
 /**
- * Identity Service client for the operations console. Paths, payloads and headers follow
- * contracts/identity-service.yaml; nothing outside that document is called.
+ * ESB authentication façade client for the operations console. The browser never calls
+ * Identity Service directly.
  */
 export class AuthClient {
-  private readonly base = identityBase();
+  private readonly base = esbBase();
 
   async register(input: { email: string; password: string }): Promise<User> {
-    return request<User>(this.base, '/auth/register', {
+    return request<User>(this.base, '/api/auth/register', {
       method: 'POST',
       body: input,
       headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -38,7 +38,7 @@ export class AuthClient {
 
   async login(input: { email: string; password: string }): Promise<AuthSession> {
     return storeSession(
-      await request<TokenResponse>(this.base, '/auth/login', { method: 'POST', body: input }),
+      await request<TokenResponse>(this.base, '/api/auth/login', { method: 'POST', body: input }),
     );
   }
 
@@ -46,7 +46,7 @@ export class AuthClient {
     const csrf = readCsrf();
     if (!csrf) throw new Error('No active session to restore.');
     return storeSession(
-      await request<TokenResponse>(this.base, '/auth/refresh', {
+      await request<TokenResponse>(this.base, '/api/auth/refresh', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrf },
       }),
@@ -57,7 +57,7 @@ export class AuthClient {
     const csrf = readCsrf();
     try {
       if (csrf)
-        await request<void>(this.base, '/auth/logout', {
+        await request<void>(this.base, '/api/auth/logout', {
           method: 'POST',
           headers: { 'X-CSRF-Token': csrf },
         });
@@ -71,7 +71,7 @@ export class AuthClient {
   }
 
   async me(accessToken: string): Promise<User> {
-    return request<User>(this.base, '/auth/me', { accessToken });
+    return request<User>(this.base, '/api/auth/me', { accessToken });
   }
 }
 

@@ -1,112 +1,118 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
-from typing import Any
-from uuid import uuid4
+import uuid
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.responses import Response
 
 from app.domain.errors import EsbError
+from app.security.trace import parse_trace_id
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger("booking_orchestrator.http")
 
 
-def install_http_layer(app: FastAPI, request_timeout_seconds: float) -> None:
-    @app.middleware("http")
-    async def correlation_and_deadline(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        started = time.perf_counter()
-        supplied = request.headers.get("X-Correlation-ID")
-        request.state.correlation_id = supplied if supplied and 16 <= len(supplied) <= 64 else uuid4().hex
-        request.state.deadline = time.monotonic() + request_timeout_seconds
-        try:
-            response = await call_next(request)
-        except Exception:
-            logger.exception(
-                "request_failed",
-                extra={
-                    "correlationId": request.state.correlation_id,
-                    "traceId": request.headers.get("traceparent"),
-                    "operation": request.url.path,
-                    "provider": "booking-orchestrator",
-                    "outcome": "FAILURE",
-                    "duration": int((time.perf_counter() - started) * 1000),
+def _log_request(
+    *,
+    level: int,
+    request: Request,
+    correlation_id: str,
+    trace_id: str,
+    status_code: int,
+    duration_seconds: float,
+    error_code: str | None = None,
+) -> None:
+    # Do not log headers, request bodies, payment tokens, QR values or PII.
+    event = {
+        "event": "esb.http.request",
+        "method": request.method,
+        "path": request.url.path,
+        "statusCode": status_code,
+        "durationMs": int(duration_seconds * 1000),
+        "correlationId": correlation_id,
+        "traceId": trace_id,
+    }
+    if error_code:
+        event["errorCode"] = error_code
+    LOGGER.log(level, json.dumps(event, separators=(",", ":")))
+
+
+async def context_middleware(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+    trace_id = parse_trace_id(request.headers.get("traceparent"))
+    started = time.monotonic()
+    request.state.correlation_id = correlation_id
+    request.state.trace_id = trace_id
+    request.state.deadline = (
+        started + request.app.state.settings.request_timeout_seconds
+    )
+    error_code: str | None = None
+    log_level = logging.INFO
+
+    try:
+        response = await call_next(request)
+    except EsbError as exc:
+        error_code = exc.code
+        log_level = logging.WARNING if exc.status_code < 500 else logging.ERROR
+        response = JSONResponse(
+            {
+                "correlationId": correlation_id,
+                "traceId": trace_id,
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "retryable": exc.retryable,
+                    **({"details": exc.details} if exc.details else {}),
                 },
-            )
-            raise
-        response.headers["X-Correlation-ID"] = request.state.correlation_id
-        logger.info(
-            "request_complete",
-            extra={
-                "correlationId": request.state.correlation_id,
-                "traceId": request.headers.get("traceparent"),
-                "operation": request.url.path,
-                "provider": "booking-orchestrator",
-                "outcome": str(response.status_code),
-                "duration": int((time.perf_counter() - started) * 1000),
             },
-        )
-        return response
-
-    def envelope(
-        request: Request,
-        code: str,
-        message: str,
-        retryable: bool,
-        details: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return {
-            "correlationId": getattr(request.state, "correlation_id", uuid4().hex),
-            "traceId": request.headers.get("traceparent"),
-            "error": {
-                "code": code,
-                "message": message,
-                "retryable": retryable,
-                "details": details or {},
-            },
-        }
-
-    @app.exception_handler(EsbError)
-    async def esb_error(request: Request, exc: EsbError) -> JSONResponse:
-        return JSONResponse(
-            envelope(request, exc.code, exc.message, exc.retryable, dict(exc.details)),
             status_code=exc.status_code,
         )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-        details = {"fields": [{"path": ".".join(map(str, item["loc"])), "type": item["type"]} for item in exc.errors()]}
-        return JSONResponse(
-            envelope(
-                request,
-                "VALIDATION_ERROR",
-                "Request validation failed.",
-                False,
-                details,
-            ),
-            status_code=422,
+        if exc.status_code == 429 and exc.details and exc.details.get("retryAfter"):
+            response.headers["Retry-After"] = str(exc.details["retryAfter"])
+    except Exception:
+        error_code = "INTERNAL_ERROR"
+        log_level = logging.ERROR
+        LOGGER.exception(
+            "Unhandled ESB request failure",
+            extra={"correlation_id": correlation_id, "trace_id": trace_id},
         )
-
-    @app.exception_handler(HTTPException)
-    async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
-        code = "AUTHENTICATION_REQUIRED" if exc.status_code == 401 else "HTTP_ERROR"
-        return JSONResponse(
-            envelope(
-                request,
-                code,
-                "Authentication required." if exc.status_code == 401 else "Request failed.",
-                False,
-            ),
-            status_code=exc.status_code,
-        )
-
-    @app.exception_handler(Exception)
-    async def unexpected(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(
-            envelope(request, "INTERNAL_ERROR", "An internal error occurred.", False),
+        response = JSONResponse(
+            {
+                "correlationId": correlation_id,
+                "traceId": trace_id,
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "Unexpected ESB error",
+                    "retryable": False,
+                },
+            },
             status_code=500,
         )
+
+    duration = time.monotonic() - started
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["traceparent"] = f"00-{trace_id}-0000000000000001-01"
+    request.app.state.metrics.inc(
+        "esb_request_total",
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+    )
+    request.app.state.metrics.observe(
+        "esb_request_duration_seconds",
+        duration,
+        path=request.url.path,
+        status=response.status_code,
+    )
+    _log_request(
+        level=log_level,
+        request=request,
+        correlation_id=correlation_id,
+        trace_id=trace_id,
+        status_code=response.status_code,
+        duration_seconds=duration,
+        error_code=error_code,
+    )
+    return response

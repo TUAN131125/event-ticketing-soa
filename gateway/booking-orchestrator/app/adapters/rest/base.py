@@ -1,188 +1,135 @@
 from __future__ import annotations
 
-import logging
 import time
-from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
-from app.domain.errors import (
-    AmbiguousOutcome,
-    BusinessFault,
-    CommandNotDispatched,
-    DependencyFailure,
-    EsbError,
-)
+from app.domain.errors import EsbError
 from app.domain.models import RequestContext
-from app.ports.repositories import TraceRepository
-from app.resilience.policies import ResilienceExecutor, RetryClass
-from app.security.jwt import JwtSigner
-
-logger = logging.getLogger(__name__)
+from app.resilience.policies import ResiliencePolicy
 
 
 class RestClient:
     def __init__(
         self,
+        name: str,
         base_url: str,
-        audience: str,
-        http: httpx.AsyncClient,
-        signer: JwtSigner,
-        resilience: ResilienceExecutor,
-        traces: TraceRepository | None = None,
+        policy: ResiliencePolicy,
+        credentials=None,
+        audience: str | None = None,
+        dependency_timeout_seconds: float = 4.0,
     ) -> None:
-        self.base_url, self.audience, self.http, self.signer, self.resilience = (
-            base_url.rstrip("/"),
-            audience,
-            http,
-            signer,
-            resilience,
-        )
-        self.traces = traces
+        self.name = name
+        self.base = base_url.rstrip("/")
+        self.policy = policy
+        self.credentials = credentials
+        self.audience = audience or name
+        self.dependency_timeout_seconds = dependency_timeout_seconds
+
+    def _service_token(self) -> str:
+        if self.credentials is None:
+            return ""
+        if isinstance(self.credentials, str):
+            return self.credentials
+        token = getattr(self.credentials, "token", None)
+        return str(token(self.audience)) if token is not None else ""
 
     async def request(
         self,
         method: str,
         path: str,
-        context: RequestContext,
+        ctx: RequestContext,
         *,
-        json_body: Mapping[str, Any] | None = None,
-        raw_body: bytes | None = None,
-        idempotency_key: str | None = None,
-        retry_class: RetryClass = RetryClass.NONE,
-        ambiguous_command: bool = False,
-        extra_headers: Mapping[str, str] | None = None,
+        json: dict | None = None,
+        content: bytes | None = None,
+        params: dict | None = None,
+        headers: dict | None = None,
+        idempotent: bool = False,
     ) -> Any:
-        headers = {"X-Correlation-ID": context.correlation_id}
-        if context.trace_id:
-            headers["traceparent"] = context.trace_id
-        if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
-        headers.update(extra_headers or {})
+        if json is not None and content is not None:
+            raise ValueError("json and content cannot both be supplied")
 
-        # Tracks whether any byte left this process, so callers can tell a command that
-        # was never sent from one whose outcome is genuinely unknown.
-        dispatched = False
-
-        async def invoke() -> Any:
-            nonlocal dispatched
-            attempt_headers = {
-                **headers,
-                "Authorization": f"Bearer {self.signer.service_token(self.audience)}",
-            }
-            try:
-                if raw_body is not None:
-                    response = await self.http.request(method, f"{self.base_url}{path}", content=raw_body, headers=attempt_headers)
-                else:
-                    response = await self.http.request(method, f"{self.base_url}{path}", json=json_body, headers=attempt_headers)
-            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-                # The connection never opened, so no request byte reached the provider.
-                raise CommandNotDispatched(path, "CONNECT_FAILED") from exc
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                # The request was written; the answer may simply have been lost.
-                dispatched = True
-                if ambiguous_command:
-                    raise AmbiguousOutcome(path) from exc
-                raise DependencyFailure("DEPENDENCY_UNAVAILABLE", "Dependency is unavailable.", 503, True) from exc
-            dispatched = True
-            if response.status_code >= 400:
-                error = self._safe_error(response)
-                if 400 <= response.status_code < 500:
-                    raise BusinessFault(
-                        error["code"],
-                        error["message"],
-                        response.status_code,
-                        bool(error["retryable"]),
-                        error.get("details", {}),
-                    )
-                raise DependencyFailure(error["code"], error["message"], 503, True, error.get("details", {}))
-            if response.status_code == 204:
-                return {}
-            try:
-                return response.json()
-            except ValueError as exc:
-                raise DependencyFailure(
-                    "INVALID_PROVIDER_RESPONSE",
-                    "Dependency returned an invalid response.",
-                    503,
-                    True,
-                ) from exc
-
-        started = time.perf_counter()
-        try:
-            result = await self.resilience.execute(invoke, retry_class, context)
-        except AmbiguousOutcome as exc:
-            await self._observe(path, context, "FAILURE", started, exc.code)
-            raise
-        except DependencyFailure as exc:
-            await self._observe(path, context, "FAILURE", started, exc.code)
-            if dispatched:
-                raise
-            raise CommandNotDispatched(path, exc.code) from exc
-        except EsbError as exc:
-            await self._observe(path, context, "FAILURE", started, exc.code)
-            raise
-        except Exception:
-            await self._observe(path, context, "FAILURE", started, "DEPENDENCY_UNAVAILABLE")
-            raise
-        await self._observe(path, context, "SUCCESS", started)
-        return result
-
-    async def _observe(
-        self,
-        operation: str,
-        context: RequestContext,
-        outcome: str,
-        started: float,
-        error_code: str | None = None,
-    ) -> None:
-        duration_ms = max(0, int((time.perf_counter() - started) * 1000))
-        fields = {
-            "correlationId": context.correlation_id,
-            "traceId": context.trace_id,
-            "workflowId": context.workflow_id,
-            "operation": operation,
-            "provider": self.audience,
-            "step": operation,
-            "outcome": outcome,
-            "duration": duration_ms,
+        request_headers = {
+            "X-Correlation-ID": ctx.correlation_id,
+            "traceparent": ctx.traceparent,
         }
-        logger.info("provider_call", extra=fields)
-        if self.traces is not None:
-            try:
-                await self.traces.append(
-                    context.correlation_id,
-                    self.audience,
-                    operation,
-                    outcome,
-                    duration_ms,
-                    error_code,
+        request_headers.update(headers or {})
+
+        async def call() -> Any:
+            attempt_headers = dict(request_headers)
+            service_token = self._service_token()
+            if service_token:
+                attempt_headers["Authorization"] = f"Bearer {service_token}"
+            async with httpx.AsyncClient(timeout=None, follow_redirects=False) as client:
+                response = await client.request(
+                    method,
+                    self.base + path,
+                    json=json,
+                    content=content,
+                    params=params,
+                    headers=attempt_headers,
                 )
-            except Exception as exc:  # noqa: BLE001 -- telemetry failure must not fail a provider call
-                logger.warning(
-                    "trace_persistence_failed",
-                    extra={
-                        **fields,
-                        "outcome": "TRACE_WRITE_FAILED",
-                        "errorType": type(exc).__name__,
-                    },
-                )
+                if response.status_code >= 400:
+                    body = self._safe_body(response)
+                    error = body.get("error", body)
+                    code = str(
+                        error.get("code")
+                        or error.get("errorCode")
+                        or "DEPENDENCY_ERROR"
+                    )
+                    message = str(
+                        error.get("message")
+                        or self._validation_message(body)
+                        or f"{self.name} returned {response.status_code}"
+                    )
+                    raise EsbError(
+                        code,
+                        message,
+                        response.status_code,
+                        response.status_code >= 500,
+                        body,
+                    )
+                if response.status_code == 204 or not response.content:
+                    return {}
+                try:
+                    return response.json()
+                except ValueError as exc:
+                    raise EsbError(
+                        "INVALID_PROVIDER_RESPONSE",
+                        f"{self.name} returned invalid JSON",
+                        502,
+                        True,
+                    ) from exc
+
+        mode = (
+            "safe_read"
+            if method.upper() in {"GET", "HEAD"}
+            else "idempotent_command" if idempotent else "side_effect"
+        )
+        dependency_deadline = min(
+            ctx.deadline_monotonic,
+            time.monotonic() + self.dependency_timeout_seconds,
+        )
+        return await self.policy.execute(
+            self.name,
+            call,
+            mode=mode,
+            deadline=dependency_deadline,
+        )
 
     @staticmethod
-    def _safe_error(response: httpx.Response) -> dict[str, Any]:
+    def _safe_body(response: httpx.Response) -> dict[str, Any]:
         try:
-            body = response.json()
-            error = body.get("error", {})
-            return {
-                "code": str(error.get("code", "DEPENDENCY_ERROR")),
-                "message": str(error.get("message", "Dependency request failed.")),
-                "retryable": bool(error.get("retryable", False)),
-                "details": error.get("details", {}),
-            }
-        except (ValueError, AttributeError):
-            return {
-                "code": "DEPENDENCY_ERROR",
-                "message": "Dependency request failed.",
-                "retryable": response.status_code >= 500,
-            }
+            value = response.json()
+            return value if isinstance(value, dict) else {"details": value}
+        except ValueError:
+            return {"message": response.text[:500]}
+
+    @staticmethod
+    def _validation_message(body: dict[str, Any]) -> str | None:
+        detail = body.get("detail")
+        if not isinstance(detail, list) or not detail:
+            return None
+        messages = [str(item.get("msg")) for item in detail if isinstance(item, dict)]
+        return "; ".join(message for message in messages if message) or None

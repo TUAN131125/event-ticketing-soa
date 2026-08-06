@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { CalendarDays, Menu, Ticket, UserCircle, X, LogOut } from 'lucide-react';
+import { CalendarDays, Menu, Ticket, Tickets, UserCircle, X, LogOut } from 'lucide-react';
 import { Button, Drawer, IconButton, ToastProvider } from '@event-ticketing/shared-ui';
 import { useAuth } from './auth';
 
@@ -29,9 +29,14 @@ export function Shell() {
                 Discover events
               </NavLink>
               {user && (
-                <NavLink to="/bookings" className="nav-link">
-                  My bookings
-                </NavLink>
+                <>
+                  <NavLink to="/bookings" className="nav-link">
+                    My bookings
+                  </NavLink>
+                  <NavLink to="/tickets" className="nav-link">
+                    My tickets
+                  </NavLink>
+                </>
               )}
             </nav>
             <div className="header-actions desktop-nav">
@@ -73,6 +78,9 @@ export function Shell() {
               <>
                 <NavLink onClick={close} to="/bookings" className="nav-link">
                   <Ticket size={18} /> My bookings
+                </NavLink>
+                <NavLink onClick={close} to="/tickets" className="nav-link">
+                  <Tickets size={18} /> My tickets
                 </NavLink>
                 <NavLink onClick={close} to="/account" className="nav-link">
                   <UserCircle size={18} /> Account
@@ -117,6 +125,7 @@ export function Shell() {
             <div className="footer-links">
               <Link to="/events">Events</Link>
               <Link to="/bookings">Bookings</Link>
+              <Link to="/tickets">Tickets</Link>
               <a href="mailto:hello@example.com">Support</a>
             </div>
           </div>

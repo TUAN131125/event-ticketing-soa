@@ -1,0 +1,126 @@
+asyncapi: 3.0.0
+info:
+  title: Realtime Booking Status WebSocket Contract
+  version: 1.0.0
+  description: Best-effort public-edge WebSocket. REST through ESB remains authoritative.
+servers:
+  local:
+    host: localhost:8008
+    protocol: ws
+channels:
+  bookingStatus:
+    address: /ws/bookings/{bookingId}
+    parameters:
+      bookingId:
+        description: Booking bound to the one-time ESB ticket.
+    messages:
+      clientMessage: { $ref: '#/components/messages/ClientMessage' }
+      statusMessage: { $ref: '#/components/messages/StatusMessage' }
+      controlMessage: { $ref: '#/components/messages/ControlMessage' }
+operations:
+  receiveClientFrame:
+    action: receive
+    channel: { $ref: '#/channels/bookingStatus' }
+    messages:
+      - { $ref: '#/channels/bookingStatus/messages/clientMessage' }
+  sendStatusFrame:
+    action: send
+    channel: { $ref: '#/channels/bookingStatus' }
+    messages:
+      - { $ref: '#/channels/bookingStatus/messages/statusMessage' }
+      - { $ref: '#/channels/bookingStatus/messages/controlMessage' }
+components:
+  messages:
+    ClientMessage:
+      payload: { $ref: '#/components/schemas/RealtimeClientMessage' }
+    StatusMessage:
+      payload: { $ref: '#/components/schemas/RealtimeMessage' }
+    ControlMessage:
+      payload: { $ref: '#/components/schemas/RealtimeServerControlMessage' }
+  schemas:
+    BookingStatus:
+      type: string
+      enum: [PENDING, SEAT_RESERVED, PAYMENT_PROCESSING, CONFIRMED, FAILED, CANCELLED, COMPENSATION_PENDING]
+    RealtimeClientMessage:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, ticket]
+          properties:
+            type: { const: authenticate }
+            ticket: { type: string, minLength: 16, maxLength: 4096 }
+        - type: object
+          additionalProperties: false
+          required: [type, bookingId]
+          properties:
+            type: { const: subscribe }
+            bookingId: { type: string }
+            lastSequence: { type: integer, minimum: 0 }
+        - type: object
+          additionalProperties: false
+          required: [type, bookingId]
+          properties:
+            type: { const: unsubscribe }
+            bookingId: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type, heartbeatId]
+          properties:
+            type: { const: heartbeat_ack }
+            heartbeatId: { type: string }
+    RealtimeMessage:
+      type: object
+      additionalProperties: false
+      required: [messageId, bookingId, status, sequence, occurredAt, correlationId]
+      properties:
+        messageId: { type: string }
+        bookingId: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        sequence: { type: integer, minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        message: { type: string }
+    RealtimeServerControlMessage:
+      oneOf:
+        - type: object
+          required: [type, bookingId, authenticatedAt]
+          properties:
+            type: { const: authenticated }
+            bookingId: { type: string }
+            authenticatedAt: { type: string, format: date-time }
+        - type: object
+          required: [type, code, retryable]
+          properties:
+            type: { const: authentication_failed }
+            code: { type: string, enum: [TICKET_EXPIRED, TICKET_REUSED, TICKET_INVALID, ACCESS_DENIED] }
+            retryable: { const: false }
+        - type: object
+          required: [type, bookingId, authoritativeUrl, reason]
+          properties:
+            type: { const: resync_required }
+            bookingId: { type: string }
+            authoritativeUrl: { type: string }
+            reason: { type: string, enum: [reconnect, sequence_gap, history_unavailable] }
+            lastObservedSequence: { type: [integer, 'null'], minimum: 0 }
+        - type: object
+          required: [type, heartbeatId, sentAt]
+          properties:
+            type: { const: heartbeat }
+            heartbeatId: { type: string }
+            sentAt: { type: string, format: date-time }
+        - type: object
+          required: [type, bookingId]
+          properties:
+            type: { const: connected }
+            bookingId: { type: string }
+        - type: object
+          required: [type, retryable]
+          properties:
+            type: { const: shutdown }
+            retryable: { const: true }
+        - type: object
+          required: [type, code, message]
+          properties:
+            type: { const: protocol_error }
+            code: { type: string }
+            message: { type: string }

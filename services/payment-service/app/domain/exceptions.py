@@ -28,6 +28,14 @@ class AuthenticationFailed(PaymentError):
         super().__init__("Internal service authentication failed")
 
 
+class ProviderSignatureInvalid(PaymentError):
+    code = "PROVIDER_SIGNATURE_INVALID"
+    http_status = 401
+
+    def __init__(self, message: str = "Provider callback signature is invalid") -> None:
+        super().__init__(message)
+
+
 class PaymentNotFound(PaymentError):
     code = "PAYMENT_NOT_FOUND"
     http_status = 404
@@ -39,16 +47,8 @@ class PaymentNotFound(PaymentError):
         )
 
 
-class PaymentDeclined(PaymentError):
-    code = "PAYMENT_DECLINED"
-    http_status = 402
-
-    def __init__(self) -> None:
-        super().__init__("Payment was declined by the provider")
-
-
 class InvalidStateTransition(PaymentError):
-    code = "INVALID_STATE_TRANSITION"
+    code = "INVALID_PAYMENT_TRANSITION"
     http_status = 409
 
     def __init__(self, current: str, target: str) -> None:
@@ -70,7 +70,8 @@ class VersionConflict(PaymentError):
 
 
 class IdempotencyConflict(PaymentError):
-    code = "IDEMPOTENCY_CONFLICT"
+    # Keep the established class while exposing the canonical contract code.
+    code = "IDEMPOTENCY_KEY_REUSED"
     http_status = 409
 
     def __init__(self) -> None:
@@ -88,12 +89,86 @@ class BookingPaymentConflict(PaymentError):
         )
 
 
+class PaymentAmountMismatch(PaymentError):
+    code = "PAYMENT_AMOUNT_MISMATCH"
+    http_status = 409
+
+    def __init__(
+        self,
+        *,
+        expected_amount: str,
+        actual_amount: str,
+        expected_currency: str,
+        actual_currency: str,
+    ) -> None:
+        super().__init__(
+            "Payment amount or currency does not match booking evidence",
+            details={
+                "expectedAmount": expected_amount,
+                "actualAmount": actual_amount,
+                "expectedCurrency": expected_currency,
+                "actualCurrency": actual_currency,
+            },
+        )
+
+
+class BookingEvidenceRequired(PaymentError):
+    code = "BOOKING_EVIDENCE_REQUIRED"
+    http_status = 422
+
+    def __init__(self) -> None:
+        super().__init__("Authoritative booking payment evidence is required")
+
+
 class ProviderReferenceConflict(PaymentError):
     code = "PROVIDER_REFERENCE_CONFLICT"
     http_status = 409
 
     def __init__(self) -> None:
         super().__init__("Provider reference does not match the payment")
+
+
+class ProviderEventConflict(PaymentError):
+    code = "PROVIDER_EVENT_CONFLICT"
+    http_status = 409
+
+    def __init__(self, event_id: str) -> None:
+        super().__init__(
+            "Provider event ID was already used for another payload",
+            details={"eventId": event_id},
+        )
+
+
+class PaymentDeclined(PaymentError):
+    code = "PAYMENT_DECLINED"
+    http_status = 402
+
+    def __init__(self, payment_id: str, reason: str) -> None:
+        super().__init__(
+            "Payment was declined by the provider",
+            details={"paymentId": payment_id, "reason": reason},
+        )
+
+
+class PaymentUnknown(PaymentError):
+    code = "PAYMENT_UNKNOWN"
+    http_status = 409
+    retryable = True
+
+    def __init__(self, payment_id: str) -> None:
+        super().__init__(
+            "Payment outcome is unknown and requires reconciliation",
+            details={"paymentId": payment_id},
+        )
+
+
+class ProviderUnavailable(PaymentError):
+    code = "PROVIDER_UNAVAILABLE"
+    http_status = 503
+    retryable = True
+
+    def __init__(self) -> None:
+        super().__init__("Payment provider is temporarily unavailable")
 
 
 class DependencyUnavailable(PaymentError):

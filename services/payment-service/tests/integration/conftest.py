@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,15 +12,15 @@ from sqlalchemy import text
 from app.application.service import PaymentService
 from app.config import Settings, reset_settings_cache
 from app.infrastructure.database.session import get_engine, get_session_factory
+from tests.factories import build_settings
 
 
 @pytest.fixture(scope="session")
-def test_settings(payment_settings: Settings) -> Settings:
+def test_settings() -> Settings:
     url = os.getenv("PAYMENT_TEST_DATABASE_URL")
     if not url:
         pytest.skip("PAYMENT_TEST_DATABASE_URL is not configured")
-    return replace(
-        payment_settings,
+    return build_settings(
         database_url=url,
         db_pool_size=10,
         db_max_overflow=10,

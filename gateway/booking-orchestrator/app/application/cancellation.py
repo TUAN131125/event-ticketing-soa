@@ -1,211 +1,200 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import replace
-from datetime import UTC, datetime
 from typing import Any
 
-from app.domain.errors import AccessDenied, BusinessFault
-from app.domain.idempotency import normalized_request_hash, step_key
-from app.domain.models import (
-    Money,
-    OperationResult,
-    PaymentOutcome,
-    RequestContext,
-    WorkflowEvidence,
-    WorkflowPhase,
-)
-from app.ports.providers import BookingPort, PaymentPort, SeatPort, TicketPort
-from app.ports.repositories import (
-    Clock,
-    IdempotencyRepository,
-    ReconciliationRepository,
-    WorkflowRepository,
-)
+from app.application.evidence import booking_evidence
+from app.domain.errors import Forbidden
+from app.domain.models import RequestContext
+
+
+def _booking_payment_status(value: object) -> str | None:
+    if value is None:
+        return None
+    status = str(value).upper()
+    mapping = {
+        "PENDING": "PENDING",
+        "PROCESSING": "PROCESSING",
+        "AUTHORIZED": "PROCESSING",
+        "CAPTURED": "SUCCEEDED",
+        "SUCCEEDED": "SUCCEEDED",
+        "UNKNOWN": "UNKNOWN",
+        "PENDING_RECONCILIATION": "UNKNOWN",
+        "FAILED": "FAILED",
+        "DECLINED": "FAILED",
+        "CANCELLED": "FAILED",
+        "REFUND_PENDING": "REFUND_PENDING",
+        "PARTIALLY_REFUNDED": "REFUND_PENDING",
+        "REFUNDED": "REFUNDED",
+    }
+    return mapping.get(status, "UNKNOWN")
 
 
 class CancellationSaga:
-    def __init__(
-        self,
-        bookings: BookingPort,
-        payments: PaymentPort,
-        tickets: TicketPort,
-        seats: SeatPort,
-        workflows: WorkflowRepository,
-        idempotency: IdempotencyRepository,
-        reconciliation: ReconciliationRepository,
-        clock: Clock,
-    ) -> None:
-        self.bookings, self.payments, self.tickets, self.seats = (
-            bookings,
-            payments,
-            tickets,
-            seats,
-        )
-        self.workflows, self.idempotency, self.reconciliation, self.clock = (
-            workflows,
-            idempotency,
-            reconciliation,
-            clock,
-        )
+    """Booking decides whether cancellation is allowed; ESB executes accepted compensation."""
 
-    async def execute(
+    def __init__(self, booking, payment, seat, ticket, customer):
+        self.booking = booking
+        self.payment = payment
+        self.seat = seat
+        self.ticket = ticket
+        self.customer = customer
+
+    async def cancel(
         self,
         booking_id: str,
-        idempotency_key: str,
-        context: RequestContext,
-        expected_version: int | None = None,
-    ) -> OperationResult:
-        request_hash = normalized_request_hash({"bookingId": booking_id})
-        claim = await self.idempotency.claim(
-            "publicCancelBooking",
-            context.principal.subject,
-            idempotency_key,
-            request_hash,
-        )
-        if claim.kind == "REPLAY" and claim.recorded_result:
-            return claim.recorded_result
-        if claim.kind == "IN_PROGRESS":
-            existing = await self.workflows.get(claim.workflow_id)
-            if existing is None:
-                raise AccessDenied(message="Cancellation workflow state is unavailable.")
-            return self._result({"bookingId": booking_id}, context, existing.phase.value)
-        context = replace(context, workflow_id=claim.workflow_id)
-        decision = await self.bookings.decide_access(booking_id, context)
-        if not decision.get("allowed"):
-            raise AccessDenied()
-        booking = await self.bookings.get_booking(booking_id, context)
-        if expected_version is not None and booking.get("resourceVersion") != expected_version:
-            raise BusinessFault(
-                "PRECONDITION_FAILED",
-                "The booking resource version does not match If-Match.",
-                412,
-                False,
-                {"currentVersion": booking.get("resourceVersion")},
-            )
-        if booking.get("status") == "CANCELLED":
-            result = self._result(booking, context, "CANCELLED")
-            await self.idempotency.complete(
-                "publicCancelBooking",
-                context.principal.subject,
-                idempotency_key,
-                result,
-            )
-            return result
-
-        workflow = WorkflowEvidence(
-            claim.workflow_id,
-            "publicCancelBooking",
-            context.principal.subject,
-            request_hash,
-            context.correlation_id,
-            WorkflowPhase.COMPENSATION_PENDING,
-            booking_id=booking_id,
-        )
-        await self.workflows.create(workflow)
-        complete = True
-        tickets = await self.tickets.list_booking_tickets(booking_id, context)
-        for ticket in tickets:
-            if ticket.get("status") == "ISSUED":
-                try:
-                    await self.tickets.cancel_ticket(
-                        str(ticket["ticketId"]),
-                        step_key(workflow.workflow_id, f"cancelTicket:{ticket['ticketId']}"),
-                        context,
-                    )
-                except Exception:  # noqa: BLE001 -- all adapter failures become pending compensation evidence
-                    complete = False
+        request: dict[str, Any],
+        key: str,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        booking = await self.booking.get(booking_id, ctx)
+        customer_id = ctx.principal.customer_id
+        if not customer_id:
+            customer = await self.customer.resolve_identity(ctx.principal.subject, ctx)
+            customer_id = str(customer.get("customerId") or customer.get("id"))
+        if str(booking.get("customerId")) != str(customer_id):
+            raise Forbidden("Booking does not belong to authenticated customer")
 
         payment_id = booking.get("paymentId")
-        if payment_id:
-            payment = await self.payments.get_payment(str(payment_id), context)
-            payment_status = PaymentOutcome(str(payment.get("status", "UNKNOWN")))
-            if payment_status == PaymentOutcome.UNKNOWN:
-                complete = False
-            elif payment_status == PaymentOutcome.CAPTURED:
-                try:
-                    await self.payments.command(
-                        "createRefund",
-                        str(payment_id),
-                        {"amount": booking["total"], "reason": "BOOKING_CANCELLED"},
-                        step_key(workflow.workflow_id, "createRefund"),
-                        context,
-                    )
-                except Exception:  # noqa: BLE001 -- all adapter failures become pending compensation evidence
-                    complete = False
-            elif payment_status in {PaymentOutcome.CREATED, PaymentOutcome.AUTHORIZED}:
-                try:
-                    await self.payments.command(
-                        "cancelPayment",
-                        str(payment_id),
-                        {},
-                        step_key(workflow.workflow_id, "cancelPayment"),
-                        context,
-                    )
-                except Exception:  # noqa: BLE001 -- all adapter failures become pending compensation evidence
-                    complete = False
-
         reservation_id = booking.get("reservationId")
-        if reservation_id:
-            try:
-                reservation = await self.seats.get_reservation(str(reservation_id), context)
-                if reservation.get("status") == "ACTIVE":
-                    await self.seats.release_seats(
-                        str(reservation_id),
-                        "BOOKING_CANCELLED",
-                        step_key(workflow.workflow_id, "cancelReleaseSeats"),
-                        context,
-                    )
-            except Exception:  # noqa: BLE001 -- all adapter failures become pending compensation evidence
-                complete = False
+        ticket_ids = booking.get("ticketIds") or []
+        requires_compensation = bool(payment_id or reservation_id or ticket_ids)
 
-        compensation_status = "COMPLETED" if complete else "PENDING"
-        updated = await self.bookings.transition(
-            "bookingCancel",
+        # This authoritative command is deliberately first. If Booking rejects the
+        # transition, no Ticket, Payment or Seat side effect has happened.
+        accepted = await self.booking.cancel(
             booking_id,
             {
-                "reasonCode": "USER_REQUEST",
-                "compensationStatus": compensation_status,
-                "evidence": {
-                    "compensationCompleted": complete,
-                    "verifiedAt": datetime.now(UTC).isoformat(),
-                },
+                "reason": request.get("reason", "USER_REQUEST"),
+                "expectedVersion": request.get(
+                    "expectedVersion", booking.get("resourceVersion")
+                ),
+                "paymentStatus": _booking_payment_status(booking.get("paymentStatus")),
+                "compensationStatus": (
+                    "PENDING" if requires_compensation else "NOT_REQUIRED"
+                ),
+                "evidence": booking_evidence(
+                    details={"requestedBy": ctx.principal.subject},
+                ),
             },
-            step_key(workflow.workflow_id, "bookingCancel"),
-            context,
+            key + ":accept",
+            ctx,
         )
-        final_status = "CANCELLED" if complete else "COMPENSATION_PENDING"
-        workflow.phase = WorkflowPhase(final_status)
-        await self.workflows.save(workflow)
-        if not complete:
-            await self.reconciliation.schedule(
-                workflow.workflow_id,
-                "CANCEL_COMPENSATION",
-                {
-                    "bookingId": booking_id,
-                    "paymentId": payment_id,
-                    "reservationId": reservation_id,
-                    "ticketIds": [str(ticket["ticketId"]) for ticket in tickets if ticket.get("status") == "ISSUED"],
-                    "total": booking.get("total"),
-                },
-                step_key(workflow.workflow_id, "cancelCompensation"),
-            )
-        result = self._result(updated or booking, context, final_status)
-        await self.idempotency.complete("publicCancelBooking", context.principal.subject, idempotency_key, result)
-        return result
 
-    @staticmethod
-    def _result(booking: Mapping[str, Any], context: RequestContext, status: str) -> OperationResult:
-        total = booking.get("total", Money(0, "VND").as_wire())
-        return OperationResult(
-            200,
+        evidence: dict[str, Any] = {}
+        complete = True
+        try:
+            listed = await self.ticket.list_booking(booking_id, ctx)
+            rows = (
+                listed.get("tickets") or listed.get("items") or []
+                if isinstance(listed, dict)
+                else listed
+            )
+            for row in rows or []:
+                ticket_id = row.get("ticketId") if isinstance(row, dict) else row
+                if ticket_id and str(ticket_id) not in {str(value) for value in ticket_ids}:
+                    ticket_ids.append(str(ticket_id))
+        except Exception as exc:
+            complete = False
+            evidence["ticketDiscovery"] = {
+                "status": "PENDING",
+                "error": str(exc),
+            }
+
+        for ticket_id in ticket_ids:
+            try:
+                ticket = await self.ticket.get(str(ticket_id), ctx)
+                await self.ticket.cancel(
+                    str(ticket_id),
+                    {
+                        "reason": "BOOKING_CANCELLED",
+                        "expectedVersion": ticket.get("resourceVersion"),
+                    },
+                    key + ":ticket:" + str(ticket_id),
+                    ctx,
+                )
+                evidence.setdefault("tickets", []).append(
+                    {"ticketId": ticket_id, "status": "CANCELLED"}
+                )
+            except Exception as exc:
+                complete = False
+                evidence.setdefault("tickets", []).append(
+                    {"ticketId": ticket_id, "status": "PENDING", "error": str(exc)}
+                )
+
+        if payment_id:
+            try:
+                payment = await self.payment.get(str(payment_id), ctx)
+                status = str(payment.get("status", "")).upper()
+                if status in {"CAPTURED", "PARTIALLY_REFUNDED"}:
+                    # Payment Service owns refund amount validation and defaults the
+                    # omitted amount to the remaining refundable balance.
+                    refund = await self.payment.refund(
+                        str(payment_id),
+                        {
+                            "reason": "BOOKING_CANCELLED",
+                            "expectedVersion": payment.get("resourceVersion"),
+                        },
+                        key + ":refund",
+                        ctx,
+                    )
+                    evidence["payment"] = {
+                        "status": "REFUNDED",
+                        "refundId": refund.get("refundId"),
+                        "amountMinor": refund.get("amountMinor"),
+                    }
+                elif status in {"PENDING", "AUTHORIZED"}:
+                    await self.payment.cancel(
+                        str(payment_id),
+                        {
+                            "reason": "BOOKING_CANCELLED",
+                            "expectedVersion": payment.get("resourceVersion"),
+                        },
+                        key + ":payment-cancel",
+                        ctx,
+                    )
+                    evidence["payment"] = {"status": "CANCELLED"}
+                elif status in {"REFUNDED", "CANCELLED", "FAILED"}:
+                    evidence["payment"] = {"status": status, "action": "NONE"}
+                else:
+                    complete = False
+                    evidence["payment"] = {
+                        "status": status or "UNKNOWN",
+                        "action": "RECONCILE",
+                    }
+            except Exception as exc:
+                complete = False
+                evidence["payment"] = {"status": "PENDING", "error": str(exc)}
+
+        if reservation_id:
+            try:
+                await self.seat.release(
+                    str(reservation_id),
+                    "BOOKING_CANCELLED",
+                    key + ":release",
+                    ctx,
+                )
+                evidence["reservation"] = {"status": "RELEASED"}
+            except Exception as exc:
+                complete = False
+                evidence["reservation"] = {"status": "PENDING", "error": str(exc)}
+
+        return await self.booking.record_compensation(
+            booking_id,
             {
-                "bookingId": booking.get("bookingId"),
-                "status": status,
-                "total": total,
-                "reservationId": booking.get("reservationId"),
-                "paymentId": booking.get("paymentId"),
-                "ticketIds": booking.get("ticketIds", []),
-                "correlationId": context.correlation_id,
+                "compensationStatus": "COMPLETED" if complete else "PENDING",
+                "expectedVersion": accepted.get("resourceVersion"),
+                "reason": "BOOKING_CANCELLED",
+                "evidence": booking_evidence(
+                    reservation_released=(
+                        evidence.get("reservation", {}).get("status") == "RELEASED"
+                    ),
+                    payment_refunded=(
+                        evidence.get("payment", {}).get("status") == "REFUNDED"
+                    ),
+                    compensation_completed=complete,
+                    details=evidence,
+                ),
             },
+            key + ":result",
+            ctx,
         )

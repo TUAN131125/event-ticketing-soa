@@ -1,0 +1,1937 @@
+openapi: 3.1.0
+info:
+  title: Booking Service
+  version: 2.0.0
+paths:
+  /health/live:
+    get:
+      tags:
+      - health
+      summary: Live
+      operationId: bookingLiveness
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Bookingliveness
+  /health/ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: bookingReadiness
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /bookings:
+    post:
+      tags:
+      - bookings
+      summary: Create
+      operationId: createBooking
+      security:
+      - serviceToken: []
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - bookings
+      summary: List All
+      operationId: listBookings
+      security:
+      - serviceToken: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Pagesize
+      - name: customerId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Customerid
+      - name: eventId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Eventid
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/BookingStatus'
+          - type: 'null'
+          title: Status
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 128
+          - type: 'null'
+          title: Search
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/reconciliation:
+    get:
+      tags:
+      - bookings
+      summary: Reconcile
+      operationId: reconcileBookings
+      security:
+      - serviceToken: []
+      parameters:
+      - name: olderThanSeconds
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 900
+          title: Olderthanseconds
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Pagesize
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationPageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/history:
+    get:
+      tags:
+      - bookings
+      summary: History
+      operationId: getBookingHistory
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingHistoryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}:
+    get:
+      tags:
+      - bookings
+      summary: Get
+      operationId: getBooking
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /customers/{customer_id}/bookings:
+    get:
+      tags:
+      - bookings
+      summary: List For Customer
+      operationId: listCustomerBookings
+      security:
+      - serviceToken: []
+      parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Customer Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Pagesize
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/reservation:
+    post:
+      tags:
+      - booking-commands
+      summary: Attach Reservation
+      operationId: attachReservation
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachReservationRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/reservation-confirmed:
+    post:
+      tags:
+      - booking-commands
+      summary: Confirm Reservation Evidence
+      operationId: confirmReservationEvidence
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmReservationRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/payment-started:
+    post:
+      tags:
+      - booking-commands
+      summary: Start Payment
+      operationId: startPayment
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartPaymentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/payment-result:
+    post:
+      tags:
+      - booking-commands
+      summary: Record Payment
+      operationId: recordPayment
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordPaymentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/tickets:
+    post:
+      tags:
+      - booking-commands
+      summary: Attach Tickets
+      operationId: attachTickets
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachTicketsRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/confirm:
+    post:
+      tags:
+      - booking-commands
+      summary: Confirm
+      operationId: confirmBooking
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmBookingRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/fail:
+    post:
+      tags:
+      - booking-commands
+      summary: Fail
+      operationId: failBooking
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailBookingRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/cancel:
+    post:
+      tags:
+      - booking-commands
+      summary: Cancel
+      operationId: cancelBooking
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bookings/{booking_id}/compensation-result:
+    post:
+      tags:
+      - booking-commands
+      summary: Compensation Result
+      operationId: recordCompensationResult
+      security:
+      - serviceToken: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Booking Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      - name: X-Caller-Service
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - name: X-Actor-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompensationResultRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          headers:
+            ETag:
+              description: Current Booking resourceVersion as a quoted entity tag.
+              schema:
+                type: string
+                example: '"4"'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AttachReservationRequest:
+      properties:
+        reservationId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Reservationid
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        reservationVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Reservationversion
+        reservationExpiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reservationexpiresat
+        confirmed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Confirmed
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - reservationId
+      title: AttachReservationRequest
+    AttachTicketsRequest:
+      properties:
+        ticketIds:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Ticketids
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - ticketIds
+      title: AttachTicketsRequest
+    BookingHistoryEntryResponse:
+      properties:
+        operation:
+          type: string
+          title: Operation
+        previousStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previousstatus
+        newStatus:
+          type: string
+          title: Newstatus
+        callerService:
+          type: string
+          title: Callerservice
+        actorId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actorid
+        correlationId:
+          type: string
+          title: Correlationid
+        idempotencyKey:
+          type: string
+          title: Idempotencykey
+        resourceVersion:
+          type: integer
+          title: Resourceversion
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+        occurredAt:
+          type: string
+          format: date-time
+          title: Occurredat
+      additionalProperties: false
+      type: object
+      required:
+      - operation
+      - previousStatus
+      - newStatus
+      - callerService
+      - correlationId
+      - idempotencyKey
+      - resourceVersion
+      - details
+      - occurredAt
+      title: BookingHistoryEntryResponse
+    BookingHistoryResponse:
+      properties:
+        bookingId:
+          type: string
+          title: Bookingid
+        items:
+          items:
+            $ref: '#/components/schemas/BookingHistoryEntryResponse'
+          type: array
+          title: Items
+      additionalProperties: false
+      type: object
+      required:
+      - bookingId
+      - items
+      title: BookingHistoryResponse
+    BookingItemRequest:
+      properties:
+        seatId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Seatid
+        ticketType:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Tickettype
+        unitPrice:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,19}0*$)\d*\.\d*0*$)
+          title: Unitprice
+        priceCurrency:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Pricecurrency
+      additionalProperties: false
+      type: object
+      required:
+      - seatId
+      - ticketType
+      - unitPrice
+      title: BookingItemRequest
+    BookingItemResponse:
+      properties:
+        seatId:
+          type: string
+          title: Seatid
+        ticketType:
+          type: string
+          title: Tickettype
+        ticketTypeCode:
+          type: string
+          title: Tickettypecode
+        unitPrice:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Unitprice
+      additionalProperties: false
+      type: object
+      required:
+      - seatId
+      - ticketType
+      - ticketTypeCode
+      - unitPrice
+      title: BookingItemResponse
+    BookingPageResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+          type: array
+          title: Items
+        page:
+          type: integer
+          title: Page
+        pageSize:
+          type: integer
+          title: Pagesize
+        total:
+          type: integer
+          title: Total
+        totalPages:
+          type: integer
+          title: Totalpages
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+      - totalPages
+      title: BookingPageResponse
+    BookingResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        bookingId:
+          type: string
+          title: Bookingid
+        customerId:
+          type: string
+          title: Customerid
+        eventId:
+          type: string
+          title: Eventid
+        reservationId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reservationid
+        paymentMethod:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentmethod
+        items:
+          items:
+            $ref: '#/components/schemas/BookingItemResponse'
+          type: array
+          title: Items
+        seats:
+          items:
+            type: string
+          type: array
+          title: Seats
+        total:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Total
+        totalAmount:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Totalamount
+        currency:
+          type: string
+          title: Currency
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        paymentStatus:
+          $ref: '#/components/schemas/PaymentStatus'
+        paymentId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentid
+        reservationStatus:
+          $ref: '#/components/schemas/ReservationEvidenceStatus'
+        reservationVersion:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reservationversion
+        reservationExpiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reservationexpiresat
+        ticketIds:
+          items:
+            type: string
+          type: array
+          title: Ticketids
+        failureCode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failurecode
+        failureReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failurereason
+        paymentFailureCode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentfailurecode
+        cancellationReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cancellationreason
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        compensationAction:
+          $ref: '#/components/schemas/CompensationAction'
+        compensationReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Compensationreason
+        intendedTerminalStatus:
+          anyOf:
+          - $ref: '#/components/schemas/BookingStatus'
+          - type: 'null'
+        paymentProviderReference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentproviderreference
+        compensationProviderReference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Compensationproviderreference
+        resourceVersion:
+          type: integer
+          title: Resourceversion
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+        confirmedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmedat
+        cancelledAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Cancelledat
+        reservationConfirmedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reservationconfirmedat
+        reservationReleasedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reservationreleasedat
+        paymentRecordedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Paymentrecordedat
+        paymentRefundedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Paymentrefundedat
+        compensationUpdatedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Compensationupdatedat
+        ticketsAttachedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Ticketsattachedat
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - bookingId
+      - customerId
+      - eventId
+      - items
+      - seats
+      - total
+      - totalAmount
+      - currency
+      - status
+      - paymentStatus
+      - reservationStatus
+      - ticketIds
+      - compensationStatus
+      - compensationAction
+      - resourceVersion
+      - createdAt
+      - updatedAt
+      title: BookingResponse
+    BookingStatus:
+      type: string
+      enum:
+      - PENDING
+      - SEAT_RESERVED
+      - PAYMENT_PROCESSING
+      - CONFIRMED
+      - FAILED
+      - CANCELLED
+      - COMPENSATION_PENDING
+      title: BookingStatus
+    CancelBookingRequest:
+      properties:
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        paymentStatus:
+          anyOf:
+          - $ref: '#/components/schemas/PaymentStatus'
+          - type: 'null'
+        compensationStatus:
+          anyOf:
+          - $ref: '#/components/schemas/CompensationStatus'
+          - type: 'null'
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - reason
+      title: CancelBookingRequest
+    CompensationAction:
+      type: string
+      enum:
+      - NONE
+      - RELEASE_RESERVATION
+      - REFUND_PAYMENT
+      - RELEASE_AND_REFUND
+      - RECONCILE_PAYMENT
+      title: CompensationAction
+    CompensationResultRequest:
+      properties:
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        evidence:
+          $ref: '#/components/schemas/EvidenceRequest'
+      additionalProperties: false
+      type: object
+      required:
+      - compensationStatus
+      - evidence
+      title: CompensationResultRequest
+    CompensationStatus:
+      type: string
+      enum:
+      - NOT_REQUIRED
+      - PENDING
+      - COMPLETED
+      - FAILED
+      title: CompensationStatus
+    ConfirmBookingRequest:
+      properties:
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        reservationId:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Reservationid
+        paymentId:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Paymentid
+        paymentStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentstatus
+        ticketIds:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Ticketids
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      title: ConfirmBookingRequest
+    ConfirmReservationRequest:
+      properties:
+        reservationId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Reservationid
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        reservationVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Reservationversion
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - reservationId
+      title: ConfirmReservationRequest
+    CreateBookingRequest:
+      properties:
+        customerId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Customerid
+        eventId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Eventid
+        reservationId:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 1
+          - type: 'null'
+          title: Reservationid
+        paymentMethod:
+          anyOf:
+          - type: string
+            maxLength: 40
+            minLength: 1
+          - type: 'null'
+          title: Paymentmethod
+        items:
+          items:
+            $ref: '#/components/schemas/BookingItemRequest'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Items
+        totalAmount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,19}0*$)\d*\.\d*0*$)
+          - type: 'null'
+          title: Totalamount
+        currency:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - customerId
+      - eventId
+      - items
+      title: CreateBookingRequest
+    EvidenceRequest:
+      properties:
+        providerReference:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Providerreference
+        reservationExpiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reservationexpiresat
+        verifiedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Verifiedat
+        reservationReleased:
+          type: boolean
+          title: Reservationreleased
+          default: false
+        paymentRefunded:
+          type: boolean
+          title: Paymentrefunded
+          default: false
+        compensationCompleted:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Compensationcompleted
+        seatConfirmed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Seatconfirmed
+        ticketsIssued:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Ticketsissued
+        paymentCaptured:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Paymentcaptured
+        resolvedPaymentStatus:
+          anyOf:
+          - $ref: '#/components/schemas/PaymentStatus'
+          - type: 'null'
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+      additionalProperties: false
+      type: object
+      title: EvidenceRequest
+    FailBookingRequest:
+      properties:
+        failureCode:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Failurecode
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Reason
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        compensationStatus:
+          anyOf:
+          - $ref: '#/components/schemas/CompensationStatus'
+          - type: 'null'
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - failureCode
+      title: FailBookingRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    PaymentStatus:
+      type: string
+      enum:
+      - PENDING
+      - PROCESSING
+      - SUCCEEDED
+      - FAILED
+      - UNKNOWN
+      - REFUND_PENDING
+      - REFUNDED
+      title: PaymentStatus
+    ReconciliationCandidateResponse:
+      properties:
+        bookingId:
+          type: string
+          title: Bookingid
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        missingEvidence:
+          items:
+            type: string
+          type: array
+          title: Missingevidence
+        recommendedAction:
+          type: string
+          title: Recommendedaction
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        compensationAction:
+          $ref: '#/components/schemas/CompensationAction'
+        resourceVersion:
+          type: integer
+          title: Resourceversion
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      additionalProperties: false
+      type: object
+      required:
+      - bookingId
+      - status
+      - missingEvidence
+      - recommendedAction
+      - compensationStatus
+      - compensationAction
+      - resourceVersion
+      - updatedAt
+      title: ReconciliationCandidateResponse
+    ReconciliationPageResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ReconciliationCandidateResponse'
+          type: array
+          title: Items
+        page:
+          type: integer
+          title: Page
+        pageSize:
+          type: integer
+          title: Pagesize
+        total:
+          type: integer
+          title: Total
+        totalPages:
+          type: integer
+          title: Totalpages
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+      - totalPages
+      title: ReconciliationPageResponse
+    RecordPaymentRequest:
+      properties:
+        paymentId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Paymentid
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+        succeeded:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Succeeded
+        paymentStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentstatus
+        failureCode:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Failurecode
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - paymentId
+      title: RecordPaymentRequest
+    ReservationEvidenceStatus:
+      type: string
+      enum:
+      - PENDING
+      - RESERVED
+      - CONFIRMED
+      - RELEASE_PENDING
+      - RELEASED
+      - UNKNOWN
+      title: ReservationEvidenceStatus
+    StartPaymentRequest:
+      properties:
+        paymentId:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Paymentid
+        expectedVersion:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Expectedversion
+      additionalProperties: false
+      type: object
+      required:
+      - paymentId
+      title: StartPaymentRequest
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      description: Internal shared secret. Never forward a customer token here.
+      in: header
+      name: X-Service-Token

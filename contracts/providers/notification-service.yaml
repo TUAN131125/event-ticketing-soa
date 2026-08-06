@@ -1,0 +1,112 @@
+openapi: 3.1.0
+info:
+  title: Notification Service Provider Contract
+  version: 1.0.0
+  description: Canonical subset consumed by the ESB outbox publisher.
+servers:
+  - url: http://localhost:8007
+paths:
+  /webhooks/events:
+    post:
+      operationId: receiveEventWebhook
+      summary: Receive a signed at-least-once event envelope
+      parameters:
+        - name: X-Webhook-Timestamp
+          in: header
+          required: true
+          schema: { type: string, format: date-time }
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema: { type: string, pattern: '^sha256=[A-Fa-f0-9]{64}$' }
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: traceparent
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventEnvelope'
+      responses:
+        '202': { description: Accepted or idempotently replayed }
+        '401':
+          description: Invalid or stale HMAC signature
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: eventId was reused with a different payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Invalid event envelope
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /health/live:
+    get:
+      operationId: notificationLiveness
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+  /health/ready:
+    get:
+      operationId: notificationReadiness
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+components:
+  schemas:
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [eventId, eventType, schemaVersion, occurredAt, correlationId, aggregateId, data]
+      properties:
+        eventId: { type: string, minLength: 1, maxLength: 128 }
+        eventType:
+          type: string
+          enum: [booking.confirmed, booking.failed, event.changed, ticket.issued]
+        schemaVersion: { type: integer, minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string, minLength: 1, maxLength: 128 }
+        aggregateId: { type: string, minLength: 1, maxLength: 128 }
+        data: { type: object, additionalProperties: true }
+    ErrorResponse:
+      type: object
+      required: [correlationId, error]
+      properties:
+        correlationId: { type: string }
+        traceId: { type: string }
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+            details: { type: object, additionalProperties: true }
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP, READY, NOT_READY] }
+        service: { type: string }
+        version: { type: string }

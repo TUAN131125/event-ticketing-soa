@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarDays, MapPin, Search, SlidersHorizontal } from 'lucide-react';
 import {
@@ -9,6 +9,7 @@ import {
   Input,
   Select,
   Skeleton,
+  Pagination,
 } from '@event-ticketing/shared-ui';
 import { useEvents } from '../app/hooks';
 import { QueryState } from './PageState';
@@ -28,14 +29,15 @@ export function EventListPage() {
   const [query, setQuery] = useState(params.get('q') ?? '');
   const result = useEvents({
     query: params.get('q') ?? undefined,
-    category: params.get('category') ?? undefined,
+    status: params.get('status') ?? undefined,
     page: Number(params.get('page') ?? 1),
   });
-  const submit = (event: React.FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     const next = new URLSearchParams(params);
     if (query) next.set('q', query);
     else next.delete('q');
+    next.set('page', '1');
     setParams(next);
   };
   return (
@@ -57,27 +59,29 @@ export function EventListPage() {
         <Input
           id="event-search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)}
           placeholder="Search by event, city or venue"
         />
         <Select
-          aria-label="Filter by category"
-          value={params.get('category') ?? ''}
-          onChange={(event) => {
+          aria-label="Filter by sale status"
+          value={params.get('status') ?? ''}
+          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
             const next = new URLSearchParams(params);
             if (event.target.value) {
-              next.set('category', event.target.value);
+              next.set('status', event.target.value);
             } else {
-              next.delete('category');
+              next.delete('status');
             }
+            next.set('page', '1');
             setParams(next);
           }}
         >
-          <option value="">All categories</option>
-          <option value="MUSIC">Music</option>
-          <option value="THEATRE">Theatre</option>
-          <option value="SPORT">Sport</option>
-          <option value="CONFERENCE">Conference</option>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="ON_SALE">On sale</option>
+          <option value="PAUSED">Paused</option>
+          <option value="ENDED">Ended</option>
+          <option value="CANCELLED">Cancelled</option>
         </Select>
         <Button type="submit">
           <SlidersHorizontal size={17} /> Search
@@ -108,12 +112,11 @@ export function EventListPage() {
             {result.data.items.map((item) => (
               <Card key={item.eventId} className="event-card">
                 <div className="event-cover">
-                  {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <CalendarDays size={32} />}
+                  <CalendarDays size={32} />
                 </div>
                 <div className="event-card-body">
                   <div className="event-card-meta">
-                    <Badge tone="information">{item.category || 'Live event'}</Badge>
-                    {item.status && <span>{item.status}</span>}
+                    <Badge tone="information">{item.status || 'Status unavailable'}</Badge>
                   </div>
                   <h2>
                     <Link to={`/events/${encodeURIComponent(item.eventId)}`}>{item.name}</Link>
@@ -128,6 +131,16 @@ export function EventListPage() {
               </Card>
             ))}
           </div>
+          <Pagination
+            page={result.data.page}
+            pageCount={Math.max(1, Math.ceil(result.data.total / result.data.pageSize))}
+            onPageChange={(page: number) => {
+              const next = new URLSearchParams(params);
+              next.set('page', String(page));
+              setParams(next);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
         </>
       ) : (
         <EmptyState

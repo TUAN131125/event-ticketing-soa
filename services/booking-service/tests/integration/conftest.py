@@ -19,8 +19,21 @@ def test_settings() -> Settings:
     url = os.getenv("BOOKING_TEST_DATABASE_URL")
     if not url:
         pytest.skip("BOOKING_TEST_DATABASE_URL is not configured")
-    os.environ["BOOKING_DATABASE_URL"] = url
-    return Settings.from_environment()
+    return Settings(
+        app_name="booking-service",
+        app_env="test",
+        database_url=url,
+        service_token="test-service-token",
+        db_pool_size=10,
+        db_max_overflow=10,
+        db_pool_timeout_seconds=3,
+        db_connect_timeout_seconds=3,
+        db_lock_timeout_ms=3_000,
+        db_statement_timeout_ms=10_000,
+        idempotency_ttl_seconds=3_600,
+        log_level="WARNING",
+        docs_enabled=True,
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

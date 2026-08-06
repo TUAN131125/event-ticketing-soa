@@ -12,15 +12,40 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.domain.entities import Payment
-from app.domain.enums import PaymentEventType, PaymentStatus, RefundKind
-from app.domain.value_objects import Refund
+from app.domain.enums import (
+    MockProviderScenario,
+    PaymentEventType,
+    PaymentStatus,
+    ProviderOperation,
+    ProviderOutcomeSource,
+    ReconciliationStatus,
+    RefundKind,
+)
+from app.domain.value_objects import ProviderEvent, Refund
 from app.infrastructure.database.models import (
     IdempotencyRecordModel,
     OutboxEventModel,
     PaymentAuditModel,
     PaymentModel,
+    ProviderEventModel,
     RefundModel,
 )
+
+LIKE_ESCAPE = "\\"
+
+
+def contains_pattern(value: str) -> str:
+    """Build a LIKE 'contains' pattern that treats the input as literal text.
+
+    Without escaping, a caller sending '%' would match every row and turn a
+    filtered lookup into a full scan of the payments table.
+    """
+    escaped = (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", f"{LIKE_ESCAPE}%")
+        .replace("_", f"{LIKE_ESCAPE}_")
+    )
+    return f"%{escaped}%"
 
 
 def set_local_timeouts(
@@ -112,13 +137,13 @@ def list_payment_models(
     if status:
         filters.append(PaymentModel.status == status.value)
     if search:
-        value = f"%{search}%"
+        value = contains_pattern(search)
         filters.append(
             or_(
-                PaymentModel.payment_id.ilike(value),
-                PaymentModel.booking_id.ilike(value),
-                PaymentModel.customer_id.ilike(value),
-                PaymentModel.provider_reference.ilike(value),
+                PaymentModel.payment_id.ilike(value, escape=LIKE_ESCAPE),
+                PaymentModel.booking_id.ilike(value, escape=LIKE_ESCAPE),
+                PaymentModel.customer_id.ilike(value, escape=LIKE_ESCAPE),
+                PaymentModel.provider_reference.ilike(value, escape=LIKE_ESCAPE),
             )
         )
     total = int(
@@ -158,6 +183,156 @@ def get_refund_by_provider_reference(
         )
         .with_for_update()
     )
+
+
+def get_provider_event(
+    session: Session, event_id: str, *, for_update: bool = False
+) -> ProviderEventModel | None:
+    statement = select(ProviderEventModel).where(
+        ProviderEventModel.event_id == event_id
+    )
+    if for_update:
+        statement = statement.with_for_update(of=ProviderEventModel)
+    return session.scalar(statement)
+
+
+def append_provider_event(session: Session, event: ProviderEvent) -> None:
+    session.add(
+        ProviderEventModel(
+            event_id=event.event_id,
+            payment_id=event.payment_id,
+            provider=event.provider,
+            operation=event.operation.value,
+            provider_status=event.status.value,
+            source=event.source.value,
+            payload_hash=event.payload_hash,
+            provider_reference=event.provider_reference,
+            provider_refund_reference=event.provider_refund_reference,
+            amount=event.amount,
+            currency=event.currency,
+            observed_refunded_amount=event.refunded_amount,
+            failure_code=event.failure_code,
+            reason=event.reason,
+            occurred_at=event.occurred_at,
+            received_at=event.received_at,
+        )
+    )
+
+
+def provider_event_model_to_value(model: ProviderEventModel) -> ProviderEvent:
+    return ProviderEvent(
+        event_id=model.event_id,
+        payment_id=model.payment_id,
+        provider=model.provider,
+        operation=ProviderOperation(model.operation),
+        status=PaymentStatus(model.provider_status),
+        source=ProviderOutcomeSource(model.source),
+        payload_hash=model.payload_hash,
+        occurred_at=model.occurred_at,
+        received_at=model.received_at,
+        provider_reference=model.provider_reference,
+        provider_refund_reference=model.provider_refund_reference,
+        amount=Decimal(model.amount) if model.amount is not None else None,
+        currency=model.currency,
+        refunded_amount=(
+            Decimal(model.observed_refunded_amount)
+            if model.observed_refunded_amount is not None
+            else None
+        ),
+        failure_code=model.failure_code,
+        reason=model.reason,
+    )
+
+
+def latest_provider_event(
+    session: Session,
+    payment_id: str,
+    operation: ProviderOperation | None = None,
+) -> ProviderEvent | None:
+    statement = select(ProviderEventModel).where(
+        ProviderEventModel.payment_id == payment_id
+    )
+    if operation is not None:
+        statement = statement.where(
+            ProviderEventModel.operation == operation.value
+        )
+    statement = statement.order_by(
+        ProviderEventModel.occurred_at.desc(),
+        ProviderEventModel.received_at.desc(),
+        ProviderEventModel.event_id.desc(),
+    ).limit(1)
+    model = session.scalar(statement)
+    return provider_event_model_to_value(model) if model else None
+
+
+def latest_final_provider_event(
+    session: Session,
+    payment_id: str,
+    operation: ProviderOperation | None = None,
+) -> ProviderEvent | None:
+    """Return the newest final provider outcome, ignoring UNKNOWN markers.
+
+    A timeout flow records both the provider's committed outcome and the local
+    UNKNOWN marker. Reconciliation must read the former rather than repeatedly
+    selecting the latter.
+    """
+    statement = select(ProviderEventModel).where(
+        ProviderEventModel.payment_id == payment_id,
+        ProviderEventModel.provider_status.notin_(
+            [PaymentStatus.PENDING.value, PaymentStatus.UNKNOWN.value]
+        ),
+    )
+    if operation is not None:
+        statement = statement.where(
+            ProviderEventModel.operation == operation.value
+        )
+    statement = statement.order_by(
+        ProviderEventModel.occurred_at.desc(),
+        ProviderEventModel.received_at.desc(),
+        ProviderEventModel.event_id.desc(),
+    ).limit(1)
+    model = session.scalar(statement)
+    return provider_event_model_to_value(model) if model else None
+
+
+def list_provider_events(
+    session: Session, payment_id: str
+) -> tuple[ProviderEvent, ...]:
+    models = session.scalars(
+        select(ProviderEventModel)
+        .where(ProviderEventModel.payment_id == payment_id)
+        .order_by(ProviderEventModel.occurred_at, ProviderEventModel.event_id)
+    ).all()
+    return tuple(provider_event_model_to_value(model) for model in models)
+
+
+def list_due_unknown_payments(
+    session: Session,
+    *,
+    now: datetime,
+    limit: int,
+) -> tuple[tuple[str, int], ...]:
+    """Claim a bounded batch of UNKNOWN payments due for reconciliation.
+
+    ``SKIP LOCKED`` lets several workers cooperate without choosing the same
+    payment in one polling cycle. The command still applies the aggregate row
+    lock and optimistic version check before changing state.
+    """
+    rows = session.execute(
+        select(PaymentModel.payment_id, PaymentModel.resource_version)
+        .where(
+            PaymentModel.status == PaymentStatus.UNKNOWN.value,
+            PaymentModel.reconciliation_due_at.is_not(None),
+            PaymentModel.reconciliation_due_at <= now,
+        )
+        .order_by(
+            PaymentModel.reconciliation_due_at,
+            PaymentModel.payment_id,
+        )
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    ).all()
+    return tuple((str(payment_id), int(version)) for payment_id, version in rows)
 
 
 def get_idempotency_record(
@@ -295,6 +470,27 @@ def model_to_entity(model: PaymentModel) -> Payment:
         captured_at=model.captured_at,
         cancelled_at=model.cancelled_at,
         refunded_at=model.refunded_at,
+        method_fingerprint=model.method_fingerprint,
+        provider_scenario=MockProviderScenario(model.provider_scenario),
+        booking_evidence_version=model.booking_evidence_version,
+        booking_evidence_id=model.booking_evidence_id,
+        booking_evidence_verified=model.booking_evidence_verified,
+        last_stable_status=(
+            PaymentStatus(model.last_stable_status)
+            if model.last_stable_status
+            else None
+        ),
+        pending_operation=(
+            ProviderOperation(model.pending_operation)
+            if model.pending_operation
+            else None
+        ),
+        reconciliation_status=ReconciliationStatus(model.reconciliation_status),
+        reconciliation_attempts=model.reconciliation_attempts,
+        unknown_since=model.unknown_since,
+        reconciliation_due_at=model.reconciliation_due_at,
+        last_reconciled_at=model.last_reconciled_at,
+        reconciliation_error=model.reconciliation_error,
     )
 
 
@@ -320,8 +516,22 @@ def entity_to_model(payment: Payment) -> PaymentModel:
         currency=payment.currency,
         payment_method=payment.payment_method,
         provider=payment.provider,
+        method_fingerprint=payment.method_fingerprint,
+        provider_scenario=payment.provider_scenario.value,
+        booking_evidence_version=payment.booking_evidence_version,
+        booking_evidence_id=payment.booking_evidence_id,
+        booking_evidence_verified=payment.booking_evidence_verified,
         provider_reference=payment.provider_reference,
         status=payment.status.value,
+        last_stable_status=(
+            payment.last_stable_status.value if payment.last_stable_status else None
+        ),
+        pending_operation=(
+            payment.pending_operation.value if payment.pending_operation else None
+        ),
+        reconciliation_status=payment.reconciliation_status.value,
+        reconciliation_attempts=payment.reconciliation_attempts,
+        reconciliation_error=payment.reconciliation_error,
         captured_amount=payment.captured_amount,
         refunded_amount=payment.refunded_amount,
         failure_code=payment.failure_code,
@@ -334,12 +544,24 @@ def entity_to_model(payment: Payment) -> PaymentModel:
         captured_at=payment.captured_at,
         cancelled_at=payment.cancelled_at,
         refunded_at=payment.refunded_at,
+        unknown_since=payment.unknown_since,
+        reconciliation_due_at=payment.reconciliation_due_at,
+        last_reconciled_at=payment.last_reconciled_at,
     )
 
 
 def apply_entity(model: PaymentModel, payment: Payment) -> None:
     model.provider_reference = payment.provider_reference
     model.status = payment.status.value
+    model.last_stable_status = (
+        payment.last_stable_status.value if payment.last_stable_status else None
+    )
+    model.pending_operation = (
+        payment.pending_operation.value if payment.pending_operation else None
+    )
+    model.reconciliation_status = payment.reconciliation_status.value
+    model.reconciliation_attempts = payment.reconciliation_attempts
+    model.reconciliation_error = payment.reconciliation_error
     model.captured_amount = payment.captured_amount
     model.refunded_amount = payment.refunded_amount
     model.failure_code = payment.failure_code
@@ -351,6 +573,67 @@ def apply_entity(model: PaymentModel, payment: Payment) -> None:
     model.captured_at = payment.captured_at
     model.cancelled_at = payment.cancelled_at
     model.refunded_at = payment.refunded_at
+    model.unknown_since = payment.unknown_since
+    model.reconciliation_due_at = payment.reconciliation_due_at
+    model.last_reconciled_at = payment.last_reconciled_at
+
+
+def claim_next_outbox_event(
+    session: Session, *, max_attempts: int
+) -> OutboxEventModel | None:
+    """Lock the oldest event still awaiting publication, or return None.
+
+    SKIP LOCKED lets several relay processes share the backlog: each one takes a
+    different row instead of queueing behind the same lock. Events that exhausted
+    their attempts are left behind for an operator rather than retried forever.
+    """
+    return session.scalar(
+        select(OutboxEventModel)
+        .where(
+            OutboxEventModel.published_at.is_(None),
+            OutboxEventModel.publish_attempts < max_attempts,
+        )
+        .order_by(OutboxEventModel.occurred_at, OutboxEventModel.event_id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+
+
+def mark_outbox_published(event: OutboxEventModel, now: datetime) -> None:
+    event.published_at = now
+    event.last_error = None
+
+
+def mark_outbox_failed(event: OutboxEventModel, error: str) -> None:
+    event.publish_attempts += 1
+    event.last_error = error[:500]
+
+
+def count_outbox_backlog(session: Session, *, max_attempts: int) -> tuple[int, int]:
+    """Return how many events are still pending and how many gave up retrying."""
+    pending = int(
+        session.scalar(
+            select(func.count())
+            .select_from(OutboxEventModel)
+            .where(
+                OutboxEventModel.published_at.is_(None),
+                OutboxEventModel.publish_attempts < max_attempts,
+            )
+        )
+        or 0
+    )
+    exhausted = int(
+        session.scalar(
+            select(func.count())
+            .select_from(OutboxEventModel)
+            .where(
+                OutboxEventModel.published_at.is_(None),
+                OutboxEventModel.publish_attempts >= max_attempts,
+            )
+        )
+        or 0
+    )
+    return pending, exhausted
 
 
 def payment_counts_by_status(session: Session) -> Sequence[tuple[str, int]]:

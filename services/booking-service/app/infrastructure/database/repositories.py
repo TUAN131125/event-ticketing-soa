@@ -1,22 +1,20 @@
-"""PostgreSQL primitives used by booking command/query handlers."""
+"""PostgreSQL primitives used by Booking Service handlers."""
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Any, cast
 
 from sqlalchemy import func, or_, select, text
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.domain.entities import Booking
-from app.domain.enums import BookingEventType, BookingStatus, PaymentStatus
-from app.domain.value_objects import BookingItem
+from app.domain.enums import BookingEventType, BookingStatus
+from app.domain.value_objects import BookingHistoryEntry
 from app.infrastructure.database.models import (
     BookingAuditModel,
-    BookingItemModel,
     BookingModel,
     IdempotencyRecordModel,
     OutboxEventModel,
@@ -54,11 +52,7 @@ def next_booking_id(session: Session) -> str:
 def get_booking_model(
     session: Session, booking_id: str, *, for_update: bool = False
 ) -> BookingModel | None:
-    statement = (
-        select(BookingModel)
-        .where(BookingModel.booking_id == booking_id)
-        .options(selectinload(BookingModel.items))
-    )
+    statement = select(BookingModel).where(BookingModel.booking_id == booking_id)
     if for_update:
         statement = statement.with_for_update(of=BookingModel)
     return session.scalar(statement)
@@ -67,10 +61,8 @@ def get_booking_model(
 def get_booking_by_reservation(
     session: Session, reservation_id: str, *, for_update: bool = False
 ) -> BookingModel | None:
-    statement = (
-        select(BookingModel)
-        .where(BookingModel.reservation_id == reservation_id)
-        .options(selectinload(BookingModel.items))
+    statement = select(BookingModel).where(
+        BookingModel.reservation_id == reservation_id
     )
     if for_update:
         statement = statement.with_for_update(of=BookingModel)
@@ -102,6 +94,7 @@ def list_booking_models(
                 BookingModel.customer_id.ilike(value),
                 BookingModel.event_id.ilike(value),
                 BookingModel.reservation_id.ilike(value),
+                BookingModel.payment_id.ilike(value),
             )
         )
     total = int(
@@ -111,12 +104,70 @@ def list_booking_models(
     statement = (
         select(BookingModel)
         .where(*filters)
-        .options(selectinload(BookingModel.items))
         .order_by(BookingModel.created_at.desc(), BookingModel.booking_id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     return list(session.scalars(statement).all()), total
+
+
+def list_stuck_booking_models(
+    session: Session,
+    *,
+    older_than: datetime,
+    page: int,
+    page_size: int,
+    statuses: tuple[BookingStatus, ...] | None = None,
+) -> tuple[list[BookingModel], int]:
+    active = statuses or (
+        BookingStatus.PENDING,
+        BookingStatus.SEAT_RESERVED,
+        BookingStatus.PAYMENT_PROCESSING,
+        BookingStatus.COMPENSATION_PENDING,
+    )
+    filters = [
+        BookingModel.status.in_([status.value for status in active]),
+        BookingModel.updated_at < older_than,
+    ]
+    total = int(
+        session.scalar(select(func.count()).select_from(BookingModel).where(*filters))
+        or 0
+    )
+    statement = (
+        select(BookingModel)
+        .where(*filters)
+        .order_by(BookingModel.updated_at.asc(), BookingModel.booking_id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return list(session.scalars(statement).all()), total
+
+
+def list_booking_history(
+    session: Session, booking_id: str
+) -> tuple[BookingHistoryEntry, ...]:
+    rows = session.scalars(
+        select(BookingAuditModel)
+        .where(BookingAuditModel.booking_id == booking_id)
+        .order_by(
+            BookingAuditModel.resource_version.asc(), BookingAuditModel.audit_id.asc()
+        )
+    ).all()
+    return tuple(
+        BookingHistoryEntry(
+            operation=row.operation,
+            previous_status=row.previous_status,
+            new_status=row.new_status,
+            caller_service=row.caller_service,
+            actor_id=row.actor_id,
+            correlation_id=row.correlation_id,
+            idempotency_key=row.idempotency_key,
+            resource_version=row.resource_version,
+            details=dict(row.details),
+            occurred_at=row.occurred_at,
+        )
+        for row in rows
+    )
 
 
 def get_idempotency_record(
@@ -206,85 +257,6 @@ def append_outbox_event(
             occurred_at=now,
         )
     )
-
-
-def model_to_entity(model: BookingModel) -> Booking:
-    return Booking(
-        booking_id=model.booking_id,
-        customer_id=model.customer_id,
-        event_id=model.event_id,
-        reservation_id=model.reservation_id,
-        items=tuple(
-            BookingItem(
-                seat_id=item.seat_id,
-                ticket_type_code=item.ticket_type,
-                unit_price=Decimal(item.unit_price),
-            )
-            for item in model.items
-        ),
-        total_amount=Decimal(model.total_amount),
-        currency=model.currency,
-        status=BookingStatus(model.status),
-        payment_status=PaymentStatus(model.payment_status),
-        resource_version=model.resource_version,
-        created_at=model.created_at,
-        updated_at=model.updated_at,
-        payment_id=model.payment_id,
-        ticket_ids=tuple(model.ticket_ids),
-        failure_code=model.failure_code,
-        failure_reason=model.failure_reason,
-        cancellation_reason=model.cancellation_reason,
-        confirmed_at=model.confirmed_at,
-        cancelled_at=model.cancelled_at,
-    )
-
-
-def entity_to_model(booking: Booking) -> BookingModel:
-    return BookingModel(
-        booking_id=booking.booking_id,
-        customer_id=booking.customer_id,
-        event_id=booking.event_id,
-        reservation_id=booking.reservation_id,
-        payment_method=None,
-        status=booking.status,
-        payment_status=booking.payment_status,
-        total_amount=booking.total_amount,
-        currency=booking.currency,
-        payment_id=booking.payment_id,
-        ticket_ids=list(booking.ticket_ids),
-        failure_code=booking.failure_code,
-        failure_reason=booking.failure_reason,
-        cancellation_reason=booking.cancellation_reason,
-        resource_version=booking.resource_version,
-        created_at=booking.created_at,
-        updated_at=booking.updated_at,
-        confirmed_at=booking.confirmed_at,
-        cancelled_at=booking.cancelled_at,
-        items=[
-            BookingItemModel(
-                seat_id=item.seat_id,
-                ticket_type=item.ticket_type_code,
-                unit_price=item.unit_price,
-                created_at=booking.created_at,
-            )
-            for item in booking.items
-        ],
-    )
-
-
-def apply_entity(model: BookingModel, booking: Booking) -> None:
-    model.status = booking.status
-    model.payment_status = booking.payment_status
-    model.payment_id = booking.payment_id
-    model.reservation_id = booking.reservation_id
-    model.ticket_ids = list(booking.ticket_ids)
-    model.failure_code = booking.failure_code
-    model.failure_reason = booking.failure_reason
-    model.cancellation_reason = booking.cancellation_reason
-    model.resource_version = booking.resource_version
-    model.updated_at = booking.updated_at
-    model.confirmed_at = booking.confirmed_at
-    model.cancelled_at = booking.cancelled_at
 
 
 def booking_counts_by_status(session: Session) -> Sequence[tuple[str, int]]:

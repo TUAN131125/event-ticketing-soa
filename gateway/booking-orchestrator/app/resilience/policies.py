@@ -3,109 +3,84 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from enum import Enum
 from typing import TypeVar
 
-from app.domain.errors import BusinessFault, DependencyFailure
-from app.domain.models import RequestContext
+from app.domain.errors import DependencyError, EsbError
 
 T = TypeVar("T")
 
 
-class RetryClass(str, Enum):
-    NONE = "none"
-    SAFE_READ = "safeRead"
-    IDEMPOTENT_COMMAND = "idempotentCommand"
-    RECONCILIATION_ONLY = "reconciliationOnly"
-    SIDE_EFFECT = "sideEffectAtLeastOnce"
+class ResiliencePolicy:
+    """Bounded retries, per-dependency bulkheads and a small circuit breaker."""
 
-
-@dataclass
-class CircuitBreaker:
-    threshold: int
-    recovery_seconds: float
-    failures: int = 0
-    opened_at: float | None = None
-
-    def before_call(self) -> None:
-        if self.opened_at is None:
-            return
-        if time.monotonic() - self.opened_at >= self.recovery_seconds:
-            self.opened_at = None
-            self.failures = 0
-            return
-        raise DependencyFailure("CIRCUIT_OPEN", "Dependency is temporarily unavailable.", 503, True)
-
-    def success(self) -> None:
-        self.failures = 0
-        self.opened_at = None
-
-    def failure(self) -> None:
-        self.failures += 1
-        if self.failures >= self.threshold:
-            self.opened_at = time.monotonic()
-
-
-class Bulkhead:
-    def __init__(self, limit: int) -> None:
-        self._semaphore = asyncio.Semaphore(limit)
-
-    async def run(self, call: Callable[[], Awaitable[T]]) -> T:
-        try:
-            await asyncio.wait_for(self._semaphore.acquire(), timeout=0.05)
-        except asyncio.TimeoutError as exc:
-            raise DependencyFailure("BULKHEAD_FULL", "Dependency capacity is exhausted.", 503, True) from exc
-        try:
-            return await call()
-        finally:
-            self._semaphore.release()
-
-
-class ResilienceExecutor:
     def __init__(
         self,
-        attempts: dict[RetryClass, int],
-        base_delay: float,
-        circuit: CircuitBreaker,
-        bulkhead: Bulkhead,
-    ) -> None:
-        self.attempts, self.base_delay, self.circuit, self.bulkhead = (
-            attempts,
-            base_delay,
-            circuit,
-            bulkhead,
+        safe_attempts: int = 3,
+        command_attempts: int = 2,
+        bulkhead_limit: int = 20,
+    ):
+        self.safe_attempts = safe_attempts
+        self.command_attempts = command_attempts
+        self.failures: dict[str, deque[float]] = defaultdict(deque)
+        self.open_until: dict[str, float] = {}
+        self.bulkheads: dict[str, asyncio.Semaphore] = defaultdict(
+            lambda: asyncio.Semaphore(bulkhead_limit)
         )
 
     async def execute(
         self,
+        name: str,
         call: Callable[[], Awaitable[T]],
-        retry_class: RetryClass,
-        context: RequestContext,
+        *,
+        mode: str,
+        deadline: float,
     ) -> T:
-        attempts = self.attempts.get(retry_class, 1)
-        last: Exception | None = None
-        for attempt in range(1, attempts + 1):
-            if time.monotonic() >= context.deadline_monotonic:
-                raise DependencyFailure("REQUEST_DEADLINE_EXCEEDED", "Request deadline exceeded.", 503, True)
-            self.circuit.before_call()
-            try:
-                remaining = max(0.001, context.deadline_monotonic - time.monotonic())
-                result = await asyncio.wait_for(self.bulkhead.run(call), timeout=remaining)
-                self.circuit.success()
-                return result
-            except BusinessFault:
-                raise
-            except Exception as exc:
-                last = exc
-                self.circuit.failure()
-                if retry_class in {RetryClass.NONE, RetryClass.RECONCILIATION_ONLY} or attempt >= attempts:
-                    raise
-                delay = self.base_delay * (2 ** (attempt - 1)) + random.uniform(  # nosec B311
-                    0, self.base_delay
-                )
-                if time.monotonic() + delay >= context.deadline_monotonic:
-                    break
-                await asyncio.sleep(delay)
-        raise DependencyFailure("DEPENDENCY_UNAVAILABLE", "Dependency call failed.", 503, True) from last
+        now = time.monotonic()
+        if self.open_until.get(name, 0) > now:
+            raise DependencyError(
+                "DEPENDENCY_CIRCUIT_OPEN", f"{name} circuit is open", 503, True
+            )
+        attempts = {
+            "safe_read": self.safe_attempts,
+            "idempotent_command": self.command_attempts,
+            "side_effect": 1,
+        }.get(mode, 1)
+        last_error: Exception | None = None
+
+        async with self.bulkheads[name]:
+            for attempt in range(attempts):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise DependencyError(
+                        "DEPENDENCY_TIMEOUT", "Request deadline exceeded", 504, True
+                    )
+                try:
+                    result = await asyncio.wait_for(call(), timeout=remaining)
+                    self.failures[name].clear()
+                    return result
+                except EsbError as exc:
+                    if not exc.retryable:
+                        raise
+                    last_error = exc
+                except (asyncio.TimeoutError, TimeoutError, OSError) as exc:
+                    last_error = exc
+
+                failures = self.failures[name]
+                failures.append(time.monotonic())
+                while failures and failures[0] < time.monotonic() - 30:
+                    failures.popleft()
+                if len(failures) >= 5:
+                    self.open_until[name] = time.monotonic() + 20
+
+                if attempt + 1 < attempts:
+                    delay = min(0.05 * (2**attempt) + random.random() * 0.03, 0.5)
+                    await asyncio.sleep(min(delay, max(0, deadline - time.monotonic())))
+
+        raise DependencyError(
+            "DEPENDENCY_UNAVAILABLE",
+            f"{name} unavailable: {last_error}",
+            503,
+            True,
+        )

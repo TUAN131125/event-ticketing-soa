@@ -1,4 +1,5 @@
 #!/bin/sh
 set -eu
 
-exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8004 --workers "${BOOKING_WEB_WORKERS:-1}"
+alembic upgrade head
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers "${BOOKING_WEB_WORKERS:-1}"

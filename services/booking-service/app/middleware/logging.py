@@ -2,6 +2,7 @@
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 
@@ -10,7 +11,10 @@ from app.observability.metrics import REQUEST_DURATION, REQUEST_TOTAL
 LOGGER = logging.getLogger("booking.access")
 
 
-async def access_log_middleware(request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+async def access_log_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     started = time.perf_counter()
     response: Response | None = None
     try:

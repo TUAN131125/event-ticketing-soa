@@ -1,30 +1,24 @@
-import type { components } from '@event-ticketing/shared-ui/esb-contract';
+import type {
+  BookingListProjection,
+  BookingResult,
+  CustomerProfileInput,
+  CustomerProfileProjection,
+  PlaceBookingRequest,
+  PublicEvent,
+  RealtimeWsTicket,
+  SeatMapProjection,
+  TicketListProjection,
+  TicketProjection,
+} from '@event-ticketing/shared-ui/frontend-esb-contract';
 import { ApiError } from './auth-client';
 
-export type ContractEvent = components['schemas']['PublicEvent'];
-export type ContractBooking = components['schemas']['BookingResult'];
-export type PlaceBookingRequest = components['schemas']['PlaceBookingRequest'];
-export type RealtimeWsTicket = components['schemas']['WsTicketResponse'];
-export type TraceStep = components['schemas']['TraceStep'];
+export type { PlaceBookingRequest, RealtimeWsTicket } from '@event-ticketing/shared-ui/frontend-esb-contract';
 
-export type TicketType = {
-  ticketTypeId?: string;
-  name?: string;
-  price?: { amountMinor: number; currency: string };
-  [key: string]: unknown;
-};
-
-export type EventSummary = Omit<ContractEvent, 'ticketTypes'> & {
-  ticketTypes: TicketType[];
-  description?: string;
-  category?: string;
-  imageUrl?: string;
-};
-
-export type Booking = ContractBooking & {
-  eventId?: string;
-  seatIds?: string[];
-};
+export type ContractEvent = PublicEvent;
+export type ContractBooking = BookingResult;
+export type TicketType = PublicEvent['ticketTypes'][number];
+export type EventSummary = ContractEvent;
+export type Booking = ContractBooking;
 
 export interface Page<T> {
   items: T[];
@@ -33,11 +27,6 @@ export interface Page<T> {
   total: number;
 }
 
-/**
- * Result of `POST /api/bookings`. `201` is a settled outcome; `202` means the payment
- * result is still unknown and the ESB is reconciling it. The contract requires the client
- * to poll `Location` instead of resubmitting the booking command.
- */
 export interface BookingSubmission {
   booking: Booking;
   reconciling: boolean;
@@ -46,22 +35,14 @@ export interface BookingSubmission {
 }
 
 export const DEFAULT_BOOKING_POLL_SECONDS = 3;
+export const DEFAULT_HTTP_TIMEOUT_MS = 15_000;
 
 const bookingContextKey = (bookingId: string) => `evently.booking.${bookingId}`;
 const bookingIndexKey = 'evently.bookingIds';
 
-function readObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-}
-
-function rememberBookingContext(booking: Booking, request?: PlaceBookingRequest): Booking {
-  const merged: Booking = {
-    ...booking,
-    eventId: request?.eventId ?? booking.eventId,
-    seatIds: request?.seatIds ?? booking.seatIds,
-  };
+function rememberBookingContext(booking: Booking, _request?: PlaceBookingRequest): Booking {
   try {
-    sessionStorage.setItem(bookingContextKey(booking.bookingId), JSON.stringify(merged));
+    sessionStorage.setItem(bookingContextKey(booking.bookingId), JSON.stringify(booking));
     const ids = JSON.parse(localStorage.getItem(bookingIndexKey) ?? '[]') as unknown;
     const list = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
     localStorage.setItem(
@@ -71,26 +52,13 @@ function rememberBookingContext(booking: Booking, request?: PlaceBookingRequest)
       ),
     );
   } catch {
-    // Storage is a convenience only; authoritative state always comes from the ESB.
+    // Storage is a navigation convenience only. Booking state is always reloaded from the ESB.
   }
-  return merged;
+  return booking;
 }
 
 function mergeStoredContext(booking: ContractBooking): Booking {
-  try {
-    const raw = sessionStorage.getItem(bookingContextKey(booking.bookingId));
-    if (!raw) return booking;
-    const context = readObject(JSON.parse(raw));
-    return {
-      ...booking,
-      eventId: typeof context.eventId === 'string' ? context.eventId : undefined,
-      seatIds: Array.isArray(context.seatIds)
-        ? context.seatIds.filter((seat): seat is string => typeof seat === 'string')
-        : undefined,
-    };
-  } catch {
-    return booking;
-  }
+  return booking;
 }
 
 export function recentBookingIds(): string[] {
@@ -106,33 +74,36 @@ export class EsbClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly getToken: () => string | null;
+  private readonly timeoutMs: number;
   private readonly bookingEtags = new Map<string, string>();
 
   constructor(
-    options: { baseUrl?: string; fetchImpl?: typeof fetch; getToken?: () => string | null } = {},
+    options: {
+      baseUrl?: string;
+      fetchImpl?: typeof fetch;
+      getToken?: () => string | null;
+      timeoutMs?: number;
+    } = {},
   ) {
-    this.baseUrl = (options.baseUrl ?? import.meta.env.VITE_ESB_API_URL ?? '').replace(/\/$/, '');
-    // `fetch` must be called with the global as its receiver. Storing the bare function on
-    // the instance and calling `this.fetchImpl(...)` makes the receiver this client, which
-    // browsers reject with "Illegal invocation" before any request is sent. The wrapper also
-    // keeps the lookup late so a replaced global is honoured.
+    this.baseUrl = (options.baseUrl ?? String(import.meta.env.VITE_ESB_API_URL ?? '')).replace(/\/$/, '');
     this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
     this.getToken = options.getToken ?? (() => null);
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS;
   }
 
   async listEvents(
-    params: { query?: string; category?: string; page?: number; pageSize?: number } = {},
+    params: { query?: string; status?: string; page?: number; pageSize?: number } = {},
   ): Promise<Page<EventSummary>> {
     const events = (await this.request<ContractEvent[]>('/api/events')).body.map((event) =>
       this.normaliseEvent(event),
     );
     const query = params.query?.trim().toLocaleLowerCase();
-    const category = params.category?.trim().toLocaleUpperCase();
+    const status = params.status?.trim().toLocaleUpperCase();
     const filtered = events.filter((event) => {
       const searchText = `${event.name} ${event.venue} ${event.status}`.toLocaleLowerCase();
       const matchesQuery = !query || searchText.includes(query);
-      const matchesCategory = !category || event.category?.toLocaleUpperCase() === category;
-      return matchesQuery && matchesCategory;
+      const matchesStatus = !status || event.status.toLocaleUpperCase() === status;
+      return matchesQuery && matchesStatus;
     });
     const page = Math.max(1, params.page ?? 1);
     const pageSize = Math.max(1, params.pageSize ?? 12);
@@ -148,6 +119,32 @@ export class EsbClient {
   async getEvent(eventId: string): Promise<EventSummary> {
     const result = await this.request<ContractEvent>(`/api/events/${encodeURIComponent(eventId)}`);
     return this.normaliseEvent(result.body);
+  }
+
+  async getCustomerProfile(): Promise<CustomerProfileProjection> {
+    const result = await this.request<CustomerProfileProjection>('/api/me/customer');
+    return result.body;
+  }
+
+  async upsertCustomerProfile(
+    payload: CustomerProfileInput,
+    idempotencyKey: string = crypto.randomUUID(),
+  ): Promise<CustomerProfileProjection> {
+    const result = await this.request<CustomerProfileProjection>('/api/me/customer', {
+      method: 'PUT',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload),
+    });
+    return result.body;
+  }
+
+  /** Canonical UI-03 ESB facade. The browser never calls the SOAP Seat service directly. */
+  async getSeatMap(eventId: string): Promise<SeatMapProjection> {
+    return (
+      await this.request<SeatMapProjection>(
+        `/api/events/${encodeURIComponent(eventId)}/seat-map`,
+      )
+    ).body;
   }
 
   async createBooking(
@@ -169,6 +166,18 @@ export class EsbClient {
     };
   }
 
+  /** Canonical owner-scoped booking list facade. */
+  async listBookings(page = 1, pageSize = 20): Promise<BookingListProjection> {
+    const search = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    const result = await this.request<BookingListProjection>(
+      `/api/bookings?${search.toString()}`,
+    );
+    return {
+      ...result.body,
+      items: result.body.items.map((booking) => mergeStoredContext(booking)),
+    };
+  }
+
   async getBooking(bookingId: string): Promise<Booking> {
     const result = await this.request<ContractBooking>(
       `/api/bookings/${encodeURIComponent(bookingId)}`,
@@ -179,9 +188,9 @@ export class EsbClient {
 
   async cancelBooking(
     bookingId: string,
+    reason: string,
     idempotencyKey: string = crypto.randomUUID(),
   ): Promise<Booking> {
-    // The contract makes If-Match required, so the authoritative ETag is read first.
     if (!this.bookingEtags.has(bookingId)) await this.getBooking(bookingId);
     const ifMatch = this.bookingEtags.get(bookingId);
     if (!ifMatch)
@@ -197,14 +206,25 @@ export class EsbClient {
       {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': ifMatch },
+        body:
+          import.meta.env.VITE_ESB_CANCEL_REASON_ENABLED === 'true'
+            ? JSON.stringify({ reason })
+            : undefined,
       },
     );
     this.rememberEtag(bookingId, result.etag);
     return rememberBookingContext(mergeStoredContext(result.body));
   }
 
-  async getTrace(correlationId: string): Promise<TraceStep[]> {
-    return (await this.request<TraceStep[]>(`/api/traces/${encodeURIComponent(correlationId)}`))
+  /** Canonical owner-scoped ticket list facade for UI-08. */
+  async listTickets(page = 1, pageSize = 20): Promise<TicketListProjection> {
+    const search = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    return (await this.request<TicketListProjection>(`/api/tickets?${search.toString()}`)).body;
+  }
+
+  /** Canonical owner-scoped ticket detail facade for UI-08. */
+  async getTicket(ticketId: string): Promise<TicketProjection> {
+    return (await this.request<TicketProjection>(`/api/tickets/${encodeURIComponent(ticketId)}`))
       .body;
   }
 
@@ -219,14 +239,7 @@ export class EsbClient {
   }
 
   private normaliseEvent(event: ContractEvent): EventSummary {
-    const rawTicketTypes = Array.isArray(event.ticketTypes) ? event.ticketTypes : [];
-    const ticketTypes = rawTicketTypes.map((value) => readObject(value) as TicketType);
-    return {
-      ...event,
-      ticketTypes,
-      category:
-        typeof ticketTypes[0]?.category === 'string' ? String(ticketTypes[0].category) : undefined,
-    };
+    return event;
   }
 
   private rememberEtag(bookingId: string, etag: string | null): void {
@@ -237,7 +250,6 @@ export class EsbClient {
     path: string,
     init: RequestInit = {},
   ): Promise<{ body: T; etag: string | null; status: number; headers: Headers }> {
-    // A missing build-time URL is a deployment defect, not an unavailable service.
     if (!this.baseUrl)
       throw new ApiError(0, {
         error: {
@@ -246,22 +258,44 @@ export class EsbClient {
           retryable: false,
         },
       });
+
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     headers.set('X-Correlation-ID', crypto.randomUUID());
     const token = this.getToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (init.body) headers.set('Content-Type', 'application/json');
+
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), this.timeoutMs);
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         ...init,
         headers,
         credentials: 'include',
+        signal: init.signal ?? controller.signal,
       });
     } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') {
+        throw new ApiError(
+          504,
+          {
+            error: {
+              code: 'SERVICE_TIMEOUT',
+              message: 'The ESB did not respond before the request deadline.',
+              retryable: true,
+            },
+          },
+          'The ESB did not respond before the request deadline.',
+          { cause },
+        );
+      }
       throw this.unavailable('ESB is temporarily unavailable.', cause);
+    } finally {
+      globalThis.clearTimeout(timer);
     }
+
     if (!response.ok) {
       const payload = (await response.json().catch(() => undefined)) as
         | {

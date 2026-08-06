@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { ApiError } from '../api/auth-client';
+import { ApiErrorDetails } from '../components/common/ApiErrorDetails';
 import {
   Button,
   ErrorState,
@@ -74,7 +75,12 @@ export function QueryState({
   return (
     <ErrorState
       title="Something went wrong"
-      description={api?.message ?? 'Please try again.'}
+      description={
+        <div>
+          <p>{api?.message ?? 'Please try again.'}</p>
+          <ApiErrorDetails error={error} />
+        </div>
+      }
       action={
         <Button variant="secondary" onClick={retry}>
           <AlertCircle size={16} /> Try again

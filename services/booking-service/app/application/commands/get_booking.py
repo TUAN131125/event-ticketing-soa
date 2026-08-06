@@ -7,7 +7,8 @@ from app.config import Settings
 from app.domain.entities import Booking
 from app.domain.exceptions import BookingNotFound
 from app.domain.rules import validate_identifier
-from app.infrastructure.database.repositories import get_booking_model, model_to_entity
+from app.infrastructure.database.mappers import model_to_entity
+from app.infrastructure.database.repositories import get_booking_model
 
 
 def get_booking(session: Session, settings: Settings, booking_id: str) -> Booking:

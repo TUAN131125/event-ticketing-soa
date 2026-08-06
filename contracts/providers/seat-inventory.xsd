@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:event-ticketing:seat:v1"
+           xmlns:tns="urn:event-ticketing:seat:v1"
+           elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <xs:simpleType name="UtcDateTime"><xs:restriction base="xs:dateTime"><xs:pattern value=".*(Z|[+]00:00)"/></xs:restriction></xs:simpleType>
+  <xs:simpleType name="SeatStatus"><xs:restriction base="xs:string"><xs:enumeration value="AVAILABLE"/><xs:enumeration value="HELD"/><xs:enumeration value="SOLD"/><xs:enumeration value="BLOCKED"/></xs:restriction></xs:simpleType>
+  <xs:simpleType name="ReservationStatus"><xs:restriction base="xs:string"><xs:enumeration value="ACTIVE"/><xs:enumeration value="CONFIRMED"/><xs:enumeration value="RELEASED"/><xs:enumeration value="EXPIRED"/></xs:restriction></xs:simpleType>
+  <xs:complexType name="RequestContext"><xs:sequence><xs:element name="correlationId" type="xs:string"/><xs:element name="traceparent" type="xs:string" minOccurs="0"/><xs:element name="idempotencyKey" type="xs:string" minOccurs="0"/><xs:element name="callerService" type="xs:string"/><xs:element name="schemaVersion" type="xs:positiveInteger"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatRef"><xs:sequence><xs:element name="seatId" type="xs:string"/><xs:element name="ticketTypeCode" type="xs:string"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatMapSeat"><xs:sequence><xs:element name="seatId" type="xs:string"/><xs:element name="section" type="xs:string" minOccurs="0"/><xs:element name="rowLabel" type="xs:string" minOccurs="0"/><xs:element name="seatNumber" type="xs:string" minOccurs="0"/><xs:element name="ticketTypeCode" type="xs:string"/><xs:element name="status" type="tns:SeatStatus"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatSelectionList"><xs:sequence><xs:element name="seat" type="tns:SeatRef" minOccurs="1" maxOccurs="10"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatMapList"><xs:sequence><xs:element name="seat" type="tns:SeatMapSeat" minOccurs="0" maxOccurs="20000"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatDefinition"><xs:sequence><xs:element name="seatId" type="xs:string"/><xs:element name="section" type="xs:string"/><xs:element name="rowLabel" type="xs:string"/><xs:element name="seatNumber" type="xs:string"/><xs:element name="ticketTypeCode" type="xs:string"/><xs:element name="status" type="tns:ConfigurableSeatStatus" minOccurs="0"/></xs:sequence></xs:complexType>
+  <xs:complexType name="SeatDefinitionList"><xs:sequence><xs:element name="seat" type="tns:SeatDefinition" minOccurs="1" maxOccurs="20000"/></xs:sequence></xs:complexType>
+  <xs:simpleType name="ConfigurableSeatStatus"><xs:restriction base="xs:string"><xs:enumeration value="AVAILABLE"/><xs:enumeration value="BLOCKED"/></xs:restriction></xs:simpleType>
+  <xs:complexType name="ReservationView"><xs:sequence><xs:element name="reservationId" type="xs:string"/><xs:element name="bookingId" type="xs:string"/><xs:element name="eventId" type="xs:string"/><xs:element name="status" type="tns:ReservationStatus"/><xs:element name="expiresAt" type="tns:UtcDateTime"/><xs:element name="resourceVersion" type="xs:positiveInteger"/></xs:sequence></xs:complexType>
+  <xs:complexType name="FaultDetail"><xs:sequence><xs:element name="code" type="xs:string"/><xs:element name="message" type="xs:string"/><xs:element name="correlationId" type="xs:string"/><xs:element name="traceparent" type="xs:string" minOccurs="0"/><xs:element name="retryable" type="xs:boolean"/></xs:sequence></xs:complexType>
+  <xs:element name="SeatServiceFault" type="tns:FaultDetail"/>
+  <xs:element name="GetSeatMapRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="eventId" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="GetSeatMapResponse"><xs:complexType><xs:sequence><xs:element name="eventId" type="xs:string"/><xs:element name="seats" type="tns:SeatMapList"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="CheckAvailabilityRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="eventId" type="xs:string"/><xs:element name="seatIds" type="tns:SeatSelectionList"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="CheckAvailabilityResponse"><xs:complexType><xs:sequence><xs:element name="available" type="xs:boolean"/><xs:element name="unavailableSeatId" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ReserveSeatsRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="bookingId" type="xs:string"/><xs:element name="eventId" type="xs:string"/><xs:element name="seatIds" type="tns:SeatSelectionList"/><xs:element name="ttlSeconds" type="xs:positiveInteger"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ReserveSeatsResponse" type="tns:ReservationView"/>
+  <xs:element name="GetReservationRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="reservationId" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="GetReservationResponse" type="tns:ReservationView"/>
+  <xs:element name="ExtendReservationRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="reservationId" type="xs:string"/><xs:element name="expectedVersion" type="xs:positiveInteger"/><xs:element name="additionalSeconds" type="xs:positiveInteger"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ExtendReservationResponse" type="tns:ReservationView"/>
+  <xs:element name="ConfirmSeatsRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="reservationId" type="xs:string"/><xs:element name="expectedVersion" type="xs:positiveInteger"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ConfirmSeatsResponse" type="tns:ReservationView"/>
+  <xs:element name="ReleaseSeatsRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="reservationId" type="xs:string"/><xs:element name="reasonCode" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ReleaseSeatsResponse" type="tns:ReservationView"/>
+  <xs:element name="ExpireReservationsRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="cutoffTime" type="tns:UtcDateTime"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ExpireReservationsResponse"><xs:complexType><xs:sequence><xs:element name="expiredCount" type="xs:nonNegativeInteger"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ConfigureInventoryRequest"><xs:complexType><xs:sequence><xs:element name="context" type="tns:RequestContext"/><xs:element name="eventId" type="xs:string"/><xs:element name="inventoryVersion" type="xs:positiveInteger"/><xs:element name="seats" type="tns:SeatDefinitionList"/></xs:sequence></xs:complexType></xs:element>
+  <xs:element name="ConfigureInventoryResponse"><xs:complexType><xs:sequence><xs:element name="eventId" type="xs:string"/><xs:element name="inventoryVersion" type="xs:positiveInteger"/><xs:element name="configuredSeatCount" type="xs:nonNegativeInteger"/><xs:element name="status" type="tns:InventoryConfigurationStatus"/></xs:sequence></xs:complexType></xs:element>
+  <xs:simpleType name="InventoryConfigurationStatus"><xs:restriction base="xs:string"><xs:enumeration value="CONFIGURED"/><xs:enumeration value="REPLAYED"/></xs:restriction></xs:simpleType>
+</xs:schema>

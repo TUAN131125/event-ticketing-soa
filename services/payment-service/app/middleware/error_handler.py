@@ -34,7 +34,11 @@ def install_error_handlers(app: FastAPI) -> None:
     async def payment_error_handler(
         _request: Request, error: PaymentError
     ) -> JSONResponse:
-        LOGGER.warning(
+        # A rejected request is expected traffic; a 5xx is a service problem and
+        # must not hide at warning level in operational dashboards.
+        level = logging.ERROR if error.http_status >= 500 else logging.WARNING
+        LOGGER.log(
+            level,
             "Payment request rejected",
             extra={"result": "REJECTED", "error_code": error.code},
         )

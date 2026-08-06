@@ -1,32 +1,31 @@
 # Admin Web
 
-The operations console is a React/Vite application. It uses Identity for authentication and the ESB public API for every operational read or command. It does not call internal services directly and it never supplies local fake data when the ESB is unavailable.
+Admin Web implements UI-10 Event administration and UI-11 Ticket check-in, plus aggregate health and workflow traces. All browser HTTP requests, including authentication, go through the ESB. Identity remains authoritative behind the ESB auth façade.
 
-## Run locally
+## Route
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
+- `/overview` — health and integration map.
+- `/events` — Event management list.
+- `/events/new` — create Event.
+- `/events/:eventId/edit` — update Event/ticket types.
+- `/check-in` — validate QR and check in Ticket.
+- `/traces` — workflow trace by Correlation ID.
 
-Required environment:
+The Admin Web does not expose an owner-scoped Booking lookup/cancel screen. Booking history and cancellation remain in Customer Web; adding an admin-wide Booking operation would require a separately authorized ESB contract and is outside UI-01–UI-12.
+
+## Configuration
 
 ```env
-VITE_IDENTITY_API_URL=http://localhost:8009
 VITE_ESB_API_URL=http://localhost:8000
-VITE_AUTH_TRANSPORT=direct
+VITE_ESB_CANCEL_REASON_ENABLED=false
 ```
-
-`VITE_AUTH_TRANSPORT=gateway` keeps the same client boundary and is available when the gateway exposes `/auth/*` routes. A browser refresh restores the session through the HttpOnly refresh cookie; access tokens remain in memory.
 
 ## Verification
 
 ```bash
+npm ci
 npm run typecheck
 npm test
 npm run build
 npm run e2e
 ```
-
-The gateway currently has incomplete public contracts, so list and detail screens explicitly show an unavailable/not-found/forbidden state rather than inventing records.

@@ -12,17 +12,26 @@ from app.domain.exceptions import (
     VersionConflict,
 )
 from app.domain.rules import advisory_lock_id, canonical_request_hash
+from app.domain.value_objects import PaymentDraft
+
+
+def draft(**overrides: object) -> PaymentDraft:
+    fields: dict[str, object] = {
+        "booking_id": "BK00000001",
+        "customer_id": "C001",
+        "amount": Decimal("240.00"),
+        "currency": "vnd",
+        "payment_method": "CARD_TOKEN",
+        "provider": "sandbox-provider",
+    }
+    fields.update(overrides)
+    return PaymentDraft.from_request(**fields)  # type: ignore[arg-type]
 
 
 def payment() -> Payment:
     return Payment.create(
         payment_id="PAY00000001",
-        booking_id="BK00000001",
-        customer_id="C001",
-        amount=Decimal("240.00"),
-        currency="vnd",
-        payment_method="CARD_TOKEN",
-        provider="sandbox-provider",
+        draft=draft(),
         now=datetime.now(UTC),
     )
 
@@ -142,38 +151,32 @@ def test_provider_reference_and_expected_version_cannot_be_overwritten() -> None
 
 def test_domain_rejects_values_that_do_not_fit_persistence_contract() -> None:
     with pytest.raises(InvalidRequest):
-        Payment.create(
-            payment_id="PAY00000002",
-            booking_id="BK00000002",
-            customer_id="C001",
-            amount=Decimal("10.001"),
-            currency="VND",
-            payment_method="CARD_TOKEN",
-            provider="sandbox-provider",
-            now=datetime.now(UTC),
-        )
+        draft(amount=Decimal("10.001"))
     with pytest.raises(InvalidRequest, match="card data"):
-        Payment.create(
-            payment_id="PAY00000004",
-            booking_id="BK00000004",
-            customer_id="C001",
-            amount=Decimal("10.00"),
-            currency="VND",
-            payment_method="4111111111111111",
-            provider="sandbox-provider",
-            now=datetime.now(UTC),
-        )
+        draft(payment_method="4111111111111111")
+    with pytest.raises(InvalidRequest):
+        draft(amount=Decimal("10000000000000000"))
     with pytest.raises(InvalidRequest):
         Payment.create(
-            payment_id="PAY00000003",
-            booking_id="BK00000003",
-            customer_id="C001",
-            amount=Decimal("10000000000000000"),
-            currency="VND",
-            payment_method="CARD_TOKEN",
-            provider="sandbox-provider",
+            payment_id="not a valid id!",
+            draft=draft(),
             now=datetime.now(UTC),
         )
+
+
+def test_draft_normalizes_and_compares_by_value() -> None:
+    assert draft().currency == "VND"
+    assert draft() == draft(currency="VND")
+    assert draft() != draft(customer_id="C999")
+    assert draft().to_payload() == {
+        "bookingId": "BK00000001",
+        "customerId": "C001",
+        "amount": "240.00",
+        "currency": "VND",
+        "paymentMethod": "CARD_TOKEN",
+        "provider": "sandbox-provider",
+    }
+    assert payment().definition() == draft()
 
 
 def test_hash_and_lock_are_deterministic() -> None:

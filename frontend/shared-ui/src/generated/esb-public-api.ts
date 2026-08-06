@@ -1,831 +1,130 @@
 // Generated from contracts/esb-public-api.yaml. Do not edit manually.
+// Contract SHA-256: b480185b12a532c3e37c5a1b185a5f955a8e33fed07eccb312adbb6ab48aff15
+// Generator: frontend/scripts/generate_esb_types.py
+
 export interface paths {
-  '/api/events': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Danh sách sự kiện */
-    get: operations['publicListEvents'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/events/{eventId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Chi tiết sự kiện tổng hợp */
-    get: operations['publicGetEvent'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/bookings': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Đặt vé */
-    post: operations['placeBooking'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/bookings/{bookingId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Lấy trạng thái booking */
-    get: operations['publicGetBooking'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/bookings/{bookingId}/cancel': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Hủy booking */
-    post: operations['publicCancelBooking'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/health': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Health tổng hợp
-     * @description Tổng hợp trạng thái của ESB và mọi provider. Customer, Event, Seat Inventory, Booking, Payment và Ticket là critical; Notification và Realtime là noncritical. Một critical provider DOWN trả 503/DOWN; chỉ noncritical DOWN trả 200/DEGRADED. Endpoint này không thay thế /health/ready, vốn chỉ phản ánh chính ESB.
-     */
-    get: operations['aggregateHealth'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/traces/{correlationId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Tra workflow theo Correlation ID */
-    get: operations['getWorkflowTrace'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/realtime/ws-tickets': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Issue a short-lived one-time Realtime WebSocket ticket
-     * @description Authenticates the browser JWT, takes only bookingId, calls Booking Service's authoritative access-decision operation, and fails closed on missing/inactive mapping, denial, timeout or dependency error. The browser must never submit customerId as ownership proof. The signed JWT/JWS ticket is returned only in the response body. It is issued by booking-orchestrator, bound to bookingId, verified identity subject, scope booking:status:read and Realtime audience, has a unique jti, expires within 60 seconds, is single-use and cannot be refreshed.
-     */
-    post: operations['issueRealtimeWebSocketTicket'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/health/live': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Process liveness probe */
-    get: operations['esbLiveness'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/health/ready': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Dependency readiness probe */
-    get: operations['esbReadiness'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
+  "/api/auth/register": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["registerIdentityAccountViaEsb"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/auth/login": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["loginIdentityAccountViaEsb"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/auth/refresh": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["refreshIdentitySessionViaEsb"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/auth/logout": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["logoutIdentitySessionViaEsb"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/auth/me": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["getCurrentIdentityPrincipalViaEsb"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/events": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicListEvents"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/events/{eventId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicGetEvent"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/events/{eventId}/seat-map": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicGetEventSeatMap"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/bookings": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicListBookings"]; put?: never; post: operations["placeBooking"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/bookings/{bookingId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicGetBooking"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/bookings/{bookingId}/cancel": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["publicCancelBooking"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/bookings/{bookingId}/tickets": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicListBookingTickets"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/tickets": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicListTickets"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/tickets/{ticketId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["publicGetTicket"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/me/customer": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["getMyCustomerProfile"]; put: operations["upsertMyCustomerProfile"]; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/me/customer/consents": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["updateMyCustomerConsent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["adminCreateEvent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put: operations["adminReplaceEvent"]; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}/publish": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["adminPublishEvent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}/pause": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["adminPauseEvent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}/close": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["adminCloseEvent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}/cancel": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["adminCancelEvent"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/admin/events/{eventId}/seat-inventory": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["adminGetSeatInventory"]; put: operations["adminConfigureSeatInventory"]; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/check-in/validate": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["validateTicketForCheckIn"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/check-in/tickets/{ticketId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["checkInTicket"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/realtime/ws-tickets": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get?: never; put?: never; post: operations["issueRealtimeWebSocketTicket"]; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/traces/{correlationId}": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["getWorkflowTrace"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/api/health": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["aggregateHealth"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/health/live": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["esbLiveness"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
+  "/health/ready": { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; get: operations["esbReadiness"]; put?: never; post?: never; delete?: never; patch?: never; options?: never; head?: never; trace?: never; };
 }
+
 export type webhooks = Record<string, never>;
+
 export interface components {
   schemas: {
-    /**
-     * @example {
-     *       "correlationId": "corr-1234567890abcdef",
-     *       "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-     *       "error": {
-     *         "code": "RESOURCE_CONFLICT",
-     *         "message": "The resource changed; reload and retry.",
-     *         "retryable": false,
-     *         "details": {
-     *           "currentVersion": 3
-     *         }
-     *       }
-     *     }
-     */
-    ErrorResponse: {
-      correlationId: string;
-      traceId?: string;
-      error: {
-        code: string;
-        message: string;
-        retryable: boolean;
-        details?: {
-          [key: string]: unknown;
-        };
-      };
-    };
-    /**
-     * @example {
-     *       "amountMinor": 250000,
-     *       "currency": "VND"
-     *     }
-     */
-    Money: {
-      /** Format: int64 */
-      amountMinor: number;
-      currency: string;
-    };
-    SafeIdentifier: string;
-    WsTicketRequest: {
-      bookingId: components['schemas']['SafeIdentifier'];
-    };
-    WsTicketResponse: {
-      /** @description Signed compact JWT/JWS credential; never place in a URL or log it. */
-      ticket: string;
-      bookingId: components['schemas']['SafeIdentifier'];
-      /** Format: date-time */
-      expiresAt: string;
-    };
-    /** @description Required signed JWT/JWS claims before compact serialization. */
-    SignedWebSocketTicketClaims: {
-      /** @constant */
-      iss: 'booking-orchestrator';
-      /** @constant */
-      aud: 'realtime-status-service';
-      sub: components['schemas']['SafeIdentifier'];
-      bookingId: components['schemas']['SafeIdentifier'];
-      /** @constant */
-      scope: 'booking:status:read';
-      /** Format: int64 */
-      iat: number;
-      /** Format: int64 */
-      exp: number;
-      jti: components['schemas']['SafeIdentifier'];
-    };
-    /** @description Non-wire policy assertions for every issued ticket. */
-    WsTicketPolicy: {
-      /** @constant */
-      audience: 'realtime-status-service';
-      /** @constant */
-      maximumTtlSeconds: 60;
-      /** @constant */
-      singleUse: true;
-      /** @constant */
-      jtiRequired: true;
-      /** @constant */
-      refreshable: false;
-      /** @constant */
-      bookingBound: true;
-      /** @constant */
-      identitySubjectBound: true;
-      /** @constant */
-      signed: true;
-      /** @constant */
-      issuer: 'booking-orchestrator';
-      /** @constant */
-      scope: 'booking:status:read';
-      /** @constant */
-      requiredClaims: ['iss', 'aud', 'sub', 'bookingId', 'scope', 'iat', 'exp', 'jti'];
-    };
-    PublicEvent: {
-      eventId: string;
-      name: string;
-      venue: string;
-      /** Format: date-time */
-      startsAt: string;
-      status: string;
-      ticketTypes: Record<string, never>[];
-    };
-    PlaceBookingRequest: {
-      customerId: string;
-      eventId: string;
-      seatIds: string[];
-      paymentMethodToken: string;
-    };
-    BookingResult: {
-      bookingId: string;
-      status: string;
-      total: components['schemas']['Money'];
-      reservationId?: string | null;
-      paymentId?: string | null;
-      ticketIds?: string[];
-      correlationId: string;
-    };
-    TraceStep: {
-      service?: string;
-      operation?: string;
-      status?: string;
-      durationMs?: number;
-      errorCode?: string | null;
-    };
-    DependencyHealth: {
-      /** @description Logical dependency name. Never an internal URL or hostname. */
-      name: string;
-      critical: boolean;
-      /** @enum {string} */
-      status: 'UP' | 'DOWN';
-      latencyMs?: number;
-      /**
-       * @description Stable public-safe probe code; never a provider message or stack trace.
-       * @enum {string}
-       */
-      errorCode?: 'TIMEOUT' | 'UNREACHABLE' | 'NOT_READY';
-    };
-    /**
-     * @example {
-     *       "status": "DEGRADED",
-     *       "checkedAt": "2026-08-05T10:30:00Z",
-     *       "dependencies": [
-     *         {
-     *           "name": "seat-inventory-service",
-     *           "critical": true,
-     *           "status": "UP",
-     *           "latencyMs": 12
-     *         },
-     *         {
-     *           "name": "notification-service",
-     *           "critical": false,
-     *           "status": "DOWN",
-     *           "latencyMs": 2000,
-     *           "errorCode": "TIMEOUT"
-     *         }
-     *       ]
-     *     }
-     */
-    AggregateHealth: {
-      /** @enum {string} */
-      status: 'UP' | 'DEGRADED' | 'DOWN';
-      /** Format: date-time */
-      checkedAt: string;
-      dependencies: components['schemas']['DependencyHealth'][];
-    };
-    /**
-     * @example {
-     *       "status": "READY"
-     *     }
-     */
-    HealthStatus: {
-      /** @enum {string} */
-      status: 'UP' | 'READY' | 'NOT_READY';
-      service?: string;
-      version?: string;
-    };
+    AdminSeatDefinition: { seatId: string; section: string; rowLabel: string; seatNumber: string; ticketTypeId: string; status?: "AVAILABLE" | "BLOCKED"; };
+    AdminSeatInventoryProjection: { eventId: string; generatedAt: string; seats: components['schemas']["SeatProjection"][]; };
+    AdminTicketTypeInput: { ticketTypeId: string; name: string; price: components['schemas']["MoneyRequest"]; };
+    AggregateHealth: { status: "UP" | "DEGRADED" | "DOWN"; checkedAt: string; dependencies: components['schemas']["DependencyHealth"][]; };
+    AuthRole: "CUSTOMER" | "ADMIN" | "CHECKIN_STAFF" | "SERVICE";
+    BookingListProjection: { items: components['schemas']["BookingResult"][]; page: number; pageSize: number; totalItems: number; };
+    BookingPaymentStatus: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "UNKNOWN" | "REFUND_PENDING" | "REFUNDED";
+    BookingResult: { bookingId: string; eventId: string; seatIds: string[]; status: components['schemas']["BookingStatus"]; total: components['schemas']["Money"]; reservationId?: string | null; paymentId?: string | null; ticketIds: string[]; correlationId: string; paymentStatus?: components['schemas']["BookingPaymentStatus"] | null; workflowId?: string | null; resourceVersion: number; createdAt?: string | null; updatedAt?: string | null; };
+    BookingStatus: "PENDING" | "SEAT_RESERVED" | "PAYMENT_PROCESSING" | "CONFIRMED" | "FAILED" | "CANCELLED" | "COMPENSATION_PENDING";
+    CancelBookingRequest: { reason?: string; };
+    CheckInRequest: { qrToken: string; };
+    CheckInResult: { ticket: components['schemas']["TicketProjection"]; correlationId: string; };
+    CheckInValidateRequest: { qrToken: string; };
+    ConfigureSeatInventoryRequest: { inventoryVersion: number; seats: components['schemas']["AdminSeatDefinition"][]; };
+    ConfigureSeatInventoryResult: { eventId: string; inventoryVersion: number; configuredSeatCount: number; status: "CONFIGURED" | "REPLAYED"; };
+    ConsentUpdateRequest: { channel: "EMAIL" | "SMS"; granted: boolean; };
+    ConsentUpdateResult: { customerId: string; channel: "EMAIL" | "SMS"; granted: boolean; resourceVersion: number; };
+    CustomerProfileInput: { fullName: string; email: string; phone?: string | null; };
+    CustomerProfileProjection: { customerId: string; fullName: string; email: string; phone?: string | null; status: "ACTIVE" | "INACTIVE" | "ANONYMIZED"; resourceVersion: number; createdAt: string; updatedAt: string; };
+    DependencyHealth: { name: string; critical: boolean; status: "UP" | "DOWN"; latencyMs?: number | null; errorCode?: "TIMEOUT" | "UNREACHABLE" | "NOT_READY" | null; };
+    ErrorBody: { code: string; message: string; retryable: boolean; details?: { [key: string]: unknown; } | null; };
+    ErrorResponse: { correlationId: string; traceId?: string | null; error: components['schemas']["ErrorBody"]; };
+    EventAdminRequest: { name: string; venue: string; startsAt: string; saleStartsAt: string; saleEndsAt: string; ticketTypes: components['schemas']["AdminTicketTypeInput"][]; };
+    EventStatus: "DRAFT" | "ON_SALE" | "PAUSED" | "CANCELLED" | "ENDED";
+    HealthStatus: { status: "UP" | "READY" | "NOT_READY"; service?: string | null; version?: string | null; };
+    LoginRequest: { email: string; password: string; };
+    Money: { amountMinor: number; currency: string; };
+    MoneyRequest: { amountMinor: number; currency: string; };
+    PlaceBookingRequest: { /** Compatibility only. ESB resolves ownership from the authenticated identity. */ customerId?: string | null; eventId: string; seatIds: string[]; paymentMethodToken: string; };
+    PublicEvent: { eventId: string; name: string; venue: string; startsAt: string; saleStartsAt?: string | null; saleEndsAt?: string | null; status: components['schemas']["EventStatus"]; ticketTypes: components['schemas']["TicketTypeProjection"][]; resourceVersion: number; };
+    RegisterRequest: { email: string; password: string; };
+    SeatAvailability: "AVAILABLE" | "UNAVAILABLE";
+    SeatMapProjection: { eventId: string; generatedAt: string; seats: components['schemas']["SeatProjection"][]; };
+    SeatProjection: { seatId: string; seatCode: string; section?: string | null; row?: string | null; ticketTypeId: string; ticketTypeName: string; status: components['schemas']["SeatAvailability"]; price: components['schemas']["Money"]; };
+    TicketListProjection: { items: components['schemas']["TicketProjection"][]; page: number; pageSize: number; totalItems: number; };
+    TicketProjection: { ticketId: string; bookingId: string; eventId: string; eventName: string; venue: string; startsAt: string; seatId: string; seatCode: string; ticketTypeName: string; status: components['schemas']["TicketStatus"]; /** Owner-only secret. Never log or persist in browser storage. */ qrToken?: string | null; correlationId: string; resourceVersion: number; };
+    TicketStatus: "ISSUED" | "CHECKED_IN" | "CANCELLED";
+    TicketTypeProjection: { ticketTypeId: string; name: string; price: components['schemas']["Money"]; };
+    TicketValidationResult: { valid: boolean; ticket?: components['schemas']["TicketProjection"] | null; code?: string | null; message?: string | null; correlationId: string; };
+    TokenResponse: { accessToken: string; tokenType: "Bearer"; expiresIn: number; csrfToken: string; user: components['schemas']["User"]; };
+    TraceStep: { service: string; operation: string; status: string; durationMs: number; errorCode?: string | null; };
+    User: { userId: string; email: string; status: "ACTIVE" | "DISABLED"; roles: components['schemas']["AuthRole"][]; tokenVersion: number; createdAt: string; };
+    WsTicketRequest: { bookingId: string; };
+    WsTicketResponse: { ticket: string; bookingId: string; expiresAt: string; };
   };
-  responses: {
-    /** @description Malformed request. */
-    BadRequest: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Authentication failed. */
-    Unauthorized: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description The authenticated principal is not authorized. */
-    Forbidden: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Resource not found. */
-    NotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Idempotency, uniqueness or state conflict. */
-    Conflict: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Request violates validation or domain rules. */
-    Unprocessable: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Service or required dependency is unavailable. */
-    ServiceUnavailable: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description If-Match does not match the current ETag. */
-    PreconditionFailed: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Unexpected server failure. */
-    InternalError: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-  };
-  parameters: {
-    /** @example corr-1234567890abcdef */
-    CorrelationId: string;
-    /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-    Traceparent: string;
-    /** @example idem-booking-12345678 */
-    IdempotencyKey: string;
-    /** @example "3" */
-    IfMatch: string;
-  };
-  requestBodies: never;
-  headers: {
-    /**
-     * @description Strong resource-version validator used by If-Match.
-     * @example "3"
-     */
-    ETag: string;
-  };
-  pathItems: never;
+  responses: Record<string, never>;
+  parameters: Record<string, never>;
+  requestBodies: Record<string, never>;
+  headers: Record<string, never>;
+  pathItems: Record<string, never>;
 }
-export type $defs = Record<string, never>;
+
 export interface operations {
-  publicListEvents: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Thành công */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PublicEvent'][];
-        };
-      };
-      500: components['responses']['InternalError'];
-    };
-  };
-  publicGetEvent: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path: {
-        eventId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Thành công */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PublicEvent'];
-        };
-      };
-      404: components['responses']['NotFound'];
-      503: components['responses']['ServiceUnavailable'];
-    };
-  };
-  placeBooking: {
-    parameters: {
-      query?: never;
-      header: {
-        /** @example idem-booking-12345678 */
-        'Idempotency-Key': components['parameters']['IdempotencyKey'];
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PlaceBookingRequest'];
-      };
-    };
-    responses: {
-      /** @description Đặt vé thành công */
-      201: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['BookingResult'];
-        };
-      };
-      /** @description Kết quả thanh toán chưa xác định; booking đang chờ đối soát. Client phải poll Location thay vì gửi lại lệnh đặt vé. */
-      202: {
-        headers: {
-          /** @description Đường dẫn đọc trạng thái booking đang đối soát. */
-          Location: string;
-          /** @description Số giây tối thiểu trước lần poll kế tiếp. */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['BookingResult'];
-        };
-      };
-      /** @description Thanh toán bị từ chối */
-      402: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-      409: components['responses']['Conflict'];
-      422: components['responses']['Unprocessable'];
-      503: components['responses']['ServiceUnavailable'];
-    };
-  };
-  publicGetBooking: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path: {
-        bookingId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Thành công */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['BookingResult'];
-        };
-      };
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  publicCancelBooking: {
-    parameters: {
-      query?: never;
-      header: {
-        /** @example idem-booking-12345678 */
-        'Idempotency-Key': components['parameters']['IdempotencyKey'];
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-        /** @example "3" */
-        'If-Match': components['parameters']['IfMatch'];
-      };
-      path: {
-        bookingId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Đã hủy */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['BookingResult'];
-        };
-      };
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      412: components['responses']['PreconditionFailed'];
-      503: components['responses']['ServiceUnavailable'];
-    };
-  };
-  aggregateHealth: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description UP hoặc DEGRADED */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AggregateHealth'];
-        };
-      };
-      /** @description DOWN vì ít nhất một dependency critical không phục vụ được. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AggregateHealth'];
-        };
-      };
-    };
-  };
-  getWorkflowTrace: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path: {
-        correlationId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Thành công */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TraceStep'][];
-        };
-      };
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  issueRealtimeWebSocketTicket: {
-    parameters: {
-      query?: never;
-      header: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-        /** @example idem-booking-12345678 */
-        'Idempotency-Key': components['parameters']['IdempotencyKey'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['WsTicketRequest'];
-      };
-    };
-    responses: {
-      /** @description Signed single-use JWT/JWS ticket issued after an allowed Booking decision. */
-      201: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "ticket": "example-not-a-real-ticket",
-           *       "bookingId": "BKG-001",
-           *       "expiresAt": "2026-08-03T03:00:45Z"
-           *     }
-           */
-          'application/json': components['schemas']['WsTicketResponse'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      /** @description Booking access denied; no ticket issued. */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-      /** @description WS ticket issuance rate limit exceeded. */
-      429: {
-        headers: {
-          'Retry-After'?: number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-      503: components['responses']['ServiceUnavailable'];
-    };
-  };
-  esbLiveness: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Process is running. */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "status": "UP"
-           *     }
-           */
-          'application/json': components['schemas']['HealthStatus'];
-        };
-      };
-    };
-  };
-  esbReadiness: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @example corr-1234567890abcdef */
-        'X-Correlation-ID'?: components['parameters']['CorrelationId'];
-        /** @example 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 */
-        traceparent?: components['parameters']['Traceparent'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Service is ready. */
-      200: {
-        headers: {
-          ETag: components['headers']['ETag'];
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "status": "READY"
-           *     }
-           */
-          'application/json': components['schemas']['HealthStatus'];
-        };
-      };
-      503: components['responses']['ServiceUnavailable'];
-    };
-  };
+  registerIdentityAccountViaEsb: { parameters: { query?: never; header: { "Idempotency-Key": string; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["RegisterRequest"]; }; }; responses: { "201": { headers: Record<string, never>; content: { "application/json": components['schemas']["User"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "413": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "500": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  loginIdentityAccountViaEsb: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["LoginRequest"]; }; }; responses: { "200": { headers: { "Set-Cookie"?: string; "Cache-Control"?: string; Pragma?: string; }; content: { "application/json": components['schemas']["TokenResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "423": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "429": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "500": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  refreshIdentitySessionViaEsb: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { "Set-Cookie"?: string; "Cache-Control"?: string; Pragma?: string; }; content: { "application/json": components['schemas']["TokenResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "500": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  logoutIdentitySessionViaEsb: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "204": { headers: { "Set-Cookie"?: string; "Cache-Control"?: string; Pragma?: string; }; content: never; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "500": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  getCurrentIdentityPrincipalViaEsb: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["User"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "500": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicListEvents: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["PublicEvent"][]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicGetEvent: { parameters: { query?: never; header?: never; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicGetEventSeatMap: { parameters: { query?: never; header?: never; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["SeatMapProjection"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicListBookings: { parameters: { query: { status?: components['schemas']["BookingStatus"] | null; page?: number; pageSize?: number; }; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["BookingListProjection"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  placeBooking: { parameters: { query?: never; header: { "Idempotency-Key": string; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["PlaceBookingRequest"]; }; }; responses: { "201": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["BookingResult"]; }; }; "202": { headers: { ETag?: string; Location?: string; "Retry-After"?: string; }; content: { "application/json": components['schemas']["BookingResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "402": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicGetBooking: { parameters: { query?: never; header?: never; path: { bookingId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["BookingResult"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicCancelBooking: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { bookingId: string; }; cookie?: never; }; requestBody?: { content: { "application/json": components['schemas']["CancelBookingRequest"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["BookingResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicListBookingTickets: { parameters: { query?: never; header?: never; path: { bookingId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["TicketProjection"][]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicListTickets: { parameters: { query: { page?: number; pageSize?: number; }; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["TicketListProjection"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  publicGetTicket: { parameters: { query?: never; header?: never; path: { ticketId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["TicketProjection"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  getMyCustomerProfile: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["CustomerProfileProjection"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  upsertMyCustomerProfile: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match"?: string | null; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["CustomerProfileInput"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["CustomerProfileProjection"]; }; }; "201": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["CustomerProfileProjection"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  updateMyCustomerConsent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match"?: string | null; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["ConsentUpdateRequest"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["ConsentUpdateResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminCreateEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["EventAdminRequest"]; }; }; responses: { "201": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminReplaceEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { eventId: string; }; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["EventAdminRequest"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminPublishEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminPauseEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminCloseEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminCancelEvent: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["PublicEvent"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminGetSeatInventory: { parameters: { query?: never; header?: never; path: { eventId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["AdminSeatInventoryProjection"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  adminConfigureSeatInventory: { parameters: { query?: never; header: { "Idempotency-Key": string; }; path: { eventId: string; }; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["ConfigureSeatInventoryRequest"]; }; }; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["ConfigureSeatInventoryResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  validateTicketForCheckIn: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["CheckInValidateRequest"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["TicketValidationResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "429": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  checkInTicket: { parameters: { query?: never; header: { "Idempotency-Key": string; "If-Match": string; }; path: { ticketId: string; }; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["CheckInRequest"]; }; }; responses: { "200": { headers: { ETag?: string; }; content: { "application/json": components['schemas']["CheckInResult"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "412": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "429": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  issueRealtimeWebSocketTicket: { parameters: { query?: never; header: { "Idempotency-Key": string; }; path?: never; cookie?: never; }; requestBody: { content: { "application/json": components['schemas']["WsTicketRequest"]; }; }; responses: { "201": { headers: Record<string, never>; content: { "application/json": components['schemas']["WsTicketResponse"]; }; }; "400": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "409": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "429": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "502": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  getWorkflowTrace: { parameters: { query?: never; header?: never; path: { correlationId: string; }; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["TraceStep"][]; }; }; "401": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "403": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "404": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "422": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; "504": { headers: Record<string, never>; content: { "application/json": components['schemas']["ErrorResponse"]; }; }; }; };
+  aggregateHealth: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["AggregateHealth"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["AggregateHealth"]; }; }; }; };
+  esbLiveness: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["HealthStatus"]; }; }; }; };
+  esbReadiness: { parameters: { query?: never; header?: never; path?: never; cookie?: never; }; requestBody?: never; responses: { "200": { headers: Record<string, never>; content: { "application/json": components['schemas']["HealthStatus"]; }; }; "503": { headers: Record<string, never>; content: { "application/json": components['schemas']["HealthStatus"]; }; }; }; };
 }
+
+export type $defs = Record<string, never>;

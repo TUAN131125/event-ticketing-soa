@@ -1,696 +1,1227 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+import uuid
+from dataclasses import asdict
 from typing import Any
-from uuid import uuid4
 
-from app.domain.errors import (
-    AmbiguousOutcome,
-    BusinessFault,
-    CommandNotDispatched,
-    DependencyFailure,
-)
-from app.domain.idempotency import (
-    normalized_request_hash,
-    request_fingerprint,
-    step_key,
-)
+from app.application.evidence import booking_evidence
+from app.domain.errors import Conflict, EsbError, PaymentUnknown
+from app.domain.idempotency import assert_replay_compatible, request_hash
 from app.domain.models import (
-    Money,
-    OperationResult,
-    OutboxItem,
-    PaymentOutcome,
-    PlaceBookingCommand,
+    BookingItem,
+    OutboxMessage,
+    PaymentStatus,
     RequestContext,
-    WorkflowEvidence,
-    WorkflowPhase,
-)
-from app.ports.providers import (
-    BookingPort,
-    CustomerPort,
-    EventPort,
-    PaymentPort,
-    SeatPort,
-    TicketPort,
-)
-from app.ports.repositories import (
-    Clock,
-    IdempotencyRepository,
-    OutboxRepository,
-    ReconciliationRepository,
-    TraceRepository,
-    WorkflowRepository,
+    Workflow,
+    WorkflowStatus,
 )
 
-# Provider error codes that mean "the payment did not go through", as opposed to a
-# transport or state problem the saga must not swallow.
-DECLINED_PAYMENT_CODES = frozenset({"PAYMENT_DECLINED", "PAYMENT_FAILED"})
+TERMINAL_WORKFLOW_STATUSES = {
+    WorkflowStatus.CONFIRMED,
+    WorkflowStatus.FAILED,
+    WorkflowStatus.CANCELLED,
+}
+PAYMENT_PENDING_STATUSES = {
+    "PENDING",
+    "PROCESSING",
+    "UNKNOWN",
+    "PENDING_RECONCILIATION",
+}
+PAYMENT_FAILED_STATUSES = {"FAILED", "DECLINED", "CANCELLED"}
 
 
 class BookingSaga:
+    """Coordinates provider capabilities without owning their business rules."""
+
     def __init__(
         self,
-        customer: CustomerPort,
-        events: EventPort,
-        seats: SeatPort,
-        bookings: BookingPort,
-        payments: PaymentPort,
-        tickets: TicketPort,
-        workflows: WorkflowRepository,
-        idempotency: IdempotencyRepository,
-        traces: TraceRepository,
-        outbox: OutboxRepository,
-        reconciliation: ReconciliationRepository,
-        clock: Clock,
-        reserve_replay_limit: int = 2,
-        reconciliation_deadline_seconds: int = 900,
+        customer: Any,
+        event: Any,
+        seat: Any,
+        booking: Any,
+        payment: Any,
+        ticket: Any,
+        workflows: Any,
+        outbox: Any,
+        settings: Any,
     ) -> None:
         self.customer = customer
-        self.events = events
-        self.seats = seats
-        self.bookings = bookings
-        self.payments = payments
-        self.tickets = tickets
+        self.event = event
+        self.seat = seat
+        self.booking = booking
+        self.payment = payment
+        self.ticket = ticket
         self.workflows = workflows
-        self.idempotency = idempotency
-        self.traces = traces
         self.outbox = outbox
-        self.reconciliation = reconciliation
-        self.clock = clock
-        self.reserve_replay_limit = max(1, reserve_replay_limit)
-        self.reconciliation_deadline_seconds = reconciliation_deadline_seconds
+        self.settings = settings
 
-    async def execute(self, command: PlaceBookingCommand, context: RequestContext) -> OperationResult:
-        request_payload = {
-            "customerId": command.browser_customer_id,
-            "eventId": command.event_id,
-            "seatIds": list(command.seat_ids),
-            "paymentMethodToken": command.payment_method_token,
-        }
-        request_hash = normalized_request_hash(request_payload)
-        claim = await self.idempotency.claim(
-            "placeBooking",
-            context.principal.subject,
-            command.idempotency_key,
-            request_hash,
-        )
-        if claim.kind == "REPLAY" and claim.recorded_result is not None:
-            return claim.recorded_result
-        if claim.kind == "IN_PROGRESS":
-            existing = await self.workflows.get(claim.workflow_id)
-            if existing is None:
-                raise DependencyFailure(
-                    "IDEMPOTENCY_STATE_UNAVAILABLE",
-                    "The existing workflow cannot currently be resumed.",
-                    503,
-                    True,
-                )
-            return self._booking_result(existing, existing.phase, 202)
-
-        context = replace(context, workflow_id=claim.workflow_id)
-
-        workflow = WorkflowEvidence(
-            workflow_id=claim.workflow_id,
-            operation="placeBooking",
-            subject=context.principal.subject,
-            request_hash=request_hash,
-            correlation_id=context.correlation_id,
-            phase=WorkflowPhase.PENDING,
-        )
-        await self.workflows.create(workflow)
-
-        event, ticket_type, amount = await self._load_authoritative_sale(command, workflow, context)
-        reservation = await self._create_and_reserve(command, workflow, event, ticket_type, context)
-        if reservation is None:
-            result = self._booking_result(workflow, WorkflowPhase.PENDING)
-            await self._complete(command, context, result)
-            return result
-        await self._record_reservation(workflow, reservation, context)
-
-        payment_result = await self._take_payment(command, workflow, amount, context)
-        if payment_result is not None:
-            return payment_result
-
-        await self._issue_and_confirm(command, workflow, context)
-        return await self._complete_success(command, workflow, context)
-
-    async def _load_authoritative_sale(
+    async def place(
         self,
-        command: PlaceBookingCommand,
-        workflow: WorkflowEvidence,
-        context: RequestContext,
-    ) -> tuple[Mapping[str, Any], str, Money]:
-        mapping = await self.customer.resolve_mapping(context.principal.subject, context)
-        if mapping.get("status") != "ACTIVE" or not mapping.get("customerId"):
-            raise BusinessFault(
+        request: dict[str, Any],
+        key: str,
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        payload_hash = request_hash(request)
+        existing = await self.workflows.find_by_idempotency(key)
+        if existing is not None:
+            assert_replay_compatible(existing.request_hash, payload_hash)
+            if existing.response_body is not None:
+                return existing.response_status or 200, existing.response_body
+            # A crash can happen after the workflow record is created but before
+            # Booking Service returns a durable booking/version. Replaying the
+            # same public command resumes the idempotent first stage instead of
+            # emitting an incomplete BookingResult that violates the contract.
+            if not existing.booking_id or existing.booking_version is None:
+                return await self._start(existing, request, ctx)
+            return 202, self._response(existing)
+
+        customer = await self.customer.resolve_identity(ctx.principal.subject, ctx)
+        customer_id = str(customer.get("customerId") or customer.get("id") or "")
+        if not customer_id:
+            raise EsbError(
                 "IDENTITY_NOT_MAPPED",
-                "Customer identity mapping is unavailable.",
-                403,
-                False,
+                "Authenticated identity has no active Customer mapping",
+                409,
             )
-        workflow.customer_id = str(mapping["customerId"])
-        customer = await self.customer.get_customer(workflow.customer_id, context)
-        if customer.get("status") != "ACTIVE":
-            raise BusinessFault("CUSTOMER_INACTIVE", "Customer is inactive.", 403, False)
-        event = await self.events.get_event(command.event_id, context)
-        eligibility = await self.events.get_sale_eligibility(command.event_id, context)
-        if not eligibility.get("eligible") or event.get("status") != "ON_SALE":
-            raise BusinessFault("EVENT_NOT_ON_SALE", "Event is not available for sale.", 409, False)
-        ticket_type, amount = self._authoritative_selection(event, eligibility, len(command.seat_ids))
-        workflow.total = amount
-        workflow.evidence.update(
-            {
-                "eventId": command.event_id,
-                "seatIds": list(command.seat_ids),
-                "ticketTypeCode": ticket_type,
-            }
-        )
-        return event, ticket_type, amount
+        self._validate_compatibility_customer_id(request.get("customerId"), customer_id)
 
-    async def _create_and_reserve(
+        seat_ids = list(dict.fromkeys(request["seatIds"]))
+        if not seat_ids:
+            raise EsbError("VALIDATION_ERROR", "seatIds must not be empty", 422)
+
+        workflow = Workflow(
+            workflow_id=str(uuid.uuid4()),
+            idempotency_key=key,
+            request_hash=payload_hash,
+            customer_id=customer_id,
+            event_id=request["eventId"],
+            seat_ids=seat_ids,
+            evidence={
+                "correlationId": ctx.correlation_id,
+                "traceId": ctx.trace_id,
+            },
+        )
+        await self.workflows.save(workflow)
+
+        try:
+            return await self._start(workflow, request, ctx)
+        except PaymentUnknown:
+            await self._persist_payment_unknown(workflow, ctx)
+            return 202, workflow.response_body or self._response(workflow)
+        except Exception as exc:
+            await self._handle_unexpected_failure(workflow, exc, ctx)
+            raise
+
+    async def reconcile(
         self,
-        command: PlaceBookingCommand,
-        workflow: WorkflowEvidence,
-        event: Mapping[str, Any],
-        ticket_type: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any] | None:
-        availability = await self.seats.check_availability(command.event_id, command.seat_ids, context)
-        if not availability.get("available"):
-            raise BusinessFault("SEAT_UNAVAILABLE", "One or more seats are unavailable.", 409, False)
-        items = [
+        workflow_id: str,
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        workflow = await self.workflows.get(workflow_id)
+        if workflow is None:
+            raise EsbError("WORKFLOW_NOT_FOUND", "Workflow was not found", 404)
+
+        if workflow.response_body is not None and workflow.status in TERMINAL_WORKFLOW_STATUSES:
+            return workflow.response_status or 200, workflow.response_body
+
+        if workflow.status == WorkflowStatus.COMPENSATION_PENDING:
+            return await self.compensate(workflow_id, ctx)
+
+        if not workflow.payment_id:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Payment evidence is missing from workflow",
+                409,
+            )
+
+        payment = await self.payment.get(workflow.payment_id, ctx)
+        payment_status = str(payment.get("status", "")).upper()
+        if payment_status in PAYMENT_PENDING_STATUSES:
+            workflow.payment_status = PaymentStatus.UNKNOWN
+            await self._persist_payment_unknown(workflow, ctx)
+            return 202, workflow.response_body or self._response(workflow)
+        if payment_status in PAYMENT_FAILED_STATUSES:
+            return await self._payment_failed(workflow, payment, ctx)
+        if payment_status != "CAPTURED":
+            raise EsbError(
+                "PAYMENT_STATE_UNSUPPORTED",
+                f"Cannot reconcile payment state {payment_status}",
+                409,
+            )
+
+        workflow.payment_status = PaymentStatus.CAPTURED
+        await self._refresh_booking_version(workflow, ctx)
+        items = self._workflow_items(workflow)
+        try:
+            return await self._after_payment_captured(workflow, items, payment, ctx)
+        except Exception as exc:
+            await self._handle_unexpected_failure(workflow, exc, ctx)
+            raise
+
+    async def compensate(
+        self,
+        workflow_id: str,
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        workflow = await self.workflows.get(workflow_id)
+        if workflow is None:
+            raise EsbError("WORKFLOW_NOT_FOUND", "Workflow was not found", 404)
+        if workflow.status != WorkflowStatus.COMPENSATION_PENDING:
+            return workflow.response_status or 200, workflow.response_body or self._response(workflow)
+        if not workflow.booking_id:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Booking evidence is missing from compensation workflow",
+                409,
+            )
+
+        booking = await self.booking.get(workflow.booking_id, ctx)
+        workflow.booking_version = _int_or_none(booking.get("resourceVersion"))
+        evidence: dict[str, Any] = {}
+        complete = True
+
+        ticket_ids = await self._authoritative_ticket_ids(workflow, ctx)
+        for ticket_id in ticket_ids:
+            try:
+                ticket = await self.ticket.get(ticket_id, ctx)
+                if str(ticket.get("status", "")).upper() != "CANCELLED":
+                    await self.ticket.cancel(
+                        ticket_id,
+                        {
+                            "reason": "WORKFLOW_COMPENSATION",
+                            "expectedVersion": ticket.get("resourceVersion"),
+                        },
+                        f"{workflow.idempotency_key}:compensate-ticket:{ticket_id}",
+                        ctx,
+                    )
+                evidence.setdefault("tickets", []).append(
+                    {"ticketId": ticket_id, "status": "CANCELLED"}
+                )
+            except Exception as exc:
+                complete = False
+                evidence.setdefault("tickets", []).append(
+                    {
+                        "ticketId": ticket_id,
+                        "status": "PENDING",
+                        "errorCode": self._safe_error_code(exc),
+                    }
+                )
+
+        if workflow.payment_id:
+            payment_complete, payment_evidence = await self._compensate_payment(workflow, ctx)
+            complete = complete and payment_complete
+            evidence["payment"] = payment_evidence
+
+        if workflow.reservation_id:
+            try:
+                await self.seat.release(
+                    workflow.reservation_id,
+                    "WORKFLOW_COMPENSATION",
+                    workflow.idempotency_key + ":compensate-seat",
+                    ctx,
+                )
+                evidence["reservation"] = {"status": "RELEASED"}
+            except Exception as exc:
+                complete = False
+                evidence["reservation"] = {
+                    "status": "PENDING",
+                    "errorCode": self._safe_error_code(exc),
+                }
+
+        result = await self.booking.record_compensation(
+            workflow.booking_id,
             {
-                "seatId": seat_id,
-                "ticketTypeCode": ticket_type,
-                "unitPrice": self._unit_price(event, ticket_type),
-            }
-            for seat_id in command.seat_ids
-        ]
-        created = await self.bookings.create_booking(
+                "compensationStatus": "COMPLETED" if complete else "PENDING",
+                "expectedVersion": workflow.booking_version,
+                "reason": "BOOKING_WORKFLOW_FAILED",
+                "evidence": booking_evidence(
+                    reservation_released=(
+                        evidence.get("reservation", {}).get("status") == "RELEASED"
+                    ),
+                    payment_refunded=(
+                        evidence.get("payment", {}).get("status") == "REFUNDED"
+                    ),
+                    compensation_completed=complete,
+                    details=evidence,
+                ),
+            },
+            workflow.idempotency_key + ":compensation-result",
+            ctx,
+        )
+        workflow.booking_version = _int_or_none(
+            result.get("resourceVersion") or workflow.booking_version
+        )
+        workflow.status = (
+            WorkflowStatus.FAILED if complete else WorkflowStatus.COMPENSATION_PENDING
+        )
+        workflow.response_status = 409 if complete else 202
+        workflow.response_body = self._workflow_failure_response(
+            workflow,
+            code="BOOKING_WORKFLOW_FAILED",
+            message=(
+                "Booking workflow failed and compensation completed"
+                if complete
+                else "Booking workflow failed and compensation is still pending"
+            ),
+            retryable=not complete,
+            details={"compensationStatus": "COMPLETED" if complete else "PENDING"},
+        )
+        await self.workflows.save(workflow)
+        return workflow.response_status, workflow.response_body
+
+    @staticmethod
+    def _validate_compatibility_customer_id(
+        browser_customer_id: object,
+        authoritative_customer_id: str,
+    ) -> None:
+        if browser_customer_id and str(browser_customer_id) not in {
+            "AUTHENTICATED-CUSTOMER",
+            authoritative_customer_id,
+        }:
+            raise Conflict(
+                "CUSTOMER_IDENTITY_MISMATCH",
+                "customerId does not match authenticated identity",
+            )
+
+    async def _selection(
+        self,
+        workflow: Workflow,
+        ctx: RequestContext,
+    ) -> list[BookingItem]:
+        event = await self.event.get_event(workflow.event_id, ctx)
+        eligibility = await self.event.check_sale_eligibility(workflow.event_id, ctx)
+        if eligibility.get("eligible") is False:
+            raise Conflict(
+                "EVENT_NOT_ON_SALE",
+                str(eligibility.get("reason") or "Event is not on sale"),
+            )
+
+        seat_map = await self.seat.get_seat_map(workflow.event_id, ctx)
+        raw_seats = seat_map.get("seats") or seat_map.get("seat") or []
+        if isinstance(raw_seats, dict):
+            raw_seats = raw_seats.get("seat") or raw_seats.get("items") or []
+        if isinstance(raw_seats, dict):
+            raw_seats = [raw_seats]
+        seats_by_id = {
+            str(seat.get("seatId") or seat.get("id")): seat
+            for seat in raw_seats
+            if isinstance(seat, dict)
+        }
+        ticket_types = {
+            str(ticket_type.get("code")): ticket_type
+            for ticket_type in event.get("ticketTypes", [])
+            if isinstance(ticket_type, dict)
+        }
+
+        items: list[BookingItem] = []
+        for seat_id in workflow.seat_ids:
+            seat = seats_by_id.get(seat_id)
+            if seat is None:
+                raise Conflict(
+                    "SEAT_NOT_FOUND",
+                    f"Seat {seat_id} is not in the authoritative seat map",
+                )
+            ticket_type_code = str(
+                seat.get("ticketTypeCode") or seat.get("ticketType") or ""
+            )
+            ticket_type = ticket_types.get(ticket_type_code)
+            if not ticket_type_code or ticket_type is None:
+                raise Conflict(
+                    "TICKET_TYPE_UNAVAILABLE",
+                    f"Seat {seat_id} has no authoritative ticket type",
+                )
+            price = ticket_type.get("price") or {}
+            amount_minor = price.get("amountMinor")
+            currency = price.get("currency")
+            if not isinstance(amount_minor, int) or amount_minor < 0 or not currency:
+                raise Conflict(
+                    "AUTHORITATIVE_PRICE_MISSING",
+                    f"No authoritative price for ticket type {ticket_type_code}",
+                )
+            items.append(
+                BookingItem(
+                    seat_id=seat_id,
+                    ticket_type=ticket_type_code,
+                    unit_price=amount_minor,
+                    currency=str(currency),
+                )
+            )
+
+        return items
+
+    @staticmethod
+    def _authoritative_booking_money(booking: dict[str, Any]) -> tuple[int, str]:
+        total = booking.get("total")
+        if isinstance(total, dict):
+            amount = total.get("amountMinor")
+            currency = total.get("currency")
+        else:
+            amount = booking.get("totalAmount", total)
+            currency = booking.get("currency")
+        try:
+            amount_minor = int(amount)
+        except (TypeError, ValueError) as exc:
+            raise EsbError(
+                "BOOKING_PROTOCOL_ERROR",
+                "Booking Service did not return an authoritative totalAmount",
+                502,
+                True,
+            ) from exc
+        currency_code = str(currency or "").upper()
+        if amount_minor < 0 or len(currency_code) != 3:
+            raise EsbError(
+                "BOOKING_PROTOCOL_ERROR",
+                "Booking Service returned invalid authoritative money evidence",
+                502,
+                True,
+            )
+        return amount_minor, currency_code
+
+    async def _start(
+        self,
+        workflow: Workflow,
+        request: dict[str, Any],
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        items = await self._selection(workflow, ctx)
+        workflow.evidence["items"] = [asdict(item) for item in items]
+
+        booking = await self.booking.create(
             {
                 "customerId": workflow.customer_id,
-                "eventId": command.event_id,
-                "items": items,
+                "eventId": workflow.event_id,
+                "items": [
+                    {
+                        "seatId": item.seat_id,
+                        "ticketType": item.ticket_type,
+                        "unitPrice": item.unit_price,
+                        "priceCurrency": item.currency,
+                    }
+                    for item in items
+                ],
             },
-            step_key(workflow.workflow_id, "createBooking"),
-            context,
+            workflow.idempotency_key + ":booking",
+            ctx,
         )
-        workflow.booking_id = str(created["bookingId"])
-        await self._save_step(
-            workflow,
-            "createBooking",
-            "booking-service",
-            "PENDING",
-            {"bookingId": workflow.booking_id},
-        )
-        reserve_payload = {
-            "bookingId": workflow.booking_id,
-            "eventId": command.event_id,
-            "seatIds": [{"seatId": seat_id, "ticketTypeCode": ticket_type} for seat_id in command.seat_ids],
-            "ttlSeconds": 600,
-            "requestContext": {
-                "correlationId": context.correlation_id,
-                "callerService": "booking-orchestrator",
-                "schemaVersion": 1,
-            },
+        workflow.booking_id = str(booking.get("bookingId") or booking.get("id") or "")
+        workflow.booking_version = _int_or_none(booking.get("resourceVersion"))
+        workflow.amount_minor, workflow.currency = self._authoritative_booking_money(booking)
+        workflow.evidence["authoritativeBookingMoney"] = {
+            "amountMinor": workflow.amount_minor,
+            "currency": workflow.currency,
+            "resourceVersion": workflow.booking_version,
         }
-        return await self._reserve_with_same_request(
-            workflow,
-            reserve_payload,
-            step_key(workflow.workflow_id, "ReserveSeats"),
-            context,
-        )
-
-    async def _record_reservation(
-        self,
-        workflow: WorkflowEvidence,
-        reservation: Mapping[str, Any],
-        context: RequestContext,
-    ) -> None:
-        workflow.reservation_id = str(reservation["reservationId"])
-        workflow.reservation_version = int(reservation.get("resourceVersion", 1))
-        booking_id = workflow.booking_id
-        reservation_id = workflow.reservation_id
-        if booking_id is None:
-            raise RuntimeError("Booking identifier is missing after creation")
-        workflow.phase = WorkflowPhase.SEAT_RESERVED
-        await self._save_step(
-            workflow,
-            "ReserveSeats",
-            "seat-inventory-service",
-            "ACTIVE",
-            {"reservationId": reservation_id},
-        )
-        try:
-            await self.bookings.transition(
-                "bookingReservation",
-                booking_id,
-                {
-                    "reservationId": reservation_id,
-                    "evidence": {
-                        "providerReference": reservation_id,
-                        "reservationExpiresAt": reservation["expiresAt"],
-                    },
-                },
-                step_key(workflow.workflow_id, "bookingReservation"),
-                context,
+        if not workflow.booking_id:
+            raise EsbError(
+                "BOOKING_PROTOCOL_ERROR",
+                "Booking Service did not return bookingId",
+                502,
+                True,
             )
-        except Exception:  # noqa: BLE001 -- failure must leave durable compensation evidence
-            released = await self._release(workflow, "BOOKING_RESERVATION_EVIDENCE_FAILED", context)
-            await self._fail_booking(workflow, "RESERVATION_EVIDENCE_FAILED", released, context)
-            raise
+        await self.workflows.save(workflow)
 
-    async def _take_payment(
-        self,
-        command: PlaceBookingCommand,
-        workflow: WorkflowEvidence,
-        amount: Money,
-        context: RequestContext,
-    ) -> OperationResult | None:
-        booking_id = workflow.booking_id
-        if booking_id is None:
-            raise RuntimeError("Booking identifier is missing before payment")
-        create_key = step_key(workflow.workflow_id, "createPayment")
-        try:
-            payment = await self.payments.create_payment(
-                booking_id,
-                amount,
-                command.payment_method_token,
-                create_key,
-                context,
-            )
-        except CommandNotDispatched:
-            # No payment can exist, so compensation is safe and immediate.
-            return await self._payment_not_dispatched(workflow, command, "createPayment", context)
-        except AmbiguousOutcome:
-            # A payment may exist under create_key; only reconciliation may decide.
-            return await self._payment_unknown(workflow, command, context, create_key=create_key)
-        except DependencyFailure:
-            # Dispatched but unanswered, including a deadline that expired mid-flight.
-            return await self._payment_unknown(workflow, command, context, create_key=create_key)
-        workflow.payment_id = str(payment["paymentId"])
-        payment_id = workflow.payment_id
-        workflow.phase = WorkflowPhase.PAYMENT_PROCESSING
-        await self.bookings.transition(
-            "bookingPaymentStarted",
-            booking_id,
-            {"paymentId": payment_id},
-            step_key(workflow.workflow_id, "bookingPaymentStarted"),
-            context,
+        seat_references = [item.seat_reference() for item in items]
+        availability = await self.seat.check_availability(
+            workflow.event_id,
+            seat_references,
+            ctx,
         )
-        authorization = await self._payment_command("authorizePayment", workflow, context)
-        if authorization is PaymentOutcome.NOT_DISPATCHED:
-            return await self._payment_not_dispatched(workflow, command, "authorizePayment", context)
-        if authorization in {PaymentOutcome.FAILED, PaymentOutcome.DECLINED}:
-            return await self._payment_failed(workflow, command, context)
-        if authorization is PaymentOutcome.UNKNOWN:
-            return await self._payment_unknown(workflow, command, context)
-        capture = await self._payment_command("capturePayment", workflow, context)
-        if capture is PaymentOutcome.NOT_DISPATCHED:
-            # Authorized but never captured: the outcome is known, so release directly.
-            return await self._payment_not_dispatched(workflow, command, "capturePayment", context)
-        workflow.payment_status = capture
-        await self.bookings.transition(
-            "bookingPaymentResult",
-            booking_id,
+        if availability.get("available") is False:
+            raise Conflict(
+                "SEAT_UNAVAILABLE",
+                f"Seat {availability.get('unavailableSeatId', '')} is unavailable".strip(),
+            )
+        reservation = await self.seat.reserve(
+            workflow.booking_id,
+            workflow.event_id,
+            seat_references,
+            self.settings.reservation_ttl_seconds,
+            workflow.idempotency_key + ":reserve",
+            ctx,
+        )
+        workflow.reservation_id = str(reservation.get("reservationId") or "")
+        workflow.reservation_version = _int_or_none(
+            reservation.get("resourceVersion") or reservation.get("version")
+        )
+        if not workflow.reservation_id or workflow.reservation_version is None:
+            raise EsbError(
+                "SEAT_PROTOCOL_ERROR",
+                "Seat Inventory returned incomplete reservation evidence",
+                502,
+                True,
+            )
+        workflow.status = WorkflowStatus.SEAT_RESERVED
+
+        booking = await self.booking.attach_reservation(
+            workflow.booking_id,
             {
-                "paymentId": payment_id,
-                "paymentStatus": capture.value,
-                "evidence": {
-                    "providerReference": payment_id,
-                    "verifiedAt": datetime.now(UTC).isoformat(),
+                "reservationId": workflow.reservation_id,
+                "reservationVersion": workflow.reservation_version,
+                "reservationExpiresAt": reservation.get("expiresAt"),
+                "expectedVersion": workflow.booking_version,
+                "evidence": booking_evidence(
+                    reservation_expires_at=reservation.get("expiresAt"),
+                    details={
+                        "source": "SeatInventory",
+                        "status": reservation.get("status", "ACTIVE"),
+                    },
+                ),
+            },
+            workflow.idempotency_key + ":booking-reservation",
+            ctx,
+        )
+        workflow.booking_version = _int_or_none(
+            booking.get("resourceVersion") or workflow.booking_version
+        )
+        await self.workflows.save(workflow)
+
+        payment = await self.payment.create(
+            {
+                "bookingId": workflow.booking_id,
+                "customerId": workflow.customer_id,
+                "amountMinor": workflow.amount_minor,
+                "currency": workflow.currency,
+                "methodToken": request["paymentMethodToken"],
+                "bookingEvidence": {
+                    "bookingId": workflow.booking_id,
+                    "customerId": workflow.customer_id,
+                    "amountMinor": workflow.amount_minor,
+                    "currency": workflow.currency,
+                    "resourceVersion": workflow.booking_version,
+                    "evidenceId": workflow.workflow_id,
                 },
             },
-            step_key(workflow.workflow_id, "bookingPaymentResult"),
-            context,
+            workflow.idempotency_key + ":payment-create",
+            ctx,
         )
-        if capture in {PaymentOutcome.FAILED, PaymentOutcome.DECLINED}:
-            return await self._payment_failed(workflow, command, context)
-        if capture != PaymentOutcome.CAPTURED:
-            return await self._payment_unknown(workflow, command, context)
-        return None
+        workflow.payment_id = str(payment.get("paymentId") or payment.get("id") or "")
+        if not workflow.payment_id:
+            raise EsbError(
+                "PAYMENT_PROTOCOL_ERROR",
+                "Payment Service did not return paymentId",
+                502,
+                True,
+            )
+        booking = await self.booking.start_payment(
+            workflow.booking_id,
+            {
+                "paymentId": workflow.payment_id,
+                "expectedVersion": workflow.booking_version,
+            },
+            workflow.idempotency_key + ":booking-payment-start",
+            ctx,
+        )
+        workflow.booking_version = _int_or_none(
+            booking.get("resourceVersion") or workflow.booking_version
+        )
+        workflow.status = WorkflowStatus.PAYMENT_PROCESSING
+        await self.workflows.save(workflow)
 
-    async def _issue_and_confirm(
-        self,
-        command: PlaceBookingCommand,
-        workflow: WorkflowEvidence,
-        context: RequestContext,
-    ) -> None:
-        booking_id = workflow.booking_id
-        reservation_id = workflow.reservation_id
-        payment_id = workflow.payment_id
-        if booking_id is None or reservation_id is None or payment_id is None:
-            raise RuntimeError("Confirmed booking evidence is incomplete")
         try:
-            issued = await self.tickets.issue_tickets(
+            authorization = await self.payment.authorize(
+                workflow.payment_id,
+                {"expectedVersion": payment.get("resourceVersion")},
+                workflow.idempotency_key + ":authorize",
+                ctx,
+            )
+        except EsbError as exc:
+            if exc.retryable:
+                workflow.payment_status = PaymentStatus.UNKNOWN
+                raise PaymentUnknown("Payment authorization outcome is unknown") from exc
+            raise
+        authorization_status = str(authorization.get("status", "")).upper()
+        if authorization_status in PAYMENT_FAILED_STATUSES:
+            return await self._payment_failed(workflow, authorization, ctx)
+        if authorization_status in PAYMENT_PENDING_STATUSES:
+            workflow.payment_status = PaymentStatus.UNKNOWN
+            raise PaymentUnknown()
+
+        try:
+            captured = await self.payment.capture(
+                workflow.payment_id,
+                {"expectedVersion": authorization.get("resourceVersion")},
+                workflow.idempotency_key + ":capture",
+                ctx,
+            )
+        except EsbError as exc:
+            if exc.retryable:
+                workflow.payment_status = PaymentStatus.UNKNOWN
+                raise PaymentUnknown("Payment capture outcome is unknown") from exc
+            raise
+        captured_status = str(captured.get("status", "")).upper()
+        if captured_status in PAYMENT_PENDING_STATUSES:
+            workflow.payment_status = PaymentStatus.UNKNOWN
+            raise PaymentUnknown()
+        if captured_status != "CAPTURED":
+            return await self._payment_failed(workflow, captured, ctx)
+
+        workflow.payment_status = PaymentStatus.CAPTURED
+        await self.workflows.save(workflow)
+        return await self._after_payment_captured(workflow, items, captured, ctx)
+
+    async def _after_payment_captured(
+        self,
+        workflow: Workflow,
+        items: list[BookingItem],
+        payment: dict[str, Any],
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        if not workflow.booking_id or not workflow.payment_id:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Booking or payment evidence is missing",
+                409,
+            )
+        if not workflow.reservation_id or workflow.reservation_version is None:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Reservation evidence is missing",
+                409,
+            )
+
+        steps = workflow.evidence.setdefault("completedSteps", {})
+        if workflow.status in {
+            WorkflowStatus.SEAT_CONFIRMED,
+            WorkflowStatus.TICKETS_ISSUED,
+            WorkflowStatus.CONFIRMED,
+        }:
+            steps["paymentRecorded"] = True
+            steps["seatConfirmed"] = True
+        if workflow.status in {
+            WorkflowStatus.TICKETS_ISSUED,
+            WorkflowStatus.CONFIRMED,
+        }:
+            steps["reservationEvidenceConfirmed"] = True
+            steps["ticketsIssued"] = True
+        if workflow.ticket_ids:
+            steps["ticketsIssued"] = True
+
+        if not steps.get("paymentRecorded"):
+            booking = await self.booking.record_payment(
+                workflow.booking_id,
                 {
-                    "bookingId": booking_id,
-                    "eventId": command.event_id,
-                    "customerId": workflow.customer_id,
-                    "items": [{"seatId": value} for value in command.seat_ids],
+                    "paymentId": workflow.payment_id,
+                    "paymentStatus": "SUCCEEDED",
+                    "succeeded": True,
+                    "expectedVersion": workflow.booking_version,
+                    "evidence": booking_evidence(
+                        provider_reference=payment.get("providerReference"),
+                        payment_captured=True,
+                        resolved_payment_status="SUCCEEDED",
+                        details={"source": "Payment"},
+                    ),
                 },
-                step_key(workflow.workflow_id, "issueTickets"),
-                context,
+                workflow.idempotency_key + ":booking-payment-result",
+                ctx,
             )
-            workflow.ticket_ids = [str(ticket["ticketId"]) for ticket in issued]
-            await self.bookings.transition(
-                "bookingTickets",
-                booking_id,
-                {
-                    "ticketIds": workflow.ticket_ids,
-                    "evidence": {
-                        "providerReference": workflow.ticket_ids[0],
-                        "ticketsIssued": True,
-                    },
-                },
-                step_key(workflow.workflow_id, "bookingTickets"),
-                context,
+            workflow.booking_version = _int_or_none(
+                booking.get("resourceVersion") or workflow.booking_version
             )
-            confirmed_seat = await self.seats.confirm_seats(
-                reservation_id,
-                workflow.reservation_version or 1,
-                step_key(workflow.workflow_id, "ConfirmSeats"),
-                context,
-            )
-            await self.bookings.transition(
-                "bookingConfirm",
-                booking_id,
-                {
-                    "reservationId": reservation_id,
-                    "paymentId": payment_id,
-                    "paymentStatus": "CAPTURED",
-                    "ticketIds": workflow.ticket_ids,
-                    "evidence": {
-                        "paymentCaptured": True,
-                        "seatConfirmed": confirmed_seat.get("status") == "CONFIRMED",
-                        "ticketsIssued": True,
-                        "verifiedAt": datetime.now(UTC).isoformat(),
-                    },
-                },
-                step_key(workflow.workflow_id, "bookingConfirm"),
-                context,
-            )
-        except Exception as exc:
-            workflow.phase = WorkflowPhase.COMPENSATION_PENDING
+            steps["paymentRecorded"] = True
             await self.workflows.save(workflow)
-            await self.reconciliation.schedule(
-                workflow.workflow_id,
-                "AFTER_CAPTURE_COMPENSATION",
+
+        if not steps.get("seatConfirmed"):
+            # P0 invariant: Ticket Service must not be called before Seat confirmation.
+            confirmed_reservation = await self.seat.confirm(
+                workflow.reservation_id,
+                workflow.reservation_version,
+                workflow.idempotency_key + ":seat-confirm",
+                ctx,
+            )
+            workflow.reservation_version = _int_or_none(
+                confirmed_reservation.get("resourceVersion")
+                or confirmed_reservation.get("version")
+            )
+            if workflow.reservation_version is None:
+                raise EsbError(
+                    "SEAT_PROTOCOL_ERROR",
+                    "Seat Inventory did not return confirmed reservation version",
+                    502,
+                    True,
+                )
+            workflow.status = WorkflowStatus.SEAT_CONFIRMED
+            steps["seatConfirmed"] = True
+            await self.workflows.save(workflow)
+
+        if not steps.get("reservationEvidenceConfirmed"):
+            booking = await self.booking.confirm_reservation(
+                workflow.booking_id,
+                {
+                    "reservationId": workflow.reservation_id,
+                    "reservationVersion": workflow.reservation_version,
+                    "expectedVersion": workflow.booking_version,
+                    "evidence": booking_evidence(
+                        seat_confirmed=True,
+                        details={"source": "SeatInventory", "status": "CONFIRMED"},
+                    ),
+                },
+                workflow.idempotency_key + ":booking-seat-confirmed",
+                ctx,
+            )
+            workflow.booking_version = _int_or_none(
+                booking.get("resourceVersion") or workflow.booking_version
+            )
+            steps["reservationEvidenceConfirmed"] = True
+            await self.workflows.save(workflow)
+
+        if not steps.get("ticketsIssued"):
+            issued = await self.ticket.issue(
                 {
                     "bookingId": workflow.booking_id,
-                    "paymentId": workflow.payment_id,
-                    "reservationId": workflow.reservation_id,
-                    "ticketIds": workflow.ticket_ids,
+                    "eventId": workflow.event_id,
+                    "customerId": workflow.customer_id,
+                    "items": [{"seatId": item.seat_id} for item in items],
                 },
-                step_key(workflow.workflow_id, "afterCaptureCompensation"),
+                workflow.idempotency_key + ":tickets",
+                ctx,
             )
-            await self._fail_booking(workflow, "AFTER_CAPTURE_FAILURE", False, context)
-            raise DependencyFailure("AFTER_CAPTURE_FAILURE", "Booking compensation is pending.", 503, True) from exc
-
-    async def _complete_success(
-        self,
-        command: PlaceBookingCommand,
-        workflow: WorkflowEvidence,
-        context: RequestContext,
-    ) -> OperationResult:
-        workflow.phase = WorkflowPhase.CONFIRMED
-        await self.outbox.commit_with_outbox(
-            workflow,
-            [
-                OutboxItem(
-                    str(uuid4()),
-                    "notification",
-                    "booking.confirmed",
-                    self._event_payload(workflow),
-                    context.correlation_id,
-                ),
-                OutboxItem(
-                    str(uuid4()),
-                    "realtime",
-                    "booking.status",
-                    self._realtime_payload(workflow),
-                    context.correlation_id,
-                ),
-            ],
-        )
-        result = self._booking_result(workflow, WorkflowPhase.CONFIRMED, 201)
-        await self._complete(command, context, result)
-        return result
-
-    async def _reserve_with_same_request(
-        self,
-        workflow: WorkflowEvidence,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any] | None:
-        fingerprint = request_fingerprint(payload)
-        for attempt in range(1, self.reserve_replay_limit + 1):
-            if self.clock.monotonic() >= context.deadline_monotonic:
-                break
-            try:
-                result = await self.seats.reserve_seats(payload, idempotency_key, context)
-                if request_fingerprint(payload) != fingerprint:
-                    raise RuntimeError("ReserveSeats replay payload changed")
-                return result
-            except AmbiguousOutcome:
-                await self.workflows.record_step(
-                    workflow.workflow_id,
-                    "ReserveSeats",
-                    "seat-inventory-service",
-                    "UNKNOWN",
-                    {"attempt": attempt, "requestFingerprint": fingerprint},
+            if isinstance(issued, list):
+                tickets = issued
+            elif isinstance(issued, dict):
+                tickets = issued.get("tickets") or issued.get("items") or []
+            else:
+                tickets = []
+            workflow.ticket_ids = [
+                str(ticket.get("ticketId") if isinstance(ticket, dict) else ticket)
+                for ticket in tickets
+            ]
+            if not workflow.ticket_ids:
+                raise EsbError(
+                    "TICKET_PROTOCOL_ERROR",
+                    "Ticket Service returned no issued tickets",
+                    502,
+                    True,
                 )
-                continue
-            except BusinessFault:
-                await self._fail_booking(workflow, "RESERVATION_FAILED", True, context)
-                raise
-        await self.reconciliation.schedule(
-            workflow.workflow_id,
-            "RESERVE_REPLAY",
-            {"request": dict(payload), "requestFingerprint": fingerprint},
-            idempotency_key,
-        )
-        workflow.phase = WorkflowPhase.PENDING
-        await self.workflows.save(workflow)
-        return None
+            workflow.status = WorkflowStatus.TICKETS_ISSUED
+            steps["ticketsIssued"] = True
+            await self.workflows.save(workflow)
+        elif not workflow.ticket_ids:
+            workflow.ticket_ids = await self._authoritative_ticket_ids(workflow, ctx)
+            if not workflow.ticket_ids:
+                raise EsbError(
+                    "WORKFLOW_EVIDENCE_INCOMPLETE",
+                    "Ticket issue step completed without durable ticket IDs",
+                    409,
+                )
 
-    async def _payment_command(self, operation: str, workflow: WorkflowEvidence, context: RequestContext) -> PaymentOutcome:
-        try:
-            response = await self.payments.command(
-                operation,
-                workflow.payment_id or "",
-                {},
-                step_key(workflow.workflow_id, operation),
-                context,
+        if not steps.get("ticketsAttached"):
+            booking = await self.booking.attach_tickets(
+                workflow.booking_id,
+                {
+                    "ticketIds": workflow.ticket_ids,
+                    "expectedVersion": workflow.booking_version,
+                    "evidence": booking_evidence(
+                        tickets_issued=True,
+                        details={"source": "Ticket"},
+                    ),
+                },
+                workflow.idempotency_key + ":booking-tickets",
+                ctx,
             )
-            return PaymentOutcome(str(response.get("status", "UNKNOWN")))
-        except CommandNotDispatched:
-            # Rejected before any byte was sent, so no payment state can exist.
-            return PaymentOutcome.NOT_DISPATCHED
-        except AmbiguousOutcome:
-            return PaymentOutcome.UNKNOWN
-        except BusinessFault as fault:
-            # Payment Service reports a decline as a 402 business fault. Letting it
-            # escape would abort the saga before compensation, leaving the seat held
-            # and the booking un-failed, so it is folded back into the outcome.
-            if fault.status_code == 402 or fault.code in DECLINED_PAYMENT_CODES:
-                return PaymentOutcome.DECLINED
-            raise
-        except DependencyFailure:
-            # Dispatched, but the transport or an ambiguous 5xx hid the result.
-            return PaymentOutcome.UNKNOWN
+            workflow.booking_version = _int_or_none(
+                booking.get("resourceVersion") or workflow.booking_version
+            )
+            steps["ticketsAttached"] = True
+            await self.workflows.save(workflow)
+
+        if not steps.get("bookingConfirmed"):
+            booking = await self.booking.confirm(
+                workflow.booking_id,
+                {
+                    "expectedVersion": workflow.booking_version,
+                    "reservationId": workflow.reservation_id,
+                    "paymentId": workflow.payment_id,
+                    "paymentStatus": "SUCCEEDED",
+                    "ticketIds": workflow.ticket_ids,
+                    "evidence": booking_evidence(
+                        seat_confirmed=True,
+                        tickets_issued=True,
+                        payment_captured=True,
+                        resolved_payment_status="SUCCEEDED",
+                        details={"orchestratorWorkflowId": workflow.workflow_id},
+                    ),
+                },
+                workflow.idempotency_key + ":booking-confirm",
+                ctx,
+            )
+            workflow.booking_version = _int_or_none(
+                booking.get("resourceVersion") or workflow.booking_version
+            )
+            steps["bookingConfirmed"] = True
+
+        workflow.status = WorkflowStatus.CONFIRMED
+        body = self._response(workflow)
+        workflow.response_status = 201
+        workflow.response_body = body
+        messages = [
+            OutboxMessage(
+                message_id=str(uuid.uuid4()),
+                topic=topic,
+                payload={
+                    **body,
+                    "correlationId": ctx.correlation_id,
+                    "traceId": ctx.trace_id,
+                },
+            )
+            for topic in ("booking.confirmed", "booking.status")
+        ]
+        save_with_outbox = getattr(self.workflows, "save_with_outbox", None)
+        if save_with_outbox is not None:
+            await save_with_outbox(workflow, messages)
+        else:  # compatibility for external test doubles
+            await self.workflows.save(workflow)
+            for message in messages:
+                await self.outbox.add(message)
+        return 201, body
 
     async def _payment_failed(
         self,
-        workflow: WorkflowEvidence,
-        command: PlaceBookingCommand,
-        context: RequestContext,
-    ) -> OperationResult:
-        released = await self._release(workflow, "PAYMENT_FAILED", context)
-        await self._fail_booking(workflow, "PAYMENT_FAILED", released, context)
-        workflow.phase = WorkflowPhase.FAILED if released else WorkflowPhase.COMPENSATION_PENDING
-        await self.workflows.save(workflow)
-        result = OperationResult(
-            402,
-            self._error("PAYMENT_FAILED", "Payment was declined.", context, not released),
-        )
-        await self._complete(command, context, result)
-        return result
-
-    async def _payment_not_dispatched(
-        self,
-        workflow: WorkflowEvidence,
-        command: PlaceBookingCommand,
-        operation: str,
-        context: RequestContext,
-    ) -> OperationResult:
-        """The command never left the ESB: release the seat now, never reconcile."""
-        workflow.payment_status = PaymentOutcome.NOT_DISPATCHED
-        released = await self._release(workflow, "PAYMENT_NOT_DISPATCHED", context)
-        await self._fail_booking(workflow, "PAYMENT_NOT_DISPATCHED", released, context)
-        workflow.phase = WorkflowPhase.FAILED if released else WorkflowPhase.COMPENSATION_PENDING
-        workflow.evidence = {
-            **dict(workflow.evidence),
-            "paymentDispatch": {"operation": operation, "dispatched": False},
-        }
-        await self.workflows.save(workflow)
-        result = OperationResult(
-            503,
-            self._error(
-                "PAYMENT_NOT_DISPATCHED",
-                "The payment command was not sent; no payment was created.",
-                context,
-                True,
-            ),
-        )
-        await self._complete(command, context, result)
-        return result
-
-    async def _payment_unknown(
-        self,
-        workflow: WorkflowEvidence,
-        command: PlaceBookingCommand,
-        context: RequestContext,
-        *,
-        create_key: str | None = None,
-    ) -> OperationResult:
-        workflow.payment_status = PaymentOutcome.UNKNOWN
-        workflow.phase = WorkflowPhase.PAYMENT_PROCESSING
-        await self.workflows.save(workflow)
-        await self.reconciliation.schedule(
-            workflow.workflow_id,
-            "PAYMENT_UNKNOWN",
+        workflow: Workflow,
+        payment: dict[str, Any],
+        ctx: RequestContext,
+    ) -> tuple[int, dict[str, Any]]:
+        if not workflow.booking_id or not workflow.payment_id:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Booking or payment evidence is missing",
+                409,
+            )
+        workflow.payment_status = PaymentStatus.FAILED
+        booking = await self.booking.record_payment(
+            workflow.booking_id,
             {
                 "paymentId": workflow.payment_id,
-                "bookingId": workflow.booking_id,
-                "createIdempotencyKey": create_key,
-                "amount": workflow.total.as_wire() if workflow.total else None,
-                "methodToken": command.payment_method_token,
+                "paymentStatus": "FAILED",
+                "succeeded": False,
+                "failureCode": payment.get("failureCode", "PAYMENT_DECLINED"),
+                "expectedVersion": workflow.booking_version,
+                "evidence": booking_evidence(
+                    resolved_payment_status="FAILED",
+                    details={"source": "Payment"},
+                ),
             },
-            step_key(workflow.workflow_id, "reconcilePayment"),
-            deadline=self.clock.now() + timedelta(seconds=self.reconciliation_deadline_seconds),
+            workflow.idempotency_key + ":booking-payment-failed",
+            ctx,
         )
-        result = self._booking_result(workflow, WorkflowPhase.PAYMENT_PROCESSING, 202)
-        await self._complete(command, context, result)
-        return result
+        workflow.booking_version = _int_or_none(
+            booking.get("resourceVersion") or workflow.booking_version
+        )
 
-    async def _release(self, workflow: WorkflowEvidence, reason: str, context: RequestContext) -> bool:
-        if not workflow.reservation_id:
-            return False
-        try:
-            response = await self.seats.release_seats(
-                workflow.reservation_id,
-                reason,
-                step_key(workflow.workflow_id, f"ReleaseSeats:{reason}"),
-                context,
-            )
-            return response.get("status") == "RELEASED"
-        except Exception:
-            return False
+        compensation = "NOT_REQUIRED"
+        if workflow.reservation_id:
+            try:
+                await self.seat.release(
+                    workflow.reservation_id,
+                    "PAYMENT_FAILED",
+                    workflow.idempotency_key + ":release",
+                    ctx,
+                )
+                compensation = "COMPLETED"
+            except Exception as exc:
+                compensation = "PENDING"
+                workflow.evidence["reservationReleaseErrorCode"] = self._safe_error_code(exc)
 
-    async def _fail_booking(
+        await self.booking.fail(
+            workflow.booking_id,
+            {
+                "failureCode": payment.get("failureCode", "PAYMENT_DECLINED"),
+                "reason": "Payment was not captured",
+                "expectedVersion": workflow.booking_version,
+                "compensationStatus": compensation,
+                "evidence": booking_evidence(
+                    reservation_released=compensation == "COMPLETED",
+                    compensation_completed=compensation in {"COMPLETED", "NOT_REQUIRED"},
+                    details={"reservationRelease": compensation},
+                ),
+            },
+            workflow.idempotency_key + ":booking-fail",
+            ctx,
+        )
+        workflow.status = (
+            WorkflowStatus.FAILED
+            if compensation in {"COMPLETED", "NOT_REQUIRED"}
+            else WorkflowStatus.COMPENSATION_PENDING
+        )
+        failure_code = str(payment.get("failureCode") or "PAYMENT_DECLINED")
+        body = self._workflow_failure_response(
+            workflow,
+            code=failure_code,
+            message="Payment was declined; the reservation is being released",
+            retryable=False,
+            details={
+                "bookingId": workflow.booking_id,
+                "workflowStatus": workflow.status.value,
+                "compensationStatus": compensation,
+            },
+        )
+        workflow.response_status = 402
+        workflow.response_body = body
+        await self.workflows.save(workflow)
+        return 402, body
+
+    async def _persist_payment_unknown(
         self,
-        workflow: WorkflowEvidence,
-        reason: str,
-        compensation_complete: bool,
-        context: RequestContext,
+        workflow: Workflow,
+        ctx: RequestContext,
+    ) -> None:
+        workflow.status = WorkflowStatus.PAYMENT_UNKNOWN
+        workflow.payment_status = PaymentStatus.UNKNOWN
+        if workflow.booking_id and workflow.payment_id:
+            try:
+                booking = await self.booking.record_payment(
+                    workflow.booking_id,
+                    {
+                        "paymentId": workflow.payment_id,
+                        "paymentStatus": "UNKNOWN",
+                        "expectedVersion": workflow.booking_version,
+                        "evidence": booking_evidence(
+                            resolved_payment_status="UNKNOWN",
+                            details={
+                                "source": "Payment",
+                                "reconciliationRequired": True,
+                            },
+                        ),
+                    },
+                    workflow.idempotency_key + ":booking-payment-unknown",
+                    ctx,
+                )
+                workflow.booking_version = _int_or_none(
+                    booking.get("resourceVersion") or workflow.booking_version
+                )
+            except Exception as exc:
+                # The workflow evidence remains durable even when Booking Service
+                # cannot be updated during the same degraded request.
+                workflow.evidence["recordPaymentUnknownErrorCode"] = (
+                    self._safe_error_code(exc)
+                )
+        workflow.response_status = 202
+        workflow.response_body = self._response(workflow)
+        await self.workflows.save(workflow)
+
+    async def _handle_unexpected_failure(
+        self,
+        workflow: Workflow,
+        exc: Exception,
+        ctx: RequestContext,
+    ) -> None:
+        workflow.evidence["lastErrorCode"] = self._safe_error_code(exc)
+        workflow.evidence["lastFailedStepStatus"] = workflow.status.value
+        if workflow.payment_status == PaymentStatus.CAPTURED:
+            workflow.status = WorkflowStatus.COMPENSATION_PENDING
+            await self._mark_booking_compensation_pending(workflow, exc, ctx)
+        elif workflow.status not in TERMINAL_WORKFLOW_STATUSES:
+            await self._fail_pre_capture_workflow(workflow, exc, ctx)
+        await self.workflows.save(workflow)
+
+    async def _fail_pre_capture_workflow(
+        self,
+        workflow: Workflow,
+        exc: Exception,
+        ctx: RequestContext,
+    ) -> None:
+        """Compensate provisional resources and fail the authoritative Booking."""
+
+        evidence: dict[str, Any] = {}
+        complete = True
+        compensation_required = False
+
+        if workflow.payment_id:
+            compensation_required = True
+            payment_complete, payment_evidence = await self._compensate_payment(
+                workflow,
+                ctx,
+            )
+            complete = complete and payment_complete
+            evidence["payment"] = payment_evidence
+
+        if workflow.reservation_id:
+            compensation_required = True
+            try:
+                await self.seat.release(
+                    workflow.reservation_id,
+                    "BOOKING_WORKFLOW_FAILED",
+                    workflow.idempotency_key + ":pre-capture-release",
+                    ctx,
+                )
+                evidence["reservation"] = {"status": "RELEASED"}
+            except Exception as release_error:
+                complete = False
+                evidence["reservation"] = {
+                    "status": "PENDING",
+                    "errorCode": self._safe_error_code(release_error),
+                }
+
+        compensation_status = (
+            "NOT_REQUIRED"
+            if not compensation_required
+            else "COMPLETED" if complete else "PENDING"
+        )
+
+        booking_failed = workflow.booking_id is None
+        if workflow.booking_id:
+            try:
+                result = await self.booking.fail(
+                    workflow.booking_id,
+                    {
+                        "failureCode": self._safe_error_code(exc),
+                        "reason": "Booking workflow failed before payment capture",
+                        "expectedVersion": workflow.booking_version,
+                        "compensationStatus": compensation_status,
+                        "evidence": booking_evidence(
+                            reservation_released=(
+                                evidence.get("reservation", {}).get("status")
+                                == "RELEASED"
+                            ),
+                            compensation_completed=complete,
+                            details=evidence,
+                        ),
+                    },
+                    workflow.idempotency_key + ":pre-capture-fail",
+                    ctx,
+                )
+                workflow.booking_version = _int_or_none(
+                    result.get("resourceVersion") or workflow.booking_version
+                )
+                booking_failed = True
+            except Exception as booking_error:
+                complete = False
+                workflow.evidence["bookingFailErrorCode"] = self._safe_error_code(
+                    booking_error
+                )
+
+        workflow.status = (
+            WorkflowStatus.FAILED
+            if complete and booking_failed
+            else WorkflowStatus.COMPENSATION_PENDING
+        )
+
+    async def _mark_booking_compensation_pending(
+        self,
+        workflow: Workflow,
+        exc: Exception,
+        ctx: RequestContext,
     ) -> None:
         if not workflow.booking_id:
             return
-        state = "COMPLETED" if compensation_complete else "PENDING"
-        await self.bookings.transition(
-            "bookingFail",
-            workflow.booking_id,
-            {
-                "reasonCode": reason,
-                "compensationStatus": state,
-                "evidence": {
-                    "compensationCompleted": compensation_complete,
-                    "verifiedAt": datetime.now(UTC).isoformat(),
+        try:
+            result = await self.booking.fail(
+                workflow.booking_id,
+                {
+                    "failureCode": self._safe_error_code(exc),
+                    "reason": "A post-capture workflow step failed",
+                    "expectedVersion": workflow.booking_version,
+                    "compensationStatus": "PENDING",
+                    "evidence": booking_evidence(
+                        payment_captured=True,
+                        compensation_completed=False,
+                        details={
+                            "orchestratorWorkflowId": workflow.workflow_id,
+                            "failedStepStatus": workflow.evidence.get("lastFailedStepStatus"),
+                        },
+                    ),
                 },
-            },
-            step_key(workflow.workflow_id, f"bookingFail:{reason}"),
-            context,
-        )
-
-    async def _save_step(
-        self,
-        workflow: WorkflowEvidence,
-        step: str,
-        provider: str,
-        outcome: str,
-        details: Mapping[str, Any],
-    ) -> None:
-        await self.workflows.save(workflow)
-        await self.workflows.record_step(workflow.workflow_id, step, provider, outcome, details)
-
-    async def _complete(
-        self,
-        command: PlaceBookingCommand,
-        context: RequestContext,
-        result: OperationResult,
-    ) -> None:
-        await self.idempotency.complete("placeBooking", context.principal.subject, command.idempotency_key, result)
-
-    @staticmethod
-    def _authoritative_selection(event: Mapping[str, Any], eligibility: Mapping[str, Any], quantity: int) -> tuple[str, Money]:
-        ticket_types = list(event.get("ticketTypes", []))
-        if not ticket_types:
-            raise BusinessFault("TICKET_TYPE_UNAVAILABLE", "No ticket type is available.", 409, False)
-        selected = ticket_types[0]
-        price = selected.get("price") or (eligibility.get("priceSnapshot") or [{}])[0].get("price")
-        if not price:
-            raise BusinessFault(
-                "AUTHORITATIVE_PRICE_MISSING",
-                "Authoritative price is unavailable.",
-                503,
-                True,
+                workflow.idempotency_key + ":mark-compensation-pending",
+                ctx,
             )
-        return str(selected.get("code", "STANDARD")), Money(int(price["amountMinor"]) * quantity, str(price["currency"]))
+            workflow.booking_version = _int_or_none(
+                result.get("resourceVersion") or workflow.booking_version
+            )
+        except Exception as mark_error:
+            workflow.evidence["markCompensationErrorCode"] = self._safe_error_code(
+                mark_error
+            )
 
-    @staticmethod
-    def _unit_price(event: Mapping[str, Any], code: str) -> Mapping[str, Any]:
-        selected = next(item for item in event.get("ticketTypes", []) if item.get("code") == code)
-        return selected["price"]
+    async def _compensate_payment(
+        self,
+        workflow: Workflow,
+        ctx: RequestContext,
+    ) -> tuple[bool, dict[str, Any]]:
+        if not workflow.payment_id:
+            return True, {"status": "NOT_REQUIRED"}
+        try:
+            payment = await self.payment.get(workflow.payment_id, ctx)
+            status = str(payment.get("status", "")).upper()
+            if status in {"CAPTURED", "PARTIALLY_REFUNDED"}:
+                # Payment Service remains authoritative for the refundable amount.
+                refund = await self.payment.refund(
+                    workflow.payment_id,
+                    {
+                        "reason": "BOOKING_WORKFLOW_FAILED",
+                        "expectedVersion": payment.get("resourceVersion"),
+                    },
+                    workflow.idempotency_key + ":compensate-refund",
+                    ctx,
+                )
+                return True, {
+                    "status": "REFUNDED",
+                    "refundId": refund.get("refundId"),
+                    "amountMinor": refund.get("amountMinor"),
+                }
+            if status in {"PENDING", "AUTHORIZED"}:
+                await self.payment.cancel(
+                    workflow.payment_id,
+                    {
+                        "reason": "BOOKING_WORKFLOW_FAILED",
+                        "expectedVersion": payment.get("resourceVersion"),
+                    },
+                    workflow.idempotency_key + ":compensate-payment-cancel",
+                    ctx,
+                )
+                return True, {"status": "CANCELLED"}
+            if status in {"REFUNDED", "CANCELLED", "FAILED"}:
+                return True, {"status": status, "action": "NONE"}
+            return False, {"status": status, "action": "RECONCILE"}
+        except Exception as exc:
+            return False, {
+                "status": "PENDING",
+                "errorCode": self._safe_error_code(exc),
+            }
 
-    @staticmethod
-    def _error(code: str, message: str, context: RequestContext, retryable: bool) -> Mapping[str, Any]:
-        return {
-            "correlationId": context.correlation_id,
-            "traceId": context.trace_id,
-            "error": {"code": code, "message": message, "retryable": retryable},
-        }
+    async def _authoritative_ticket_ids(
+        self,
+        workflow: Workflow,
+        ctx: RequestContext,
+    ) -> list[str]:
+        ids = list(workflow.ticket_ids)
+        if not workflow.booking_id:
+            return ids
+        try:
+            response = await self.ticket.list_booking(workflow.booking_id, ctx)
+            rows = (
+                response.get("tickets") or response.get("items") or []
+                if isinstance(response, dict)
+                else response
+            )
+            for row in rows or []:
+                ticket_id = row.get("ticketId") if isinstance(row, dict) else row
+                if ticket_id and str(ticket_id) not in ids:
+                    ids.append(str(ticket_id))
+        except Exception as exc:
+            workflow.evidence["ticketDiscoveryErrorCode"] = self._safe_error_code(exc)
+        workflow.ticket_ids = ids
+        return ids
 
-    @staticmethod
-    def _booking_result(workflow: WorkflowEvidence, phase: WorkflowPhase, status_code: int = 202) -> OperationResult:
-        return OperationResult(
-            status_code,
-            {
-                "bookingId": workflow.booking_id or workflow.workflow_id,
-                "status": phase.value,
-                "total": (workflow.total or Money(0, "VND")).as_wire(),
-                "reservationId": workflow.reservation_id,
-                "paymentId": workflow.payment_id,
-                "ticketIds": list(workflow.ticket_ids),
-                "correlationId": workflow.correlation_id,
-            },
+    async def _refresh_booking_version(
+        self,
+        workflow: Workflow,
+        ctx: RequestContext,
+    ) -> None:
+        if not workflow.booking_id:
+            return
+        booking = await self.booking.get(workflow.booking_id, ctx)
+        workflow.booking_version = _int_or_none(
+            booking.get("resourceVersion") or workflow.booking_version
         )
+        steps = workflow.evidence.setdefault("completedSteps", {})
+        payment_status = str(booking.get("paymentStatus") or "").upper()
+        reservation_status = str(booking.get("reservationStatus") or "").upper()
+        booking_status = str(booking.get("status") or "").upper()
+        if payment_status == "SUCCEEDED" or booking.get("paymentRecordedAt"):
+            steps["paymentRecorded"] = True
+        if reservation_status == "CONFIRMED" or booking.get("reservationConfirmedAt"):
+            steps["seatConfirmed"] = True
+            steps["reservationEvidenceConfirmed"] = True
+        ticket_ids = booking.get("ticketIds") or []
+        if ticket_ids and (booking.get("ticketsAttachedAt") or booking_status == "CONFIRMED"):
+            workflow.ticket_ids = [str(ticket_id) for ticket_id in ticket_ids]
+            steps["ticketsIssued"] = True
+            steps["ticketsAttached"] = True
+        if booking_status == "CONFIRMED":
+            steps["bookingConfirmed"] = True
+        reservation_version = _int_or_none(booking.get("reservationVersion"))
+        if reservation_version is not None:
+            workflow.reservation_version = reservation_version
+        await self.workflows.save(workflow)
 
     @staticmethod
-    def _event_payload(workflow: WorkflowEvidence) -> Mapping[str, Any]:
+    def _workflow_items(workflow: Workflow) -> list[BookingItem]:
+        items = [BookingItem(**item) for item in workflow.evidence.get("items", [])]
+        if not items:
+            raise EsbError(
+                "WORKFLOW_EVIDENCE_INCOMPLETE",
+                "Authoritative booking items are missing from workflow",
+                409,
+            )
+        return items
+
+    @staticmethod
+    def _safe_error_code(exc: Exception) -> str:
+        return exc.code if isinstance(exc, EsbError) else type(exc).__name__.upper()
+
+    @staticmethod
+    def _workflow_failure_response(
+        workflow: Workflow,
+        *,
+        code: str,
+        message: str,
+        retryable: bool,
+        details: dict[str, Any],
+    ) -> dict[str, Any]:
         return {
-            "bookingId": workflow.booking_id,
-            "status": "CONFIRMED",
-            "ticketIds": list(workflow.ticket_ids),
+            "correlationId": workflow.evidence.get("correlationId"),
+            "traceId": workflow.evidence.get("traceId"),
+            "error": {
+                "code": code,
+                "message": message,
+                "retryable": retryable,
+                "details": details,
+            },
         }
 
     @staticmethod
-    def _realtime_payload(workflow: WorkflowEvidence) -> Mapping[str, Any]:
-        return {
-            "bookingId": workflow.booking_id,
-            "status": "CONFIRMED",
-            "sequence": workflow.version,
+    def _public_booking_status(status: WorkflowStatus) -> str:
+        mapping = {
+            WorkflowStatus.STARTED: "PENDING",
+            WorkflowStatus.SEAT_RESERVED: "SEAT_RESERVED",
+            WorkflowStatus.PAYMENT_PROCESSING: "PAYMENT_PROCESSING",
+            WorkflowStatus.PAYMENT_UNKNOWN: "PAYMENT_PROCESSING",
+            WorkflowStatus.SEAT_CONFIRMED: "PAYMENT_PROCESSING",
+            WorkflowStatus.TICKETS_ISSUED: "PAYMENT_PROCESSING",
+            WorkflowStatus.CANCELLATION_PENDING: "COMPENSATION_PENDING",
+            WorkflowStatus.COMPENSATION_PENDING: "COMPENSATION_PENDING",
+            WorkflowStatus.CONFIRMED: "CONFIRMED",
+            WorkflowStatus.FAILED: "FAILED",
+            WorkflowStatus.CANCELLED: "CANCELLED",
         }
+        return mapping[status]
+
+    @staticmethod
+    def _public_payment_status(status: PaymentStatus) -> str:
+        mapping = {
+            PaymentStatus.PENDING: "PENDING",
+            PaymentStatus.AUTHORIZED: "PROCESSING",
+            PaymentStatus.CAPTURED: "SUCCEEDED",
+            PaymentStatus.UNKNOWN: "UNKNOWN",
+            PaymentStatus.FAILED: "FAILED",
+            PaymentStatus.CANCELLED: "FAILED",
+            PaymentStatus.PARTIALLY_REFUNDED: "REFUND_PENDING",
+            PaymentStatus.REFUNDED: "REFUNDED",
+        }
+        return mapping[status]
+
+    @staticmethod
+    def _response(workflow: Workflow) -> dict[str, Any]:
+        return {
+            "workflowId": workflow.workflow_id,
+            "bookingId": workflow.booking_id,
+            "eventId": workflow.event_id,
+            "seatIds": workflow.seat_ids,
+            "status": BookingSaga._public_booking_status(workflow.status),
+            "total": {
+                "amountMinor": workflow.amount_minor,
+                "currency": workflow.currency,
+            },
+            "reservationId": workflow.reservation_id,
+            "paymentId": workflow.payment_id,
+            "paymentStatus": BookingSaga._public_payment_status(workflow.payment_status),
+            "ticketIds": workflow.ticket_ids,
+            "correlationId": workflow.evidence.get("correlationId"),
+            "resourceVersion": workflow.booking_version,
+        }
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None

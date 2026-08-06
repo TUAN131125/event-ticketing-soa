@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.domain.exceptions import BookingError, InternalFailure
+from app.domain.exceptions import BookingError, InternalFailure, InvalidRequest
 from app.middleware.correlation_id import current_correlation_id
 
 LOGGER = logging.getLogger("booking.errors")
@@ -46,8 +46,6 @@ def install_error_handlers(app: FastAPI) -> None:
     async def validation_error_handler(
         _request: Request, _error: RequestValidationError
     ) -> JSONResponse:
-        from app.domain.exceptions import InvalidRequest
-
         return _response(InvalidRequest("Request body or parameters are invalid"))
 
     @app.exception_handler(Exception)

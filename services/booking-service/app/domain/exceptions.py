@@ -40,7 +40,7 @@ class BookingNotFound(BookingError):
 
 
 class InvalidStateTransition(BookingError):
-    code = "INVALID_STATE_TRANSITION"
+    code = "INVALID_BOOKING_STATE"
     http_status = 409
 
     def __init__(self, current: str, target: str) -> None:
@@ -62,7 +62,7 @@ class VersionConflict(BookingError):
 
 
 class IdempotencyConflict(BookingError):
-    code = "IDEMPOTENCY_CONFLICT"
+    code = "IDEMPOTENCY_KEY_REUSED"
     http_status = 409
 
     def __init__(self) -> None:
@@ -77,6 +77,46 @@ class ReservationConflict(BookingError):
         super().__init__(
             f"Reservation {reservation_id} is already attached to another booking",
             details={"reservationId": reservation_id},
+        )
+
+
+class MissingReservationEvidence(BookingError):
+    code = "MISSING_RESERVATION_EVIDENCE"
+    http_status = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Booking cannot be confirmed until reservation evidence is CONFIRMED"
+        )
+
+
+class MissingPaymentEvidence(BookingError):
+    code = "MISSING_PAYMENT_EVIDENCE"
+    http_status = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Booking cannot be confirmed until payment evidence is SUCCEEDED"
+        )
+
+
+class MissingTicketEvidence(BookingError):
+    code = "MISSING_TICKET_EVIDENCE"
+    http_status = 409
+
+    def __init__(self) -> None:
+        super().__init__("Booking cannot be confirmed until tickets are attached")
+
+
+class CompensationEvidenceRequired(BookingError):
+    code = "COMPENSATION_EVIDENCE_REQUIRED"
+    http_status = 409
+
+    def __init__(self, action: str) -> None:
+        super().__init__(
+            "Booking requires completed compensation evidence before it can "
+            "become terminal",
+            details={"compensationAction": action},
         )
 
 

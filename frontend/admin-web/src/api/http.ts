@@ -99,7 +99,7 @@ export async function requestWithMetadata<T>(
                   : response.status === 404
                     ? 'NOT_FOUND'
                     : 'REQUEST_FAILED',
-          retryable: typeof record.retryable === 'boolean' ? record.retryable : undefined,
+          retryable: typeof error.retryable === 'boolean' ? error.retryable : undefined,
           correlationId:
             typeof record.correlationId === 'string' ? record.correlationId : correlationId,
         },
@@ -109,8 +109,18 @@ export async function requestWithMetadata<T>(
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError')
-      throw new ApiError('The service did not respond in time', { code: 'SERVICE_TIMEOUT' });
-    throw new ApiError('The service is unavailable', { code: 'SERVICE_UNAVAILABLE' });
+      throw new ApiError('The service did not respond in time', {
+        status: 504,
+        code: 'SERVICE_TIMEOUT',
+        retryable: true,
+        correlationId,
+      });
+    throw new ApiError('The service is unavailable', {
+      status: 503,
+      code: 'SERVICE_UNAVAILABLE',
+      retryable: true,
+      correlationId,
+    });
   } finally {
     window.clearTimeout(timer);
   }

@@ -1,1 +1,0 @@
-"""Canonical public FastAPI ingress."""

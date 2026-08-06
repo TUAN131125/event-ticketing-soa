@@ -1,14 +1,33 @@
+import { useState, type ChangeEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Badge, Button, Card, Spinner } from '@event-ticketing/shared-ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmationDialog,
+  Spinner,
+  Textarea,
+} from '@event-ticketing/shared-ui';
 import { useBooking, useCancelBooking } from '../app/hooks';
 import { ApiError } from '../api/auth-client';
-import { describeBookingStatus, isConfirmed, isSettled } from '../domain/booking-status';
+import { ApiErrorDetails } from '../components/common/ApiErrorDetails';
+import { describeBookingStatus, isConfirmed } from '../domain/booking-status';
 import { QueryState } from './PageState';
+
+const CANCELLATION_BLOCKED = new Set([
+  'FAILED',
+  'CANCELLED',
+  'COMPENSATION_PENDING',
+  'PAYMENT_PROCESSING',
+]);
 
 export function BookingDetailPage() {
   const { bookingId = '' } = useParams();
   const booking = useBooking(bookingId);
   const cancel = useCancelBooking(bookingId);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reason, setReason] = useState('Customer requested cancellation');
+
   if (booking.isLoading)
     return (
       <section className="container page-section page-state">
@@ -23,13 +42,17 @@ export function BookingDetailPage() {
         notFound={!booking.data}
       />
     );
+
   const value = booking.data;
   const view = describeBookingStatus(value.status);
   const confirmed = isConfirmed(value.status);
+  const cancellationBlocked = CANCELLATION_BLOCKED.has(value.status);
+  const cancelError = cancel.error instanceof ApiError ? cancel.error : null;
+
   return (
     <section className="container page-section">
       <Link to="/bookings" className="back-link">
-        ← Booking lookup
+        ← My bookings
       </Link>
       <div className="detail-layout">
         <div className="detail-main">
@@ -63,34 +86,38 @@ export function BookingDetailPage() {
                   <dd>{value.eventId}</dd>
                 </div>
               )}
-              {value.seatIds?.length && (
+              {Boolean(value.seatIds?.length) && (
                 <div>
                   <dt>Seat IDs</dt>
-                  <dd>{value.seatIds.join(', ')}</dd>
+                  <dd>{value.seatIds?.join(', ')}</dd>
                 </div>
               )}
             </dl>
           </Card>
           {cancel.isError && (
-            <p className="form-error" role="alert">
-              {cancel.error instanceof ApiError ? cancel.error.message : 'Cancellation failed.'}
-            </p>
+            <div className="notice notice-danger" role="alert">
+              <div>
+                <strong>{cancelError?.message ?? 'Cancellation failed.'}</strong>
+                <ApiErrorDetails error={cancel.error} />
+              </div>
+            </div>
           )}
         </div>
+
         <Card padded className="booking-panel">
           <h2>Actions</h2>
           <Button
             fullWidth
             variant="secondary"
-            disabled={cancel.isPending || isSettled(value.status)}
-            onClick={() => cancel.mutate()}
+            disabled={cancel.isPending || cancellationBlocked}
+            onClick={() => setConfirmOpen(true)}
           >
-            {cancel.isPending ? 'Cancelling…' : 'Cancel booking'}
+            Cancel booking
           </Button>
-          {view.inProgress && (
+          {cancellationBlocked && (
             <p className="muted">
-              Cancellation is unavailable while the workflow is still running. This page reloads the
-              authoritative status on its own.
+              Cancellation is unavailable while payment or compensation is running, or after the
+              booking has already failed/cancelled. The server remains authoritative for policy.
             </p>
           )}
           {confirmed &&
@@ -98,13 +125,42 @@ export function BookingDetailPage() {
               <Link
                 key={ticketId}
                 className="button button-ghost"
-                to={`/tickets/${encodeURIComponent(ticketId)}?bookingId=${encodeURIComponent(value.bookingId)}`}
+                to={`/tickets/${encodeURIComponent(ticketId)}`}
               >
                 Ticket {ticketId}
               </Link>
             ))}
         </Card>
       </div>
+
+      <ConfirmationDialog
+        open={confirmOpen}
+        title="Cancel this booking?"
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={() =>
+          cancel.mutate(
+            { reason: reason.trim() || 'Customer requested cancellation' },
+            { onSuccess: () => setConfirmOpen(false) },
+          )
+        }
+        confirmLabel="Confirm cancellation"
+        tone="danger"
+        loading={cancel.isPending}
+      >
+        <p>
+          The ESB may need to release seats and refund a captured demo payment. The final result
+          comes from the authoritative booking workflow.
+        </p>
+        <label htmlFor="cancel-reason">
+          <strong>Reason</strong>
+        </label>
+        <Textarea
+          id="cancel-reason"
+          value={reason}
+          maxLength={250}
+          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setReason(event.target.value)}
+        />
+      </ConfirmationDialog>
     </section>
   );
 }

@@ -1,9 +1,8 @@
 # UI decisions
 
-- Identity is accessed through an `AuthClient` abstraction. Pages never know
-  whether auth is direct or gateway-routed.
+- Identity is accessed only through the ESB `/api/auth/*` façade via an `AuthClient` abstraction. Pages never know the Identity provider URL.
 - Access JWTs are held in memory and refresh tokens remain HttpOnly cookies.
-  Refresh/logout send the double-submit CSRF header returned by Identity.
+  Refresh/logout send the double-submit CSRF header returned through the ESB; the ESB preserves Identity cookies.
 - ESB and realtime clients are typed boundaries. There is no runtime mock,
   fake dataset, MSW server, or fake-success fallback in production bundles.
 - Server state is owned by TanStack Query; navigation and transient feedback are
