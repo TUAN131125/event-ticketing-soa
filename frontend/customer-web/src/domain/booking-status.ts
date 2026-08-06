@@ -1,11 +1,7 @@
-import type { components } from '@event-ticketing/shared-ui/realtime-messages';
+import type { BookingStatus } from '@event-ticketing/shared-ui/frontend-esb-contract';
 
-/**
- * `BookingResult.status` is an open string in contracts/esb-public-api.yaml. The known
- * values are the ones the Realtime projection enumerates; anything else must degrade to a
- * safe, non-committal presentation rather than being guessed at.
- */
-export type KnownBookingStatus = components['schemas']['RealtimeMessage']['status'];
+/** Public booking states are generated from the canonical ESB contract. */
+export type KnownBookingStatus = BookingStatus;
 
 const KNOWN_STATUSES: readonly KnownBookingStatus[] = [
   'PENDING',
@@ -35,9 +31,8 @@ export function isUnsuccessful(status: string): boolean {
 }
 
 /**
- * `PAYMENT_PROCESSING` is the state the ESB reports together with `202` when the payment
- * outcome is unknown and a reconciliation job owns the workflow. The browser must wait and
- * poll; it must never resend the booking or payment command.
+ * PAYMENT_PROCESSING is also used while Payment Service reconciliation owns an
+ * unknown provider outcome. The browser must poll; it must never resend the command.
  */
 export function isReconciling(status: string): boolean {
   return status === 'PAYMENT_PROCESSING' || status === 'COMPENSATION_PENDING';
@@ -73,7 +68,7 @@ export function describeBookingStatus(status: string): BookingStatusView {
         label: 'Payment processing',
         tone: 'warning',
         description:
-          'The payment result is being verified with the payment provider. Your seats stay held and this page reloads the authoritative status until the outcome is settled. Do not submit the booking again.',
+          'The payment result is being verified. This page reloads the authoritative status; do not submit the booking again.',
         inProgress: true,
       };
     case 'COMPENSATION_PENDING':
@@ -95,7 +90,7 @@ export function describeBookingStatus(status: string): BookingStatusView {
       return {
         label: 'Failed',
         tone: 'danger',
-        description: 'The booking did not complete. Any held seats were released.',
+        description: 'The booking did not complete. Compensation status remains authoritative.',
         inProgress: false,
       };
     case 'CANCELLED':
@@ -110,7 +105,7 @@ export function describeBookingStatus(status: string): BookingStatusView {
         label: status || 'Unknown',
         tone: 'neutral',
         description:
-          'This status is not one the browser recognises. The booking service remains authoritative; reload for the current state.',
+          'This status is not recognised by this browser build. Reload the authoritative booking state.',
         inProgress: false,
       };
   }

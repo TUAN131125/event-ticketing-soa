@@ -1,364 +1,482 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
-from collections.abc import Mapping, Sequence
+import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any
 
-from libs.platform_security import sign_hmac_request
+from app.domain.models import Principal, RequestContext
 
-from app.adapters.rest.base import RestClient
-from app.contract_freeze import EXPECTED_CATALOG_SHA, EXPECTED_FREEZE_ID
-from app.domain.models import Money, RequestContext
-from app.resilience.policies import RetryClass
+from .base import RestClient
 
 
-class CustomerRestAdapter:
-    contract = (
-        "customer-service",
-        "customer-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
-
+class CustomerAdapter:
     def __init__(self, client: RestClient) -> None:
         self.client = client
 
-    async def resolve_mapping(self, identity_subject: str, context: RequestContext) -> Mapping[str, Any]:
+    async def resolve_identity(
+        self, subject: str, ctx: RequestContext
+    ) -> dict[str, Any]:
         return await self.client.request(
             "GET",
-            f"/internal/identity-mappings/{identity_subject}",
-            context,
-            retry_class=RetryClass.SAFE_READ,
+            f"/internal/identity-mappings/{subject}",
+            ctx,
+            idempotent=True,
         )
 
-    async def get_customer(self, customer_id: str, context: RequestContext) -> Mapping[str, Any]:
+    async def get(self, customer_id: str, ctx: RequestContext) -> dict[str, Any]:
         return await self.client.request(
-            "GET",
+            "GET", f"/customers/{customer_id}", ctx, idempotent=True
+        )
+
+    async def create(
+        self, payload: dict[str, Any], key: str, ctx: RequestContext
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "POST",
+            "/customers",
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
+        )
+
+    async def replace(
+        self,
+        customer_id: str,
+        payload: dict[str, Any],
+        key: str,
+        if_match: str,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "PUT",
             f"/customers/{customer_id}",
-            context,
-            retry_class=RetryClass.SAFE_READ,
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key, "If-Match": if_match},
+            idempotent=True,
+        )
+
+    async def link_identity(
+        self,
+        customer_id: str,
+        subject: str,
+        key: str,
+        if_match: str,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "PUT",
+            f"/internal/customers/{customer_id}/identity-link",
+            ctx,
+            json={"identitySubject": subject},
+            headers={"Idempotency-Key": key, "If-Match": if_match},
+            idempotent=True,
+        )
+
+    async def update_consent(
+        self,
+        customer_id: str,
+        payload: dict[str, Any],
+        key: str,
+        if_match: str,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "POST",
+            f"/customers/{customer_id}/consents",
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key, "If-Match": if_match},
+            idempotent=True,
         )
 
 
-class EventRestAdapter:
-    contract = (
-        "event-service",
-        "event-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
+class EventAdapter:
+    COMMANDS = {
+        "create": ("POST", "/events"),
+        "replace": ("PUT", "/events/{event_id}"),
+        "publish": ("POST", "/events/{event_id}/publish"),
+        "pause": ("POST", "/events/{event_id}/pause"),
+        "close": ("POST", "/events/{event_id}/close"),
+        "cancel": ("POST", "/events/{event_id}/cancel"),
+    }
 
     def __init__(self, client: RestClient) -> None:
         self.client = client
 
-    async def list_events(self, context: RequestContext) -> Sequence[Mapping[str, Any]]:
-        return await self.client.request("GET", "/events", context, retry_class=RetryClass.SAFE_READ)
+    async def list_events(
+        self, params: dict[str, Any], ctx: RequestContext
+    ) -> Any:
+        return await self.client.request(
+            "GET",
+            "/events",
+            ctx,
+            params=params,
+            idempotent=True,
+        )
 
-    async def get_event(self, event_id: str, context: RequestContext) -> Mapping[str, Any]:
-        return await self.client.request("GET", f"/events/{event_id}", context, retry_class=RetryClass.SAFE_READ)
+    async def get_event(
+        self, event_id: str, ctx: RequestContext
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "GET",
+            f"/events/{event_id}",
+            ctx,
+            idempotent=True,
+        )
 
-    async def get_sale_eligibility(self, event_id: str, context: RequestContext) -> Mapping[str, Any]:
+    async def check_sale_eligibility(
+        self, event_id: str, ctx: RequestContext
+    ) -> dict[str, Any]:
         return await self.client.request(
             "GET",
             f"/events/{event_id}/sale-eligibility",
-            context,
-            retry_class=RetryClass.SAFE_READ,
+            ctx,
+            idempotent=True,
+        )
+
+    async def admin_command(
+        self,
+        operation: str,
+        event_id: str | None,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        ctx: RequestContext,
+    ) -> Any:
+        method, template = self.COMMANDS[operation]
+        path = template.format(event_id=event_id)
+        return await self.client.request(
+            method,
+            path,
+            ctx,
+            json=payload or None,
+            headers=headers,
+            idempotent=True,
         )
 
 
-class BookingRestAdapter:
-    contract = (
-        "booking-service",
-        "booking-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
-
+class BookingAdapter:
     def __init__(self, client: RestClient) -> None:
         self.client = client
-        self._versions: dict[str, int] = {}
 
-    async def create_booking(
-        self,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any]:
-        result = await self.client.request(
-            "POST",
-            "/bookings",
-            context,
-            json_body=payload,
-            idempotency_key=idempotency_key,
-            retry_class=RetryClass.IDEMPOTENT_COMMAND,
-            ambiguous_command=True,
-        )
-        self._remember(result)
-        return result
-
-    async def get_booking(self, booking_id: str, context: RequestContext) -> Mapping[str, Any]:
-        result = await self.client.request(
-            "GET",
-            f"/bookings/{booking_id}",
-            context,
-            retry_class=RetryClass.SAFE_READ,
-        )
-        self._remember(result)
-        self._versions.setdefault(booking_id, int(result.get("resourceVersion", 1)))
-        return result
-
-    async def decide_access(self, booking_id: str, context: RequestContext) -> Mapping[str, Any]:
+    async def create(
+        self, payload: dict[str, Any], key: str, ctx: RequestContext
+    ) -> dict[str, Any]:
         return await self.client.request(
             "POST",
-            f"/internal/bookings/{booking_id}/access-decisions",
-            context,
-            json_body={
-                "identitySubject": context.principal.subject,
-                "roles": list(context.principal.roles),
-            },
-            retry_class=RetryClass.SAFE_READ,
+            "/bookings",
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
         )
 
-    async def transition(
+    async def get(
+        self, booking_id: str, ctx: RequestContext
+    ) -> dict[str, Any]:
+        return await self.client.request(
+            "GET",
+            f"/bookings/{booking_id}",
+            ctx,
+            idempotent=True,
+        )
+
+    async def list_customer(
         self,
-        operation: str,
+        customer_id: str,
+        params: dict[str, Any],
+        ctx: RequestContext,
+    ) -> Any:
+        return await self.client.request(
+            "GET",
+            "/bookings",
+            ctx,
+            params={"customerId": customer_id, **params},
+            idempotent=True,
+        )
+
+    async def _post(
+        self,
         booking_id: str,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any]:
-        suffix = {
-            "bookingReservation": "reservation",
-            "bookingPaymentStarted": "payment-started",
-            "bookingPaymentResult": "payment-result",
-            "bookingTickets": "tickets",
-            "bookingConfirm": "confirm",
-            "bookingFail": "fail",
-            "bookingCancel": "cancel",
-        }[operation]
-        if booking_id not in self._versions:
-            await self.get_booking(booking_id, context)
-        result = await self.client.request(
+        suffix: str,
+        payload: dict[str, Any],
+        key: str,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        return await self.client.request(
             "POST",
             f"/bookings/{booking_id}/{suffix}",
-            context,
-            json_body=payload,
-            idempotency_key=idempotency_key,
-            extra_headers={"If-Match": f'"{self._versions[booking_id]}"'},
-            retry_class=RetryClass.IDEMPOTENT_COMMAND,
-            ambiguous_command=True,
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
         )
-        self._remember(result)
-        return result
 
-    def _remember(self, booking: Mapping[str, Any]) -> None:
-        booking_id = booking.get("bookingId")
-        version = booking.get("resourceVersion")
-        if isinstance(booking_id, str) and isinstance(version, int):
-            self._versions[booking_id] = version
+    async def attach_reservation(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "reservation", payload, key, ctx)
+
+    async def confirm_reservation(self, booking_id, payload, key, ctx):
+        return await self._post(
+            booking_id,
+            "reservation-confirmed",
+            payload,
+            key,
+            ctx,
+        )
+
+    async def start_payment(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "payment-started", payload, key, ctx)
+
+    async def record_payment(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "payment-result", payload, key, ctx)
+
+    async def attach_tickets(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "tickets", payload, key, ctx)
+
+    async def confirm(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "confirm", payload, key, ctx)
+
+    async def fail(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "fail", payload, key, ctx)
+
+    async def cancel(self, booking_id, payload, key, ctx):
+        return await self._post(booking_id, "cancel", payload, key, ctx)
+
+    async def record_compensation(self, booking_id, payload, key, ctx):
+        return await self._post(
+            booking_id,
+            "compensation-result",
+            payload,
+            key,
+            ctx,
+        )
 
 
-class PaymentRestAdapter:
-    contract = (
-        "payment-service",
-        "payment-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
-
+class PaymentAdapter:
     def __init__(self, client: RestClient) -> None:
         self.client = client
-        self._versions: dict[str, int] = {}
 
-    async def create_payment(
-        self,
-        booking_id: str,
-        amount: Money,
-        method_token: str,
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any]:
-        result = await self.client.request(
+    async def create(self, payload, key, ctx):
+        return await self.client.request(
             "POST",
             "/payments",
-            context,
-            json_body={
-                "bookingId": booking_id,
-                "amount": amount.as_wire(),
-                "methodToken": method_token,
-            },
-            idempotency_key=idempotency_key,
-            retry_class=RetryClass.IDEMPOTENT_COMMAND,
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
         )
-        self._remember(result)
-        return result
 
-    async def get_payment(self, payment_id: str, context: RequestContext) -> Mapping[str, Any]:
-        result = await self.client.request("GET", f"/payments/{payment_id}", context, retry_class=RetryClass.SAFE_READ)
-        self._remember(result)
-        self._versions.setdefault(payment_id, int(result.get("resourceVersion", 1)))
-        return result
-
-    async def command(
-        self,
-        operation: str,
-        payment_id: str,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Mapping[str, Any]:
-        suffix = {
-            "authorizePayment": "authorize",
-            "capturePayment": "capture",
-            "cancelPayment": "cancel",
-            "createRefund": "refunds",
-            "reconcilePayment": "reconcile",
-        }[operation]
-        ambiguous = operation in {"authorizePayment", "capturePayment"}
-        retry = RetryClass.RECONCILIATION_ONLY if ambiguous else RetryClass.IDEMPOTENT_COMMAND
-        if payment_id not in self._versions:
-            await self.get_payment(payment_id, context)
-        result = await self.client.request(
+    async def _post(self, payment_id, suffix, payload, key, ctx):
+        return await self.client.request(
             "POST",
             f"/payments/{payment_id}/{suffix}",
-            context,
-            json_body=payload or None,
-            idempotency_key=idempotency_key,
-            extra_headers={"If-Match": f'"{self._versions[payment_id]}"'},
-            retry_class=retry,
-            ambiguous_command=ambiguous,
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
         )
-        self._remember(result)
-        return result
 
-    def _remember(self, payment: Mapping[str, Any]) -> None:
-        payment_id = payment.get("paymentId")
-        version = payment.get("resourceVersion")
-        if isinstance(payment_id, str) and isinstance(version, int):
-            self._versions[payment_id] = version
+    async def authorize(self, payment_id, payload, key, ctx):
+        return await self._post(payment_id, "authorize", payload, key, ctx)
+
+    async def capture(self, payment_id, payload, key, ctx):
+        return await self._post(payment_id, "capture", payload, key, ctx)
+
+    async def get(self, payment_id, ctx):
+        return await self.client.request(
+            "GET",
+            f"/payments/{payment_id}",
+            ctx,
+            idempotent=True,
+        )
+
+    async def cancel(self, payment_id, payload, key, ctx):
+        return await self._post(payment_id, "cancel", payload, key, ctx)
+
+    async def refund(self, payment_id, payload, key, ctx):
+        # Keep the canonical additive endpoint while the refactored Payment Service
+        # still preserves the legacy /refund operation.
+        return await self.client.request(
+            "POST",
+            f"/payments/{payment_id}/refunds",
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
+        )
+
+    async def reconcile(self, payment_id, payload, key, ctx):
+        return await self._post(payment_id, "reconcile", payload, key, ctx)
 
 
-class TicketRestAdapter:
-    contract = (
-        "ticket-service",
-        "ticket-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
-
+class TicketAdapter:
     def __init__(self, client: RestClient) -> None:
         self.client = client
-        self._versions: dict[str, int] = {}
 
-    async def issue_tickets(
-        self,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        context: RequestContext,
-    ) -> Sequence[Mapping[str, Any]]:
-        result = await self.client.request(
+    async def issue(self, payload, key, ctx):
+        return await self.client.request(
             "POST",
             "/tickets:issue",
-            context,
-            json_body=payload,
-            idempotency_key=idempotency_key,
-            retry_class=RetryClass.IDEMPOTENT_COMMAND,
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
         )
-        for ticket in result:
-            self._remember(ticket)
-        return result
 
-    async def list_booking_tickets(self, booking_id: str, context: RequestContext) -> Sequence[Mapping[str, Any]]:
-        result = await self.client.request(
+    async def get(self, ticket_id, ctx):
+        return await self.client.request(
+            "GET",
+            f"/tickets/{ticket_id}",
+            ctx,
+            idempotent=True,
+        )
+
+    async def list_booking(self, booking_id, ctx):
+        return await self.client.request(
             "GET",
             f"/bookings/{booking_id}/tickets",
-            context,
-            retry_class=RetryClass.SAFE_READ,
+            ctx,
+            idempotent=True,
         )
-        for ticket in result:
-            self._remember(ticket)
-        return result
 
-    async def cancel_ticket(self, ticket_id: str, idempotency_key: str, context: RequestContext) -> Mapping[str, Any]:
-        if ticket_id not in self._versions:
-            ticket = await self.client.request("GET", f"/tickets/{ticket_id}", context, retry_class=RetryClass.SAFE_READ)
-            self._remember(ticket)
-            self._versions.setdefault(ticket_id, int(ticket.get("resourceVersion", 1)))
-        result = await self.client.request(
+    async def validate(self, payload, key, ctx):
+        return await self.client.request(
+            "POST",
+            "/tickets/validate",
+            ctx,
+            json=payload,
+            headers={"Idempotency-Key": key},
+            idempotent=True,
+        )
+
+    async def check_in(self, ticket_id, payload, headers, ctx):
+        del payload
+        return await self.client.request(
+            "POST",
+            f"/tickets/{ticket_id}/check-in",
+            ctx,
+            headers=headers,
+            idempotent=True,
+        )
+
+    async def cancel(self, ticket_id, payload, key, ctx):
+        expected_version = payload.get("expectedVersion")
+        if expected_version is None:
+            ticket = await self.get(ticket_id, ctx)
+            expected_version = ticket.get("resourceVersion")
+        return await self.client.request(
             "POST",
             f"/tickets/{ticket_id}/cancel",
-            context,
-            idempotency_key=idempotency_key,
-            extra_headers={"If-Match": f'"{self._versions[ticket_id]}"'},
-            retry_class=RetryClass.IDEMPOTENT_COMMAND,
+            ctx,
+            headers={
+                "Idempotency-Key": key,
+                "If-Match": f'"{expected_version}"',
+            },
+            idempotent=True,
         )
-        self._remember(result)
-        return result
-
-    def _remember(self, ticket: Mapping[str, Any]) -> None:
-        ticket_id = ticket.get("ticketId")
-        version = ticket.get("resourceVersion")
-        if isinstance(ticket_id, str) and isinstance(version, int):
-            self._versions[ticket_id] = version
 
 
-class NotificationRestAdapter:
-    contract = (
-        "notification-service",
-        "notification-service.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
+class RealtimeAdapter:
+    def __init__(self, client: RestClient) -> None:
+        self.client = client
+
+    async def issue_ticket(self, payload, ctx):
+        return await self.client.request(
+            "POST",
+            "/internal/ws-tickets",
+            ctx,
+            json=payload,
+            idempotent=True,
+        )
+
+
+
+class _OutboxSubscriberBase:
+    def __init__(self, client: RestClient) -> None:
+        self.client = client
+
+    @staticmethod
+    def _context(payload: dict[str, Any], ctx: RequestContext | None) -> RequestContext:
+        if ctx is not None:
+            return ctx
+        trace_id = str(payload.get("traceId") or "")
+        if len(trace_id) != 32 or set(trace_id) == {"0"}:
+            trace_id = secrets.token_hex(16)
+        return RequestContext(
+            correlation_id=str(payload.get("correlationId") or "outbox"),
+            trace_id=trace_id,
+            deadline_monotonic=time.monotonic() + 10,
+            principal=Principal("booking-orchestrator", frozenset({"SYSTEM"})),
+        )
+
+
+class NotificationWebhookSubscriber(_OutboxSubscriberBase):
+    """Publishes canonical Notification webhook envelopes with HMAC authentication."""
 
     def __init__(self, client: RestClient, secret: str) -> None:
-        self.client, self.secret = client, secret.encode()
+        super().__init__(client)
+        self._secret = secret.encode("utf-8")
 
-    async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None:
-        timestamp = datetime.now(timezone.utc).isoformat()
+    async def publish(
+        self,
+        topic: str,
+        payload: dict[str, Any],
+        message_id: str,
+        ctx: RequestContext | None = None,
+    ) -> None:
+        context = self._context(payload, ctx)
+        occurred_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         body = {
             "eventId": message_id,
-            "eventType": "booking.confirmed",
+            "eventType": topic,
             "schemaVersion": 1,
-            "occurredAt": datetime.now(timezone.utc).isoformat(),
+            "occurredAt": occurred_at,
             "correlationId": context.correlation_id,
-            "aggregateId": payload.get("bookingId"),
-            "data": dict(payload),
+            "aggregateId": str(payload.get("bookingId") or payload.get("aggregateId")),
+            "data": payload,
         }
-        raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
-        signature = sign_hmac_request(self.secret, timestamp, raw)
+        raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        timestamp = occurred_at
+        signature = hmac.new(
+            self._secret,
+            timestamp.encode("utf-8") + b"." + raw,
+            hashlib.sha256,
+        ).hexdigest()
         await self.client.request(
             "POST",
             "/webhooks/events",
             context,
-            raw_body=raw,
-            retry_class=RetryClass.SIDE_EFFECT,
-            extra_headers={
+            content=raw,
+            headers={
                 "Content-Type": "application/json",
                 "X-Webhook-Timestamp": timestamp,
                 "X-Webhook-Signature": f"sha256={signature}",
             },
+            idempotent=False,
         )
 
 
-class RealtimeRestAdapter:
-    contract = (
-        "realtime-service",
-        "realtime-service.openapi.yaml",
-        EXPECTED_FREEZE_ID,
-        EXPECTED_CATALOG_SHA,
-    )
-
-    def __init__(self, client: RestClient) -> None:
-        self.client = client
-
-    async def publish(self, payload: Mapping[str, Any], message_id: str, context: RequestContext) -> None:
+class RealtimeStatusSubscriber(_OutboxSubscriberBase):
+    async def publish(
+        self,
+        topic: str,
+        payload: dict[str, Any],
+        message_id: str,
+        ctx: RequestContext | None = None,
+    ) -> None:
+        del topic
+        context = self._context(payload, ctx)
         body = {
             "messageId": message_id,
             "bookingId": payload["bookingId"],
             "status": payload["status"],
             "sequence": int(payload.get("sequence", 1)),
-            "occurredAt": datetime.now(timezone.utc).isoformat(),
+            "occurredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "correlationId": context.correlation_id,
             "message": "Booking status updated",
         }
@@ -366,6 +484,6 @@ class RealtimeRestAdapter:
             "POST",
             "/internal/status-events",
             context,
-            json_body=body,
-            retry_class=RetryClass.SIDE_EFFECT,
+            json=body,
+            idempotent=False,
         )

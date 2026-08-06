@@ -1,130 +1,328 @@
-"""Canonical Booking transition and authorization endpoints."""
+"""State-changing Booking endpoints used by the ESB orchestrator.
 
-from typing import Annotated, Any
+The transport layer accepts both concurrency contracts used by existing
+clients:
 
-from fastapi import APIRouter, Depends, Header, Path, Request, Response
-from libs.platform_http import etag, parse_if_match
+* legacy ``expectedVersion`` in the JSON body;
+* canonical ``If-Match`` entity tag.
 
+Both forms resolve to one application command.  Every successful mutation
+returns the current aggregate version in ``ETag``.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Header, Response
+
+from app.api.v1.http_contract import (
+    OK_WITH_ETAG,
+    booking_response,
+    resolve_expected_version,
+)
 from app.application.service import BookingService
 from app.dependencies import get_service
-from app.domain.value_objects import RequestContext
+from app.domain.value_objects import CompensationEvidence, RequestContext
 from app.middleware.authentication import require_internal_caller
 from app.schemas.requests import (
-    BookingAccessDecisionRequest,
-    ConfirmTransition,
-    PaymentResultTransition,
-    PaymentStartedTransition,
-    ReservationTransition,
-    TerminalTransition,
-    TicketsTransition,
+    AttachReservationRequest,
+    AttachTicketsRequest,
+    CancelBookingRequest,
+    CompensationResultRequest,
+    ConfirmBookingRequest,
+    ConfirmReservationRequest,
+    EvidenceRequest,
+    FailBookingRequest,
+    RecordPaymentRequest,
+    StartPaymentRequest,
 )
-from app.schemas.responses import BookingAccessDecisionResponse, BookingResponse
+from app.schemas.responses import BookingResponse
 
-router = APIRouter(tags=["booking-commands"])
+router = APIRouter(prefix="/bookings", tags=["booking-commands"])
+IdempotencyKey = Header(alias="Idempotency-Key", min_length=1, max_length=128)
+IfMatch = Header(default=None, alias="If-Match")
 
 
-def _transition(
-    operation: str,
-    booking_id: str,
-    body: Any,
-    if_match: str,
-    idempotency_key: str,
-    context: RequestContext,
-    service: BookingService,
-    response: Response,
-) -> BookingResponse:
-    booking = service.transition(
-        context,
-        operation=operation,
-        booking_id=booking_id,
-        # mode="json" keeps parsed timestamps as canonical strings so the payload is
-        # both hashable for idempotency and storable in the JSONB evidence column.
-        payload=body.model_dump(mode="json", by_alias=True, exclude_none=True),
-        idempotency_key=idempotency_key,
-        expected_version=parse_if_match(if_match),
+def _compensation_evidence(value: EvidenceRequest | None) -> CompensationEvidence:
+    if value is None:
+        return CompensationEvidence()
+    return CompensationEvidence(
+        reservation_released=value.reservation_released,
+        payment_refunded=value.payment_refunded,
+        provider_reference=value.provider_reference,
+        verified_at=value.verified_at,
+        details=value.details,
+        resolved_payment_status=value.resolved_payment_status,
     )
-    response.headers["ETag"] = etag(booking.resource_version)
-    return BookingResponse.from_entity(booking)
-
-
-def _headers(
-    idempotency_key: Annotated[
-        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
-    ],
-    if_match: Annotated[str, Header(alias="If-Match", pattern=r'^"[1-9][0-9]*"$')],
-) -> tuple[str, str]:
-    return idempotency_key, if_match
-
-
-def _install_transition(path: str, operation: str, model: type[Any]) -> None:
-    async def endpoint(
-        booking_id: Annotated[str, Path(alias="bookingId")],
-        body: Any,
-        response: Response,
-        headers: tuple[str, str] = Depends(_headers),
-        context: RequestContext = Depends(require_internal_caller),
-        service: BookingService = Depends(get_service),
-    ) -> BookingResponse:
-        return _transition(
-            operation,
-            booking_id,
-            body,
-            headers[1],
-            headers[0],
-            context,
-            service,
-            response,
-        )
-
-    endpoint.__name__ = operation
-    endpoint.__annotations__["body"] = model
-    router.add_api_route(
-        path,
-        endpoint,
-        methods=["POST"],
-        response_model=BookingResponse,
-        operation_id=operation,
-    )
-
-
-for _path, _operation, _model in (
-    ("/bookings/{bookingId}/reservation", "bookingReservation", ReservationTransition),
-    (
-        "/bookings/{bookingId}/payment-started",
-        "bookingPaymentStarted",
-        PaymentStartedTransition,
-    ),
-    (
-        "/bookings/{bookingId}/payment-result",
-        "bookingPaymentResult",
-        PaymentResultTransition,
-    ),
-    ("/bookings/{bookingId}/tickets", "bookingTickets", TicketsTransition),
-    ("/bookings/{bookingId}/confirm", "bookingConfirm", ConfirmTransition),
-    ("/bookings/{bookingId}/fail", "bookingFail", TerminalTransition),
-    ("/bookings/{bookingId}/cancel", "bookingCancel", TerminalTransition),
-):
-    _install_transition(_path, _operation, _model)
 
 
 @router.post(
-    "/internal/bookings/{bookingId}/access-decisions",
-    response_model=BookingAccessDecisionResponse,
-    operation_id="decideBookingResourceAccess",
+    "/{booking_id}/reservation",
+    response_model=BookingResponse,
+    operation_id="attachReservation",
+    responses=OK_WITH_ETAG,
 )
-def access_decision(
-    booking_id: Annotated[str, Path(alias="bookingId")],
-    body: BookingAccessDecisionRequest,
-    request: Request,
-    correlation_id: Annotated[
-        str, Header(alias="X-Correlation-ID", min_length=16, max_length=64)
-    ],
+def attach_reservation(
+    booking_id: str,
+    body: AttachReservationRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
     context: RequestContext = Depends(require_internal_caller),
-) -> BookingAccessDecisionResponse:
-    result = request.app.state.booking_access_authorizer.decide(
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.attach_reservation(
+        context,
+        idempotency_key=idempotency_key,
         booking_id=booking_id,
-        identity_subject=body.identity_subject,
-        roles=frozenset(body.roles),
-        correlation_id=correlation_id,
+        reservation_id=body.reservation_id,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        expires_at=body.resolved_expires_at,
+        reservation_version=body.reservation_version,
+        confirmed=body.resolved_confirmed,
     )
-    return BookingAccessDecisionResponse.model_validate(result)
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/reservation-confirmed",
+    response_model=BookingResponse,
+    operation_id="confirmReservationEvidence",
+    responses=OK_WITH_ETAG,
+)
+def confirm_reservation_evidence(
+    booking_id: str,
+    body: ConfirmReservationRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.confirm_reservation(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        reservation_id=body.reservation_id,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        reservation_version=body.reservation_version,
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/payment-started",
+    response_model=BookingResponse,
+    operation_id="startPayment",
+    responses=OK_WITH_ETAG,
+)
+def start_payment(
+    booking_id: str,
+    body: StartPaymentRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.start_payment(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        payment_id=body.payment_id,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/payment-result",
+    response_model=BookingResponse,
+    operation_id="recordPayment",
+    responses=OK_WITH_ETAG,
+)
+def record_payment(
+    booking_id: str,
+    body: RecordPaymentRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.record_payment(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        payment_id=body.payment_id,
+        payment_status=(
+            body.resolved_status if body.payment_status is not None else None
+        ),
+        succeeded=body.succeeded,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        provider_reference=(
+            body.evidence.provider_reference if body.evidence else None
+        ),
+        failure_code=body.failure_code,
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/tickets",
+    response_model=BookingResponse,
+    operation_id="attachTickets",
+    responses=OK_WITH_ETAG,
+)
+def attach_tickets(
+    booking_id: str,
+    body: AttachTicketsRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.attach_tickets(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        ticket_ids=tuple(body.ticket_ids),
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/confirm",
+    response_model=BookingResponse,
+    operation_id="confirmBooking",
+    responses=OK_WITH_ETAG,
+)
+def confirm(
+    booking_id: str,
+    body: ConfirmBookingRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.confirm(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        reservation_id=body.reservation_id,
+        payment_id=body.payment_id,
+        payment_status=body.resolved_payment_status,
+        ticket_ids=(
+            tuple(body.ticket_ids) if body.ticket_ids is not None else None
+        ),
+        seat_confirmed=(body.evidence.seat_confirmed if body.evidence else None),
+        payment_captured=(
+            body.evidence.payment_captured if body.evidence else None
+        ),
+        tickets_issued=(body.evidence.tickets_issued if body.evidence else None),
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/fail",
+    response_model=BookingResponse,
+    operation_id="failBooking",
+    responses=OK_WITH_ETAG,
+)
+def fail(
+    booking_id: str,
+    body: FailBookingRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.fail(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        failure_code=body.failure_code,
+        reason=body.reason or body.failure_code,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        compensation_status=body.compensation_status,
+        evidence=_compensation_evidence(body.evidence),
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/cancel",
+    response_model=BookingResponse,
+    operation_id="cancelBooking",
+    responses=OK_WITH_ETAG,
+)
+def cancel(
+    booking_id: str,
+    body: CancelBookingRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.cancel(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        reason=body.reason,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        payment_status=body.payment_status,
+        compensation_status=body.compensation_status,
+        evidence=_compensation_evidence(body.evidence),
+    )
+    return booking_response(booking, response)
+
+
+@router.post(
+    "/{booking_id}/compensation-result",
+    response_model=BookingResponse,
+    operation_id="recordCompensationResult",
+    responses=OK_WITH_ETAG,
+)
+def compensation_result(
+    booking_id: str,
+    body: CompensationResultRequest,
+    response: Response,
+    idempotency_key: str = IdempotencyKey,
+    if_match: str | None = IfMatch,
+    context: RequestContext = Depends(require_internal_caller),
+    service: BookingService = Depends(get_service),
+) -> BookingResponse:
+    booking = service.record_compensation(
+        context,
+        idempotency_key=idempotency_key,
+        booking_id=booking_id,
+        expected_version=resolve_expected_version(
+            body.expected_version, if_match
+        ),
+        compensation_status=body.compensation_status,
+        evidence=_compensation_evidence(body.evidence),
+        reason=body.reason,
+    )
+    return booking_response(booking, response)

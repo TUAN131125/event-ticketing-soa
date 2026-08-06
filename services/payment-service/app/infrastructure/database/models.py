@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -33,9 +34,23 @@ class PaymentModel(Base):
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING','AUTHORIZED','CAPTURED','FAILED','CANCELLED',"
-            "'PARTIALLY_REFUNDED','REFUNDED','UNKNOWN')",
+            "status IN ('PENDING','AUTHORIZED','CAPTURED','UNKNOWN','FAILED',"
+            "'CANCELLED','PARTIALLY_REFUNDED','REFUNDED')",
             name="ck_payment_status",
+        ),
+        CheckConstraint(
+            "provider_scenario IN ('MANUAL','SUCCESS','DECLINE','TIMEOUT')",
+            name="ck_payment_provider_scenario",
+        ),
+        CheckConstraint(
+            "reconciliation_status IN "
+            "('NOT_REQUIRED','PENDING','IN_PROGRESS','COMPLETED','FAILED')",
+            name="ck_payment_reconciliation_status",
+        ),
+        CheckConstraint(
+            "pending_operation IS NULL OR pending_operation IN "
+            "('AUTHORIZE','CAPTURE','CANCEL','REFUND')",
+            name="ck_payment_pending_operation",
         ),
         CheckConstraint("amount > 0", name="ck_payment_amount"),
         CheckConstraint("captured_amount >= 0", name="ck_payment_captured_amount"),
@@ -47,6 +62,18 @@ class PaymentModel(Base):
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="ck_payment_currency"),
         CheckConstraint("resource_version >= 1", name="ck_payment_version"),
         CheckConstraint(
+            "reconciliation_attempts >= 0",
+            name="ck_payment_reconciliation_attempts",
+        ),
+        CheckConstraint(
+            "(status = 'UNKNOWN' AND last_stable_status IS NOT NULL "
+            "AND pending_operation IS NOT NULL AND unknown_since IS NOT NULL "
+            "AND reconciliation_status IN ('PENDING','IN_PROGRESS','FAILED')) OR "
+            "(status <> 'UNKNOWN' AND last_stable_status IS NULL "
+            "AND pending_operation IS NULL AND unknown_since IS NULL)",
+            name="ck_payment_unknown_evidence",
+        ),
+        CheckConstraint(
             "(status = 'PENDING' AND captured_amount = 0 AND refunded_amount = 0) OR "
             "(status = 'AUTHORIZED' AND provider_reference IS NOT NULL "
             "AND authorized_at IS NOT NULL AND captured_amount = 0 "
@@ -54,6 +81,7 @@ class PaymentModel(Base):
             "(status = 'CAPTURED' AND provider_reference IS NOT NULL "
             "AND captured_at IS NOT NULL AND captured_amount = amount "
             "AND refunded_amount = 0) OR "
+            "(status = 'UNKNOWN') OR "
             "(status = 'FAILED' AND failure_code IS NOT NULL "
             "AND failure_reason IS NOT NULL AND captured_amount = 0 "
             "AND refunded_amount = 0) OR "
@@ -73,6 +101,11 @@ class PaymentModel(Base):
         Index("ix_payment_customer_created", "customer_id", "created_at"),
         Index("ix_payment_status_created", "status", "created_at"),
         Index("ix_payment_provider_status", "provider", "status"),
+        Index(
+            "ix_payment_reconciliation_due",
+            "reconciliation_due_at",
+            postgresql_where=text("status = 'UNKNOWN'"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -81,10 +114,32 @@ class PaymentModel(Base):
     customer_id: Mapped[str] = mapped_column(String(128), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    payment_method: Mapped[str] = mapped_column(String(200), nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(40), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    method_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_scenario: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="MANUAL"
+    )
+    booking_evidence_version: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    booking_evidence_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    booking_evidence_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     provider_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
+    last_stable_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    pending_operation: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reconciliation_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="NOT_REQUIRED"
+    )
+    reconciliation_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    reconciliation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     captured_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     refunded_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     failure_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -111,6 +166,15 @@ class PaymentModel(Base):
         DateTime(timezone=True), nullable=True
     )
     refunded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    unknown_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reconciliation_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_reconciled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -148,6 +212,59 @@ class RefundModel(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("clock_timestamp()"),
+    )
+
+
+class ProviderEventModel(Base):
+    __tablename__ = "provider_events"
+    __table_args__ = (
+        CheckConstraint(
+            "operation IN ('AUTHORIZE','CAPTURE','CANCEL','REFUND')",
+            name="ck_provider_event_operation",
+        ),
+        CheckConstraint(
+            "provider_status IN ('PENDING','AUTHORIZED','CAPTURED','UNKNOWN',"
+            "'FAILED','CANCELLED','PARTIALLY_REFUNDED','REFUNDED')",
+            name="ck_provider_event_status",
+        ),
+        CheckConstraint(
+            "source IN ('COMMAND','CALLBACK','RECONCILIATION','MOCK_PROVIDER')",
+            name="ck_provider_event_source",
+        ),
+        Index("ix_provider_event_payment_time", "payment_id", "occurred_at"),
+        Index(
+            "ix_provider_event_reference", "provider", "provider_reference"
+        ),
+        {"schema": SCHEMA},
+    )
+
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    payment_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey(f"{SCHEMA}.payments.payment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    operation: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_refund_reference: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    observed_refunded_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
     )
 
 

@@ -175,7 +175,8 @@ export class BookingStatusSocket {
   }
 }
 
-export function statusSocketUrl(bookingId: string): string {
-  const configured = (import.meta.env.VITE_REALTIME_WS_URL ?? '').replace(/\/$/, '');
-  return configured ? `${configured}/ws/bookings/${encodeURIComponent(bookingId)}` : '';
+export function statusSocketUrl(_bookingId: string): string {
+  // Browsers only know the ESB. Until the public gateway owns a WebSocket route,
+  // REST polling remains authoritative and no direct connection to port 8008 is allowed.
+  return '';
 }

@@ -11,11 +11,14 @@
   "scripts": {
     "generate:contracts": "node scripts/generate-esb-types.mjs",
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run generate:contracts && npm run format:check",
+    "lint": "npm run generate:contracts && npm run verify:esb-contract && npm run format:check",
     "format": "prettier --write \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"{admin-web,customer-web,shared-ui}/src/**/*.{ts,tsx,css}\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "verify:esb-contract": "node scripts/verify-esb-consumer-contract.mjs",
+    "generate:esb-contract:fallback": "python scripts/generate_esb_types.py",
+    "verify:esb-contract:fallback": "python scripts/verify_esb_consumer_contract.py"
   },
   "engines": {
     "node": ">=20"

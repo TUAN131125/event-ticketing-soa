@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://event-ticketing.local/contracts/events/booking-failed.schema.json",
+  "title": "booking.failed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "eventType",
+    "schemaVersion",
+    "occurredAt",
+    "correlationId",
+    "aggregateId",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "eventType": {
+      "const": "booking.failed"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "aggregateId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bookingId",
+        "customerId",
+        "eventId",
+        "seatIds",
+        "status",
+        "paymentStatus",
+        "ticketIds",
+        "totalAmount",
+        "currency",
+        "resourceVersion",
+        "occurredAt",
+        "failureCode"
+      ],
+      "properties": {
+        "bookingId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "customerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reservationId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "seatIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "SEAT_RESERVED",
+            "PAYMENT_PROCESSING",
+            "CONFIRMED",
+            "FAILED",
+            "CANCELLED",
+            "COMPENSATION_PENDING"
+          ]
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "PROCESSING",
+            "SUCCEEDED",
+            "FAILED",
+            "UNKNOWN",
+            "REFUND_PENDING",
+            "REFUNDED"
+          ]
+        },
+        "paymentId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "ticketIds": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "totalAmount": {
+          "type": "string",
+          "pattern": "^\\d+(?:\\.\\d{1,2})?$"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failureCode": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

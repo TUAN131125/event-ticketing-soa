@@ -1,109 +1,105 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class WorkflowPhase(str, Enum):
+class WorkflowStatus(StrEnum):
     STARTED = "STARTED"
-    PENDING = "PENDING"
     SEAT_RESERVED = "SEAT_RESERVED"
     PAYMENT_PROCESSING = "PAYMENT_PROCESSING"
+    PAYMENT_UNKNOWN = "PAYMENT_UNKNOWN"
+    SEAT_CONFIRMED = "SEAT_CONFIRMED"
+    TICKETS_ISSUED = "TICKETS_ISSUED"
     CONFIRMED = "CONFIRMED"
     FAILED = "FAILED"
+    CANCELLATION_PENDING = "CANCELLATION_PENDING"
     CANCELLED = "CANCELLED"
     COMPENSATION_PENDING = "COMPENSATION_PENDING"
 
 
-class PaymentOutcome(str, Enum):
-    NOT_DISPATCHED = "NOT_DISPATCHED"
-    CREATED = "CREATED"
+class PaymentStatus(StrEnum):
+    PENDING = "PENDING"
     AUTHORIZED = "AUTHORIZED"
     CAPTURED = "CAPTURED"
-    FAILED = "FAILED"
-    DECLINED = "DECLINED"
-    CANCELLED = "CANCELLED"
     UNKNOWN = "UNKNOWN"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"
     REFUNDED = "REFUNDED"
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class Principal:
     subject: str
-    roles: tuple[str, ...]
+    roles: frozenset[str] = frozenset()
+    customer_id: str | None = None
+
+    def require_any(self, *roles: str) -> None:
+        from app.domain.errors import Forbidden
+
+        if not self.roles.intersection(roles):
+            raise Forbidden(f"One of these roles is required: {', '.join(roles)}")
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class RequestContext:
     correlation_id: str
-    trace_id: str | None
+    trace_id: str
     deadline_monotonic: float
     principal: Principal
-    workflow_id: str | None = None
+
+    @property
+    def traceparent(self) -> str:
+        return f"00-{self.trace_id}-0000000000000001-01"
 
 
-@dataclass(frozen=True)
-class Money:
-    amount_minor: int
+@dataclass(slots=True, frozen=True)
+class BookingItem:
+    seat_id: str
+    ticket_type: str
+    unit_price: int
     currency: str
 
-    def as_wire(self) -> dict[str, Any]:
-        return {"amountMinor": self.amount_minor, "currency": self.currency}
+    def seat_reference(self) -> dict[str, str]:
+        return {
+            "seatId": self.seat_id,
+            "ticketTypeCode": self.ticket_type,
+        }
 
 
-@dataclass(frozen=True)
-class PlaceBookingCommand:
-    browser_customer_id: str
-    event_id: str
-    seat_ids: tuple[str, ...]
-    payment_method_token: str
-    idempotency_key: str
-
-
-@dataclass(frozen=True)
-class OperationResult:
-    status_code: int
-    body: Mapping[str, Any]
-
-
-@dataclass
-class WorkflowEvidence:
+@dataclass(slots=True)
+class Workflow:
     workflow_id: str
-    operation: str
-    subject: str
+    idempotency_key: str
     request_hash: str
-    correlation_id: str
-    phase: WorkflowPhase = WorkflowPhase.STARTED
+    customer_id: str
+    event_id: str
+    seat_ids: list[str]
+    status: WorkflowStatus = WorkflowStatus.STARTED
     booking_id: str | None = None
-    customer_id: str | None = None
+    booking_version: int | None = None
     reservation_id: str | None = None
     reservation_version: int | None = None
     payment_id: str | None = None
-    payment_status: PaymentOutcome | None = None
+    payment_status: PaymentStatus = PaymentStatus.PENDING
     ticket_ids: list[str] = field(default_factory=list)
-    total: Money | None = None
+    amount_minor: int = 0
+    currency: str = "VND"
     evidence: dict[str, Any] = field(default_factory=dict)
-    version: int = 1
+    response_status: int | None = None
+    response_body: dict[str, Any] | None = None
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-@dataclass(frozen=True)
-class IdempotencyDecision:
-    kind: str
-    workflow_id: str
-    recorded_result: OperationResult | None = None
-
-
-@dataclass(frozen=True)
-class OutboxItem:
+@dataclass(slots=True)
+class OutboxMessage:
     message_id: str
-    destination: str
-    message_type: str
-    payload: Mapping[str, Any]
-    correlation_id: str
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    topic: str
+    payload: dict[str, Any]
+    attempts: int = 0
+    state: str = "PENDING"
+    next_attempt_at: float = 0.0
+    last_error: str | None = None

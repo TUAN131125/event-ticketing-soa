@@ -6,11 +6,6 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
-from libs.platform_security import (
-    ServiceJwtSigningSettings,
-    ServiceJwtValidationSettings,
-)
-
 
 def _integer(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -36,9 +31,10 @@ def _boolean(name: str, default: bool) -> bool:
 
 
 def _database_url() -> str:
-    value = os.getenv("BOOKING_DATABASE_URL", "").strip()
-    if not value:
-        raise ValueError("BOOKING_DATABASE_URL is required")
+    value = os.getenv(
+        "BOOKING_DATABASE_URL",
+        "postgresql+psycopg://booking:booking@localhost:5437/booking",
+    )
     if value.startswith("postgres://"):
         return value.replace("postgres://", "postgresql+psycopg://", 1)
     if value.startswith("postgresql://"):
@@ -51,9 +47,7 @@ class Settings:
     app_name: str
     app_env: str
     database_url: str
-    service_jwt: ServiceJwtValidationSettings
-    service_jwt_signing: ServiceJwtSigningSettings
-    customer_service_url: str
+    service_token: str
     db_pool_size: int
     db_max_overflow: int
     db_pool_timeout_seconds: int
@@ -67,21 +61,20 @@ class Settings:
     @classmethod
     def from_environment(cls) -> Settings:
         app_env = os.getenv("BOOKING_APP_ENV", "local").strip().lower()
+        configured_token = os.getenv("BOOKING_SERVICE_TOKEN")
+        service_token = configured_token or "local-development-token"
+        if app_env == "production" and (
+            configured_token is None or len(configured_token) < 32
+        ):
+            raise ValueError(
+                "BOOKING_SERVICE_TOKEN must be a non-default value of at least "
+                "32 characters in production"
+            )
         return cls(
             app_name="booking-service",
             app_env=app_env,
             database_url=_database_url(),
-            service_jwt=ServiceJwtValidationSettings.from_environment(
-                "BOOKING",
-                audience="booking-service",
-                default_allowed_subjects="booking-orchestrator,realtime-status-service",
-            ),
-            service_jwt_signing=ServiceJwtSigningSettings.from_environment(
-                "BOOKING", default_subject="booking-service"
-            ),
-            customer_service_url=os.getenv("BOOKING_CUSTOMER_SERVICE_URL", "").rstrip(
-                "/"
-            ),
+            service_token=service_token,
             db_pool_size=_integer("BOOKING_DB_POOL_SIZE", 10, 1, 100),
             db_max_overflow=_integer("BOOKING_DB_MAX_OVERFLOW", 20, 0, 100),
             db_pool_timeout_seconds=_integer(

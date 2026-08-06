@@ -1,0 +1,903 @@
+openapi: 3.1.0
+info:
+  title: Identity and Access Service
+  version: 1.0.0
+  description: Canonical v1 contract for Identity accounts, credentials, roles, refresh sessions and signing
+    keys. Identity does not own or expose the identitySubject-to-customerId mapping and never issues an
+    authoritative customerId claim.
+  x-contract-status: canonical-v1
+  x-designed-baseline-version: 1.0.0
+servers:
+- url: http://localhost:8009
+  description: Local contract endpoint; deployment host is supplied by configuration.
+tags:
+- name: authentication
+- name: administration
+- name: health
+paths:
+  /auth/register:
+    post:
+      operationId: registerIdentityAccount
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /auth/login:
+    post:
+      operationId: loginIdentityAccount
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Access JWT and refresh-session metadata.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Pragma:
+              schema:
+                type: string
+                const: no-cache
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            Set-Cookie:
+              description: Sets identity_refresh (HttpOnly) and identity_csrf cookies for the local browser
+                session.
+              schema:
+                type: string
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /auth/refresh:
+    post:
+      operationId: refreshIdentitySession
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security:
+      - RefreshCookie: []
+      parameters:
+      - $ref: '#/components/parameters/CsrfHeader'
+      - $ref: '#/components/parameters/CsrfCookie'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          description: Refresh token rotated and a new access JWT issued.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Pragma:
+              schema:
+                type: string
+                const: no-cache
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            Set-Cookie:
+              description: Rotates identity_refresh and identity_csrf cookies. Previous refresh token
+                is consumed.
+              schema:
+                type: string
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /auth/logout:
+    post:
+      operationId: logoutIdentitySession
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security:
+      - RefreshCookie: []
+      parameters:
+      - $ref: '#/components/parameters/CsrfHeader'
+      - $ref: '#/components/parameters/CsrfCookie'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '204':
+          description: Refresh-token family revoked or already absent.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            Set-Cookie:
+              description: Expires identity_refresh and identity_csrf cookies.
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /auth/me:
+    get:
+      operationId: getCurrentIdentityPrincipal
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security:
+      - UserJwt: []
+      responses:
+        '200':
+          description: Current Identity account and roles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /admin/users/{userId}/roles:
+    post:
+      operationId: changeIdentityUserRole
+      tags:
+      - administration
+      x-interface-class: public
+      x-version: v1
+      description: Assign or revoke a supported role. Requires ADMIN.
+      security:
+      - UserJwt: []
+      parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleChangeRequest'
+      responses:
+        '200':
+          description: Role mutation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleChangeResponse'
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+  /.well-known/jwks.json:
+    get:
+      operationId: getIdentityJwks
+      tags:
+      - authentication
+      x-interface-class: public
+      x-version: v1
+      security: []
+      responses:
+        '200':
+          description: Public JSON Web Key Set for access JWT verification.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            X-Trace-ID:
+              $ref: '#/components/headers/TraceId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/jwk-set+json:
+              schema:
+                $ref: '#/components/schemas/JwkSet'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/live:
+    get:
+      operationId: identityLiveness
+      summary: Process liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: UP
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+  /health/ready:
+    get:
+      operationId: identityReadiness
+      summary: Dependency readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: READY
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+components:
+  securitySchemes:
+    UserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived Identity user JWT; verify signature, iss, aud, exp, sub, roles and tokenVersion.
+    RefreshCookie:
+      type: apiKey
+      in: cookie
+      name: identity_refresh
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived service JWT; verify iss, sub, aud, iat, exp and jti and reject replay.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body; reject stale timestamps.
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CsrfHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 256
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    CsrfCookie:
+      name: identity_csrf
+      in: cookie
+      required: true
+      description: Double-submit CSRF cookie. Must equal X-CSRF-Token.
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 256
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  schemas:
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      - retryable
+      - details
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 128
+        message:
+          type: string
+          minLength: 1
+          maxLength: 512
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - correlationId
+      - error
+      properties:
+        correlationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        traceId:
+          type: string
+          pattern: ^[A-Fa-f0-9]{16,32}$
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - retryable
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+            message:
+              type: string
+              minLength: 1
+              maxLength: 500
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: true
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 128
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 128
+    Role:
+      type: string
+      enum:
+      - CUSTOMER
+      - ADMIN
+      - CHECKIN_STAFF
+      - SERVICE
+    RoleChangeRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - role
+      - action
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        action:
+          type: string
+          enum:
+          - ASSIGN
+          - REVOKE
+    User:
+      type: object
+      additionalProperties: false
+      required:
+      - userId
+      - email
+      - status
+      - roles
+      - tokenVersion
+      - createdAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - DISABLED
+        roles:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Role'
+        tokenVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+          pattern: (?:Z|\+00:00)$
+    AccessTokenClaims:
+      type: object
+      additionalProperties: false
+      description: Canonical access-token claims. customerId is intentionally absent and must never be
+        treated as authoritative.
+      required:
+      - sub
+      - roles
+      - tokenVersion
+      - iss
+      - aud
+      - iat
+      - exp
+      - jti
+      properties:
+        sub:
+          type: string
+          minLength: 1
+          maxLength: 128
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Role'
+        tokenVersion:
+          type: integer
+          minimum: 1
+        iss:
+          type: string
+          minLength: 1
+          maxLength: 256
+        aud:
+          oneOf:
+          - type: string
+            minLength: 1
+            maxLength: 256
+          - type: array
+            minItems: 1
+            uniqueItems: true
+            items:
+              type: string
+              minLength: 1
+              maxLength: 256
+        iat:
+          type: integer
+        exp:
+          type: integer
+        nbf:
+          type: integer
+        jti:
+          type: string
+          minLength: 1
+          maxLength: 128
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - accessToken
+      - tokenType
+      - expiresIn
+      - csrfToken
+      - user
+      properties:
+        accessToken:
+          type: string
+          minLength: 1
+          readOnly: true
+          x-jwt-claims:
+            $ref: '#/components/schemas/AccessTokenClaims'
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        csrfToken:
+          type: string
+          minLength: 32
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+    RoleChangeResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - user
+      - role
+      - action
+      - changed
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        role:
+          $ref: '#/components/schemas/Role'
+        action:
+          type: string
+          enum:
+          - ASSIGN
+          - REVOKE
+        changed:
+          type: boolean
+    JwkSet:
+      type: object
+      additionalProperties: false
+      required:
+      - keys
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - kty
+            - use
+            - alg
+            - kid
+            - n
+            - e
+            properties:
+              kty:
+                type: string
+                const: RSA
+              use:
+                type: string
+                const: sig
+              alg:
+                type: string
+                const: RS256
+              kid:
+                type: string
+                minLength: 1
+              n:
+                type: string
+                minLength: 1
+              e:
+                type: string
+                minLength: 1
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - service
+      - status
+      - version
+      properties:
+        service:
+          type: string
+          const: identity-service
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - DRAINING
+          - NOT_READY
+        version:
+          type: string
+    Money:
+      type: object
+      additionalProperties: false
+      required:
+      - amountMinor
+      - currency
+      properties:
+        amountMinor:
+          type: integer
+          minimum: 0
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      example:
+        amountMinor: 250000
+        currency: VND
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          - READY
+          - NOT_READY
+        service:
+          type: string
+        version:
+          type: string
+      example:
+        status: READY
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated principal is not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency, uniqueness or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Locked:
+      description: Account is temporarily locked.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+        X-Trace-ID:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Request violates validation or domain rules.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Authentication rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+        X-Trace-ID:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Request body exceeds the allowed size.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+        X-Trace-ID:
+          $ref: '#/components/headers/TraceId'
+    ServiceUnavailable:
+      description: Service or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the current ETag.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  headers:
+    CorrelationId:
+      description: Request correlation identifier used across logs and services.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    TraceId:
+      description: Server trace identifier for diagnostics.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

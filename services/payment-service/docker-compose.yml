@@ -1,0 +1,76 @@
+name: payment-service
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: payment
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: payment
+    ports:
+      - "5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - payment-postgres-data:/var/lib/postgresql/data
+
+  payment-service:
+    build:
+      context: .
+    environment:
+      PAYMENT_APP_ENV: local
+      PAYMENT_DATABASE_URL: postgresql+psycopg://payment:payment@postgres:5432/payment
+      PAYMENT_SERVICE_TOKEN: local-development-token
+      PAYMENT_WEB_WORKERS: "1"
+    ports:
+      - "8005:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PAY-08 worker. It only reconciles due UNKNOWN payments and never blindly
+  # submits a new financial operation.
+  payment-reconciliation-worker:
+    build:
+      context: .
+    entrypoint: ["python", "-m", "app.workers.reconciliation_worker"]
+    environment:
+      PAYMENT_APP_ENV: local
+      PAYMENT_DATABASE_URL: postgresql+psycopg://payment:payment@postgres:5432/payment
+      PAYMENT_SERVICE_TOKEN: local-development-token
+      PAYMENT_PROVIDER_RECONCILIATION_MAX_ATTEMPTS: "10"
+      PAYMENT_PROVIDER_RECONCILIATION_INITIAL_DELAY_SECONDS: "5"
+      PAYMENT_PROVIDER_RECONCILIATION_MAX_DELAY_SECONDS: "300"
+      PAYMENT_PROVIDER_RECONCILIATION_BATCH_SIZE: "20"
+      PAYMENT_PROVIDER_RECONCILIATION_POLL_SECONDS: "5"
+    depends_on:
+      payment-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Separate process on purpose: publishing must not share a request thread, and
+  # the relay restarts independently of API availability. It reuses the same
+  # image and starts only after the API has applied migrations.
+  payment-outbox-relay:
+    build:
+      context: .
+    entrypoint: ["python", "-m", "app.workers.outbox_relay"]
+    environment:
+      PAYMENT_APP_ENV: local
+      PAYMENT_DATABASE_URL: postgresql+psycopg://payment:payment@postgres:5432/payment
+      PAYMENT_SERVICE_TOKEN: local-development-token
+      # Leave PAYMENT_OUTBOX_WEBHOOK_URL empty to log envelopes instead of
+      # sending them; set it plus the secret to deliver to the ESB event ingress.
+      PAYMENT_OUTBOX_WEBHOOK_URL: ""
+      PAYMENT_OUTBOX_POLL_SECONDS: "5"
+    depends_on:
+      payment-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  payment-postgres-data:

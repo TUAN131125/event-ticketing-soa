@@ -28,3 +28,16 @@ PAYMENTS_BY_STATUS = Gauge(
     ("status",),
 )
 READINESS = Gauge("payment_readiness", "Payment Service readiness")
+OUTBOX_PUBLISH_TOTAL = Counter(
+    "payment_outbox_publish_total",
+    "Outbox publication attempts by event type",
+    ("event_type", "result"),
+)
+OUTBOX_PENDING = Gauge(
+    "payment_outbox_pending",
+    "Outbox events still awaiting publication",
+)
+OUTBOX_EXHAUSTED = Gauge(
+    "payment_outbox_exhausted",
+    "Outbox events that exhausted their publish attempts and need an operator",
+)

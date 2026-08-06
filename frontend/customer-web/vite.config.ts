@@ -14,9 +14,7 @@ export default defineConfig({
     // The clients read their base URLs from configuration, so the suite supplies test
     // values rather than letting an unset URL change the code path under test.
     env: {
-      VITE_IDENTITY_API_URL: 'http://identity.test',
       VITE_ESB_API_URL: 'http://esb.test',
-      VITE_REALTIME_WS_URL: 'ws://realtime.test',
     },
     coverage: { reporter: ['text', 'html'] },
   },

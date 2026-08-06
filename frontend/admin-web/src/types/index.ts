@@ -1,6 +1,6 @@
-import type { components } from '@event-ticketing/shared-ui/identity-contract';
+import type { components } from '@event-ticketing/shared-ui/esb-contract';
 
-export type Role = components['schemas']['Role'];
+export type Role = components['schemas']['AuthRole'];
 export type User = components['schemas']['User'];
 export type TokenResponse = components['schemas']['TokenResponse'];
 

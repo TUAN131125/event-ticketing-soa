@@ -1,29 +1,17 @@
 [project]
-name = "booking-orchestrator"
-version = "1.0.0"
-requires-python = ">=3.12"
-dependencies = [
-  "fastapi>=0.115,<1", "pydantic>=2.10,<3", "httpx>=0.28,<1",
-  "SQLAlchemy[asyncio]>=2.0,<3", "alembic>=1.13,<2", "asyncpg>=0.29,<1",
-  "PyJWT[crypto]>=2.9,<3", "cryptography>=43,<50", "lxml>=5,<7", "PyYAML>=6,<7"
-]
-
+name='event-ticketing-esb'
+version='2.2.0'
+requires-python='>=3.12'
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
-
+asyncio_mode='auto'
+pythonpath=['.']
 [tool.ruff]
-line-length = 140
-target-version = "py312"
-
+line-length=140
+target-version='py312'
 [tool.ruff.lint]
-select = ["E", "F", "I", "B"]
-ignore = ["BLE001", "UP035", "UP037"]
-
+select=['E','F','I','B','UP']
+ignore=['E501']
 [tool.mypy]
-python_version = "3.12"
-strict = true
-warn_unused_ignores = true
-ignore_missing_imports = true
-disallow_untyped_defs = false
-warn_return_any = false
-disable_error_code = ["method-assign", "import-untyped"]
+python_version='3.12'
+strict=true
+exclude=['tests']

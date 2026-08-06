@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://event-ticketing.local/contracts/events/payment-unknown.schema.json",
+  "title": "payment.unknown",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string"
+    },
+    "eventType": {
+      "const": "payment.unknown"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string"
+    },
+    "aggregateId": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "required": [
+    "eventId",
+    "eventType",
+    "occurredAt",
+    "correlationId",
+    "aggregateId",
+    "version",
+    "payload"
+  ],
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paymentId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "string"
+        },
+        "capturedAmount": {
+          "type": "string"
+        },
+        "refundedAmount": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "paymentMethod": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "providerReference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pendingOperation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reconciliationStatus": {
+          "type": "string"
+        },
+        "resourceVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "paymentId",
+        "bookingId",
+        "customerId",
+        "status",
+        "amount",
+        "capturedAmount",
+        "refundedAmount",
+        "currency",
+        "paymentMethod",
+        "provider",
+        "providerReference",
+        "pendingOperation",
+        "reconciliationStatus",
+        "resourceVersion",
+        "occurredAt"
+      ]
+    }
+  }
+}

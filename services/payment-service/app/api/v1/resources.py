@@ -1,123 +1,137 @@
-"""Canonical Payment create, get and provider callback endpoints."""
+"""Internal payment resource and query endpoints."""
 
-from decimal import Decimal
 from typing import Annotated
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    Header,
-    HTTPException,
-    Path,
-    Request,
-    Response,
-    Security,
-    status,
-)
-from fastapi.security import APIKeyHeader
-from libs.platform_http import etag
-from libs.platform_security import HmacAuthenticationError
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 
+from app.api.http import set_etag
 from app.application.service import PaymentService
 from app.dependencies import get_service
-from app.domain.value_objects import RequestContext
+from app.domain.enums import PaymentStatus
+from app.domain.value_objects import BookingPaymentEvidence, RequestContext
 from app.middleware.authentication import require_internal_caller
-from app.schemas.requests import CreatePaymentRequest, ProviderCallbackRequest
-from app.schemas.responses import PaymentResponse
-
-router = APIRouter(tags=["payments"])
-PROVIDER_HMAC = APIKeyHeader(
-    name="X-Provider-Signature", auto_error=False, scheme_name="providerHmac"
+from app.schemas.requests import CreatePaymentRequest
+from app.schemas.responses import (
+    PaymentPageResponse,
+    PaymentResponse,
+    ProviderEventListResponse,
+    ProviderEventResponse,
+    RefundListResponse,
+    RefundResponse,
 )
+
+router = APIRouter(prefix="/payments", tags=["payments"])
+
+IdempotencyKeyHeader = Annotated[
+    str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
+]
 
 
 @router.post(
-    "/payments",
+    "",
     response_model=PaymentResponse,
     status_code=status.HTTP_201_CREATED,
     operation_id="createPayment",
 )
 def create(
-    body: CreatePaymentRequest,
     response: Response,
-    idempotency_key: Annotated[
-        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
-    ],
+    body: CreatePaymentRequest,
+    idempotency_key: IdempotencyKeyHeader,
     context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
 ) -> PaymentResponse:
+    evidence = None
+    if body.booking_evidence is not None:
+        value = body.booking_evidence
+        evidence = BookingPaymentEvidence.from_request(
+            booking_id=value.booking_id,
+            customer_id=value.customer_id,
+            amount=value.resolved_amount(),
+            currency=value.currency,
+            resource_version=value.resource_version,
+            evidence_id=value.evidence_id,
+        )
     payment = service.create(
         context,
         idempotency_key=idempotency_key,
         booking_id=body.booking_id,
-        customer_id="SERVICE",
-        amount=Decimal(body.amount.amount_minor),
-        currency=body.amount.currency,
-        payment_method=body.method_token,
-        provider="local-provider",
+        customer_id=body.customer_id,
+        amount=body.resolved_amount(),
+        currency=body.currency,
+        payment_method=body.resolved_payment_method(),
+        provider=body.provider,
+        method_token=body.method_token,
+        booking_evidence=evidence,
     )
-    response.headers["ETag"] = etag(payment.resource_version)
+    set_etag(response, payment.resource_version)
+    return PaymentResponse.from_entity(payment)
+
+
+@router.get("", response_model=PaymentPageResponse, operation_id="listPayments")
+def list_all(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
+    booking_id: str | None = Query(default=None, alias="bookingId"),
+    customer_id: str | None = Query(default=None, alias="customerId"),
+    provider: str | None = Query(default=None, min_length=1, max_length=40),
+    payment_status: PaymentStatus | None = Query(default=None, alias="status"),
+    search: str | None = Query(default=None, min_length=1, max_length=128),
+    _context: RequestContext = Depends(require_internal_caller),
+    service: PaymentService = Depends(get_service),
+) -> PaymentPageResponse:
+    return PaymentPageResponse.from_page(
+        service.list(
+            page=page,
+            page_size=page_size,
+            booking_id=booking_id,
+            customer_id=customer_id,
+            provider=provider,
+            status=payment_status,
+            search=search,
+        )
+    )
+
+
+@router.get("/{payment_id}", response_model=PaymentResponse, operation_id="getPayment")
+def get(
+    payment_id: str,
+    response: Response,
+    _context: RequestContext = Depends(require_internal_caller),
+    service: PaymentService = Depends(get_service),
+) -> PaymentResponse:
+    payment = service.get(payment_id)
+    set_etag(response, payment.resource_version)
     return PaymentResponse.from_entity(payment)
 
 
 @router.get(
-    "/payments/{paymentId}",
-    response_model=PaymentResponse,
-    operation_id="getPayment",
+    "/{payment_id}/refunds",
+    response_model=RefundListResponse,
+    operation_id="listPaymentRefunds",
 )
-def get(
-    payment_id: Annotated[str, Path(alias="paymentId")],
-    response: Response,
-    context: RequestContext = Depends(require_internal_caller),
+def refunds(
+    payment_id: str,
+    _context: RequestContext = Depends(require_internal_caller),
     service: PaymentService = Depends(get_service),
-) -> PaymentResponse:
-    payment = service.get(payment_id)
-    response.headers["ETag"] = etag(payment.resource_version)
-    return PaymentResponse.from_entity(payment)
+) -> RefundListResponse:
+    return RefundListResponse(
+        items=[RefundResponse.from_value(item) for item in service.refunds(payment_id)]
+    )
 
 
-async def _verify_provider_hmac(
-    request: Request,
-    signature: Annotated[str | None, Security(PROVIDER_HMAC)],
-) -> None:
-    try:
-        request.app.state.provider_hmac_verifier.verify(
-            timestamp=request.headers.get("X-Provider-Timestamp"),
-            signature=signature,
-            body=await request.body(),
-        )
-    except HmacAuthenticationError as exc:
-        raise HTTPException(
-            status_code=401, detail="Provider authentication failed"
-        ) from exc
-
-
-@router.post(
-    "/payments/provider-callback",
-    status_code=status.HTTP_204_NO_CONTENT,
-    operation_id="receiveProviderCallback",
-    dependencies=[Depends(_verify_provider_hmac)],
-    openapi_extra={
-        "parameters": [
-            {
-                "name": "X-Provider-Timestamp",
-                "in": "header",
-                "required": True,
-                "schema": {
-                    "type": "string",
-                    "format": "date-time",
-                    "pattern": r"(?:Z|\+00:00)$",
-                },
-            }
+@router.get(
+    "/{payment_id}/provider-events",
+    response_model=ProviderEventListResponse,
+    operation_id="listPaymentProviderEvents",
+)
+def provider_events(
+    payment_id: str,
+    _context: RequestContext = Depends(require_internal_caller),
+    service: PaymentService = Depends(get_service),
+) -> ProviderEventListResponse:
+    return ProviderEventListResponse(
+        items=[
+            ProviderEventResponse.from_value(item)
+            for item in service.provider_events(payment_id)
         ]
-    },
-)
-def provider_callback(
-    body: ProviderCallbackRequest,
-    idempotency_key: Annotated[
-        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
-    ],
-    service: PaymentService = Depends(get_service),
-) -> Response:
-    service.get(body.payment_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    )

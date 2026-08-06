@@ -1,0 +1,126 @@
+openapi: 3.1.0
+info:
+  title: Realtime Status Service Provider Contract
+  version: 1.0.0
+  description: Internal REST ingestion and health contract consumed by the ESB.
+servers:
+  - url: http://localhost:8008
+security:
+  - ServiceJwt: []
+paths:
+  /internal/status-events:
+    post:
+      operationId: ingestRealtimeStatusEvent
+      summary: Accept a non-authoritative booking status projection
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: traceparent
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RealtimeMessage' }
+      responses:
+        '202':
+          description: New status accepted for broadcast
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusEventResult' }
+        '200':
+          description: Duplicate or stale status was ignored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusEventResult' }
+        '401':
+          description: Invalid service identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Invalid status event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /health/live:
+    get:
+      operationId: realtimeLiveness
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+  /health/ready:
+    get:
+      operationId: realtimeReadiness
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+components:
+  securitySchemes:
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    BookingStatus:
+      type: string
+      enum: [PENDING, SEAT_RESERVED, PAYMENT_PROCESSING, CONFIRMED, FAILED, CANCELLED, COMPENSATION_PENDING]
+    RealtimeMessage:
+      type: object
+      additionalProperties: false
+      required: [messageId, bookingId, status, sequence, occurredAt, correlationId]
+      properties:
+        messageId: { type: string, minLength: 1, maxLength: 128 }
+        bookingId: { type: string, minLength: 1, maxLength: 128 }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        sequence: { type: integer, minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string, minLength: 1, maxLength: 128 }
+        message: { type: string, maxLength: 500 }
+    StatusEventResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, messageId, bookingId, sequence, correlationId]
+      properties:
+        outcome: { type: string, enum: [ACCEPTED, DUPLICATE, STALE] }
+        messageId: { type: string }
+        bookingId: { type: string }
+        sequence: { type: integer, minimum: 1 }
+        correlationId: { type: string }
+    ErrorResponse:
+      type: object
+      required: [correlationId, error]
+      properties:
+        correlationId: { type: string }
+        traceId: { type: string }
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP, READY, NOT_READY] }
+        service: { type: string }
+        version: { type: string }

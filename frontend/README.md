@@ -1,14 +1,12 @@
 # Event Ticketing web applications
 
-This npm workspace contains:
+Workspace gồm:
 
-- `customer-web`: restored customer booking UI adapted to the current ESB contract.
-- `admin-web`: contract-safe operations console for the public admin/observability capabilities that
-  currently exist.
-- `shared-ui`: shared accessible components, design tokens and the generated ESB, Identity and
-  Realtime contract types.
+- `customer-web`: UI khách hàng theo UI-01 đến UI-09 và UI-12.
+- `admin-web`: Event administration UI-10, Ticket check-in UI-11, health/booking/trace operations.
+- `shared-ui`: component dùng chung và generated contract types từ `contracts/esb-public-api.yaml`.
 
-## Local development
+## Chạy local
 
 ```powershell
 cd frontend
@@ -20,30 +18,27 @@ npm run test
 npm run build
 ```
 
-`npm run generate:contracts` regenerates `shared-ui/src/generated/` from `/contracts` and is
-deterministic: running it twice produces no diff. Generated files are never edited by hand.
-
-Run either application independently:
+Chạy riêng:
 
 ```powershell
 npm run dev --workspace @event-ticketing/customer-web
 npm run dev --workspace @event-ticketing/admin-web
 ```
 
-Copy each application's `.env.example` to `.env.local`. The default local ports match the current
-Compose source: Identity `8009`, ESB `8000`, Realtime `8008`, customer web `3000` and admin web
-`3001`.
+Copy `.env.example` thành `.env.local` cho từng app.
 
-## Contract rule
+## Quy tắc contract
 
-HTTP business calls go only to the ESB public API (`8000`), authentication calls only to Identity
-(`8009`) and the booking status stream only to Realtime (`8008`). The frontend never calls the
-private service ports `8001`–`8007`, never invents missing API responses and never treats browser
-state as authoritative.
+- Business request chỉ đi qua ESB.
+- Auth chỉ đi qua façade `/api/auth/*` của ESB; browser không gọi trực tiếp Identity port `8009`.
+- Bản frontend hiện dùng REST polling qua ESB cho booking status; WebSocket trực tiếp tới Realtime bị tắt cho đến khi có gateway route được phê duyệt.
+- Không hard-code private service URL hoặc gọi các cổng `8001`–`8009` từ browser.
+- Generated files trong `shared-ui/src/generated` chỉ được tạo bằng `npm run generate:contracts`.
+- `shared-ui/src/frontend-esb-contract.ts` chỉ được alias generated schemas; không khai báo wire contract viết tay.
+- Chạy `npm run verify:esb-contract` để kiểm tra các operation/schema frontend cần vẫn tồn tại.
 
-See `INTEGRATION_STATUS.md` for the exact restored features and the current contract gaps.
+Xem:
 
-## Production containers
-
-Both applications have multi-stage Dockerfiles that build the Vite bundle and serve it with nginx
-SPA fallback. Public URLs are Vite build arguments; no secret may be embedded in a frontend image.
+- `FRONTEND_SCREEN_UPDATE_PLAN.md` — màn hình thêm/sửa/xóa.
+- `INTEGRATION_STATUS.md` — API frontend đã khóa với ESB.
+- `FRONTEND_COMPLETION_REPORT.md` — thay đổi và trạng thái kiểm tra.

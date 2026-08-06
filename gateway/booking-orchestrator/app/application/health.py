@@ -1,95 +1,114 @@
-"""Aggregate health service: probe every dependency concurrently, then apply policy."""
-
 from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Sequence
+from datetime import datetime, timezone
+from typing import Any
 
-from app.domain.errors import ProbeFailure
-from app.domain.health import (
-    AggregateHealth,
-    AggregateState,
-    DependencyHealth,
-    DependencyState,
-    evaluate,
-)
-from app.ports.providers import HealthProbe
-from app.ports.repositories import Clock
-
-ESB_PERSISTENCE = "esb-persistence"
+import httpx
 
 
-class DatabaseProbe:
-    """The ESB's own persistence, probed through the same interface as providers."""
+class AggregateHealthService:
+    CRITICAL = {"customer", "event", "seat", "booking", "payment", "ticket"}
+    NONCRITICAL = {"notification", "realtime"}
 
-    name = ESB_PERSISTENCE
-    critical = True
+    def __init__(
+        self,
+        registry: Any,
+        repository: Any | None = None,
+        timeout_seconds: float = 2.0,
+    ) -> None:
+        self.registry = registry
+        self.repository = repository
+        self.timeout_seconds = timeout_seconds
 
-    def __init__(self, database: object | None) -> None:
-        self._database = database
+    async def check(self) -> tuple[int, dict[str, Any]]:
+        names = sorted(self.CRITICAL | self.NONCRITICAL)
+        probes = [self._probe_service(name) for name in names]
+        if self.repository is not None:
+            probes.append(self._probe_database())
 
-    async def check(self, timeout_seconds: float) -> None:
-        if self._database is None:
-            return
-        ping = getattr(self._database, "ping", None)
-        if ping is None:
-            return
-        try:
-            await asyncio.wait_for(ping(), timeout=timeout_seconds)
-        except TimeoutError as exc:
-            raise ProbeFailure("TIMEOUT") from exc
-        except OSError as exc:
-            raise ProbeFailure("UNREACHABLE") from exc
-        except Exception as exc:  # noqa: BLE001 -- driver errors vary; the code stays safe
-            raise ProbeFailure("NOT_READY") from exc
-
-
-class HealthService:
-    def __init__(self, probes: Sequence[HealthProbe], clock: Clock, timeout_seconds: float) -> None:
-        self._probes = tuple(probes)
-        self._clock = clock
-        self._timeout_seconds = timeout_seconds
-
-    async def aggregate(self) -> AggregateHealth:
-        results = await asyncio.gather(*(self._probe(probe) for probe in self._probes))
-        return AggregateHealth(
-            status=self._status(results),
-            checked_at=self._clock.now(),
-            dependencies=tuple(results),
+        results = await asyncio.gather(*probes)
+        critical_down = any(
+            result["critical"] and result["status"] == "DOWN"
+            for result in results
         )
+        any_down = any(result["status"] == "DOWN" for result in results)
+        status = "DOWN" if critical_down else "DEGRADED" if any_down else "UP"
+        return (503 if critical_down else 200), {
+            "status": status,
+            "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "dependencies": results,
+        }
 
-    async def _probe(self, probe: HealthProbe) -> DependencyHealth:
-        started = time.perf_counter()
+
+    async def ready(self) -> tuple[int, dict[str, Any]]:
+        """Check only ESB-owned readiness, not provider availability."""
+
+        if self.repository is None:
+            return 200, {
+                "status": "READY",
+                "service": "booking-orchestrator",
+                "version": "2.0.0",
+            }
+        result = await self._probe_database()
+        ready = result["status"] == "UP"
+        return (200 if ready else 503), {
+            "status": "READY" if ready else "NOT_READY",
+            "service": "booking-orchestrator",
+            "version": "2.0.0",
+        }
+
+    async def _probe_service(self, name: str) -> dict[str, Any]:
+        endpoint = self.registry.resolve(name)
+        started = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.get(endpoint.readiness_url)
+                response.raise_for_status()
+            return self._up(name + "-service", name in self.CRITICAL, started)
+        except httpx.TimeoutException:
+            code = "TIMEOUT"
+        except httpx.HTTPStatusError:
+            code = "NOT_READY"
+        except Exception:
+            code = "UNREACHABLE"
+        return self._down(name + "-service", name in self.CRITICAL, started, code)
+
+    async def _probe_database(self) -> dict[str, Any]:
+        started = time.monotonic()
         try:
             await asyncio.wait_for(
-                probe.check(self._timeout_seconds),
-                timeout=self._timeout_seconds,
+                self.repository.list_by_status("STARTED", limit=1),
+                timeout=self.timeout_seconds,
             )
-        except ProbeFailure as failure:
-            return self._down(probe, started, failure.code)
-        except TimeoutError:
-            return self._down(probe, started, "TIMEOUT")
-        return DependencyHealth(
-            name=probe.name,
-            critical=probe.critical,
-            state=DependencyState.UP,
-            latency_ms=self._elapsed_ms(started),
-        )
-
-    def _down(self, probe: HealthProbe, started: float, error_code: str) -> DependencyHealth:
-        return DependencyHealth(
-            name=probe.name,
-            critical=probe.critical,
-            state=DependencyState.DOWN,
-            latency_ms=self._elapsed_ms(started),
-            error_code=error_code,
-        )
+            return self._up("database", True, started)
+        except asyncio.TimeoutError:
+            code = "TIMEOUT"
+        except Exception:
+            code = "NOT_READY"
+        return self._down("database", True, started, code)
 
     @staticmethod
-    def _elapsed_ms(started: float) -> int:
-        return max(0, int((time.perf_counter() - started) * 1000))
+    def _up(name: str, critical: bool, started: float) -> dict[str, Any]:
+        return {
+            "name": name,
+            "critical": critical,
+            "status": "UP",
+            "latencyMs": int((time.monotonic() - started) * 1000),
+        }
 
     @staticmethod
-    def _status(results: Sequence[DependencyHealth]) -> AggregateState:
-        return evaluate(results)
+    def _down(
+        name: str,
+        critical: bool,
+        started: float,
+        error_code: str,
+    ) -> dict[str, Any]:
+        return {
+            "name": name,
+            "critical": critical,
+            "status": "DOWN",
+            "latencyMs": int((time.monotonic() - started) * 1000),
+            "errorCode": error_code,
+        }

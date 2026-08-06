@@ -1,398 +1,693 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from datetime import datetime
+import asyncio
+import json
+from contextlib import contextmanager
+import sqlite3
+import time
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
-from sqlalchemy import or_, select
-
-from app.domain.errors import IdempotencyConflict
-from app.domain.models import (
-    IdempotencyDecision,
-    Money,
-    OperationResult,
-    OutboxItem,
-    PaymentOutcome,
-    WorkflowEvidence,
-    WorkflowPhase,
-)
-from app.persistence.database import Database
-from app.persistence.models import (
-    IdempotencyRow,
-    OutboxRow,
-    ReconciliationRow,
-    TraceStepRow,
-    WorkflowRow,
-    WorkflowStepRow,
-)
+from app.domain.models import OutboxMessage, PaymentStatus, Workflow, WorkflowStatus
 
 
-class SqlRepositories:
-    def __init__(self, database: Database) -> None:
-        self.database = database
+def _serialize_workflow(workflow: Workflow) -> dict[str, Any]:
+    workflow.updated_at = datetime.now(timezone.utc)
+    payload = asdict(workflow)
+    payload["status"] = workflow.status.value
+    payload["payment_status"] = workflow.payment_status.value
+    payload["updated_at"] = workflow.updated_at.isoformat()
+    return payload
 
-    async def create(self, workflow: WorkflowEvidence) -> None:
-        async with self.database.sessions.begin() as session:
-            if await session.get(WorkflowRow, workflow.workflow_id) is None:
-                session.add(self._to_row(workflow))
 
-    async def get(self, workflow_id: str) -> WorkflowEvidence | None:
-        async with self.database.sessions() as session:
-            row = await session.get(WorkflowRow, workflow_id)
-            return self._from_row(row) if row else None
+def _deserialize_workflow(payload: dict[str, Any]) -> Workflow:
+    data = dict(payload)
+    data["status"] = WorkflowStatus(data["status"])
+    data["payment_status"] = PaymentStatus(data["payment_status"])
+    if isinstance(data.get("updated_at"), str):
+        data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+    return Workflow(**data)
 
-    async def save(self, workflow: WorkflowEvidence) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(WorkflowRow, workflow.workflow_id, with_for_update=True)
-            if row is None:
-                session.add(self._to_row(workflow))
-                return
-            expected = workflow.version
-            if row.version > expected:
-                raise RuntimeError("workflow optimistic lock conflict")
-            self._update_row(row, workflow)
-            row.version += 1
-            workflow.version = row.version
 
-    async def record_step(
-        self,
-        workflow_id: str,
-        step: str,
-        provider: str,
-        outcome: str,
-        safe_details: Mapping[str, Any],
-    ) -> None:
-        async with self.database.sessions.begin() as session:
-            count = len(
-                (
-                    await session.scalars(
-                        select(WorkflowStepRow).where(
-                            WorkflowStepRow.workflow_id == workflow_id,
-                            WorkflowStepRow.step == step,
-                        )
-                    )
-                ).all()
-            )
-            session.add(
-                WorkflowStepRow(
-                    workflow_id=workflow_id,
-                    step=step,
-                    provider=provider,
-                    attempt=count + 1,
-                    outcome=outcome,
-                    safe_details=dict(safe_details),
-                )
-            )
+class SqliteRepository:
+    """Durable local repository used in development and tests."""
 
-    async def recoverable(self) -> Sequence[WorkflowEvidence]:
-        terminal = {"CONFIRMED", "FAILED", "CANCELLED"}
-        async with self.database.sessions() as session:
-            rows = (await session.scalars(select(WorkflowRow).where(WorkflowRow.phase.not_in(terminal)))).all()
-            return [self._from_row(row) for row in rows]
+    def __init__(self, database_url: str) -> None:
+        self.path = self._path_from_url(database_url)
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = asyncio.Lock()
+        self._initialize()
 
-    async def claim(self, operation: str, subject: str, key: str, request_hash: str) -> IdempotencyDecision:
-        async with self.database.sessions.begin() as session:
-            row = await session.scalar(
-                select(IdempotencyRow)
-                .where(
-                    IdempotencyRow.operation == operation,
-                    IdempotencyRow.authenticated_subject == subject,
-                    IdempotencyRow.idempotency_key == key,
-                )
-                .with_for_update()
-            )
-            if row:
-                if row.request_hash != request_hash:
-                    raise IdempotencyConflict()
-                if row.response_status is not None and row.response_body is not None:
-                    return IdempotencyDecision(
-                        "REPLAY",
-                        row.workflow_id,
-                        OperationResult(row.response_status, row.response_body),
-                    )
-                return IdempotencyDecision("IN_PROGRESS", row.workflow_id)
-            workflow_id = str(uuid4())
-            session.add(
-                IdempotencyRow(
-                    operation=operation,
-                    authenticated_subject=subject,
-                    idempotency_key=key,
-                    request_hash=request_hash,
-                    workflow_id=workflow_id,
-                )
-            )
-            return IdempotencyDecision("NEW", workflow_id)
+    @staticmethod
+    def _path_from_url(database_url: str) -> str:
+        for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
+            if database_url.startswith(prefix):
+                value = database_url.removeprefix(prefix)
+                return "/" + value.lstrip("/") if database_url.startswith(prefix + "/") else value
+        return "/tmp/esb_workflows.db"
 
-    async def complete(self, operation: str, subject: str, key: str, result: OperationResult) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.scalar(
-                select(IdempotencyRow)
-                .where(
-                    IdempotencyRow.operation == operation,
-                    IdempotencyRow.authenticated_subject == subject,
-                    IdempotencyRow.idempotency_key == key,
-                )
-                .with_for_update()
-            )
-            if row is None:
-                raise RuntimeError("idempotency record missing")
-            row.response_status, row.response_body = (
-                result.status_code,
-                dict(result.body),
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    @contextmanager
+    def _connection(self):
+        """Commit or roll back and always close a short-lived SQLite connection."""
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _initialize(self) -> None:
+        with self._connection() as connection:
+            # Create base tables first, then run additive compatibility migrations.
+            # Older local ESB databases used the same table name without the
+            # status column, so CREATE TABLE IF NOT EXISTS alone is insufficient.
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS workflows (
+                    workflow_id TEXT PRIMARY KEY,
+                    idempotency_key TEXT UNIQUE NOT NULL,
+                    correlation_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'STARTED',
+                    body TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS outbox (
+                    message_id TEXT PRIMARY KEY,
+                    state TEXT NOT NULL,
+                    next_attempt_at REAL NOT NULL,
+                    body TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ws_tickets (
+                    cache_key TEXT PRIMARY KEY,
+                    expires_at INTEGER NOT NULL,
+                    body TEXT NOT NULL
+                );
+                """
             )
 
-    async def append(
-        self,
-        correlation_id: str,
-        service: str,
-        operation: str,
-        status: str,
-        duration_ms: int,
-        error_code: str | None = None,
-    ) -> None:
-        async with self.database.sessions.begin() as session:
-            session.add(
-                TraceStepRow(
-                    correlation_id=correlation_id,
-                    service=service,
-                    operation=operation,
-                    status=status,
-                    duration_ms=duration_ms,
-                    error_code=error_code,
+            workflow_columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(workflows)").fetchall()
+            }
+            if "correlation_id" not in workflow_columns:
+                connection.execute("ALTER TABLE workflows ADD COLUMN correlation_id TEXT")
+            if "status" not in workflow_columns:
+                connection.execute(
+                    "ALTER TABLE workflows ADD COLUMN status TEXT NOT NULL DEFAULT 'STARTED'"
                 )
+
+            connection.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS ix_workflows_correlation
+                    ON workflows(correlation_id);
+                CREATE INDEX IF NOT EXISTS ix_workflows_status
+                    ON workflows(status);
+                CREATE INDEX IF NOT EXISTS ix_outbox_due
+                    ON outbox(state, next_attempt_at);
+                """
             )
 
-    async def list(self, correlation_id: str) -> Sequence[Mapping[str, Any]]:
-        async with self.database.sessions() as session:
-            rows = (
-                await session.scalars(select(TraceStepRow).where(TraceStepRow.correlation_id == correlation_id).order_by(TraceStepRow.id))
-            ).all()
-            return [
-                {
-                    "service": row.service,
-                    "operation": row.operation,
-                    "status": row.status,
-                    "durationMs": row.duration_ms,
-                    "errorCode": row.error_code,
-                }
-                for row in rows
-            ]
+    async def initialize(self) -> None:
+        return None
 
-    async def enqueue_many(self, workflow_id: str, items: Sequence[OutboxItem]) -> None:
-        async with self.database.sessions.begin() as session:
-            workflow = await session.get(WorkflowRow, workflow_id, with_for_update=True)
-            if workflow is None or workflow.phase != "CONFIRMED":
-                raise RuntimeError("outbox requires a confirmed workflow")
-            for item in items:
-                session.add(
-                    OutboxRow(
-                        message_id=item.message_id,
-                        workflow_id=workflow_id,
-                        destination=item.destination,
-                        message_type=item.message_type,
-                        payload=dict(item.payload),
-                        correlation_id=item.correlation_id,
-                    )
-                )
+    async def dispose(self) -> None:
+        return None
 
-    async def commit_with_outbox(self, workflow: WorkflowEvidence, items: Sequence[OutboxItem]) -> None:
-        if workflow.phase != WorkflowPhase.CONFIRMED:
-            raise RuntimeError("transactional outbox requires a confirmed workflow")
-        async with self.database.sessions.begin() as session:
-            row = await session.get(WorkflowRow, workflow.workflow_id, with_for_update=True)
-            if row is None:
-                raise RuntimeError("workflow missing")
-            if row.version > workflow.version:
-                raise RuntimeError("workflow optimistic lock conflict")
-            self._update_row(row, workflow)
-            row.version += 1
-            workflow.version = row.version
-            for item in items:
-                session.add(
-                    OutboxRow(
-                        message_id=item.message_id,
-                        workflow_id=workflow.workflow_id,
-                        destination=item.destination,
-                        message_type=item.message_type,
-                        payload=dict(item.payload),
-                        correlation_id=item.correlation_id,
-                    )
-                )
+    async def find_by_idempotency(self, key: str) -> Workflow | None:
+        async with self._lock:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT body FROM workflows WHERE idempotency_key = ?",
+                    (key,),
+                ).fetchone()
+        return _deserialize_workflow(json.loads(row["body"])) if row else None
 
-    async def due_outbox(self, now: datetime, limit: int) -> Sequence[Mapping[str, Any]]:
-        async with self.database.sessions() as session:
-            rows = (
-                await session.scalars(select(OutboxRow).where(OutboxRow.state == "PENDING", OutboxRow.next_attempt_at <= now).limit(limit))
-            ).all()
-            return [
-                {
-                    "messageId": r.message_id,
-                    "destination": r.destination,
-                    "type": r.message_type,
-                    "payload": r.payload,
-                    "correlationId": r.correlation_id,
-                    "attempts": r.attempts,
-                }
-                for r in rows
-            ]
+    async def get(self, workflow_id: str) -> Workflow | None:
+        async with self._lock:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT body FROM workflows WHERE workflow_id = ?",
+                    (workflow_id,),
+                ).fetchone()
+        return _deserialize_workflow(json.loads(row["body"])) if row else None
 
-    async def due_jobs(self, now: datetime, limit: int, lease_until: datetime | None = None) -> Sequence[Mapping[str, Any]]:
-        """Claim due jobs under a row lease so replicas never share one job.
+    async def find_by_correlation(self, correlation_id: str) -> Workflow | None:
+        async with self._lock:
+            with self._connection() as connection:
+                row = connection.execute(
+                    """
+                    SELECT body
+                    FROM workflows
+                    WHERE correlation_id = ?
+                    ORDER BY rowid DESC
+                    LIMIT 1
+                    """,
+                    (correlation_id,),
+                ).fetchone()
+        return _deserialize_workflow(json.loads(row["body"])) if row else None
 
-        The row lock skips whatever another worker already holds, and the claimed rows
-        get a `locked_until` lease so a crashed worker's jobs become claimable again.
-        """
-        async with self.database.sessions.begin() as session:
-            statement = (
-                select(ReconciliationRow)
-                .where(
-                    ReconciliationRow.state == "PENDING",
-                    ReconciliationRow.next_attempt_at <= now,
-                    or_(
-                        ReconciliationRow.locked_until.is_(None),
-                        ReconciliationRow.locked_until <= now,
+    async def save(self, workflow: Workflow) -> None:
+        payload = _serialize_workflow(workflow)
+        body = json.dumps(payload, separators=(",", ":"))
+        correlation_id = workflow.evidence.get("correlationId")
+        async with self._lock:
+            with self._connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO workflows(
+                        workflow_id,
+                        idempotency_key,
+                        correlation_id,
+                        status,
+                        body
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(workflow_id) DO UPDATE SET
+                        correlation_id = excluded.correlation_id,
+                        status = excluded.status,
+                        body = excluded.body
+                    """,
+                    (
+                        workflow.workflow_id,
+                        workflow.idempotency_key,
+                        correlation_id,
+                        workflow.status.value,
+                        body,
                     ),
                 )
-                .order_by(ReconciliationRow.next_attempt_at)
-                .limit(limit)
-            )
-            if session.bind is not None and session.bind.dialect.name == "postgresql":
-                statement = statement.with_for_update(skip_locked=True)
-            jobs = (await session.scalars(statement)).all()
-            for row in jobs:
-                row.locked_until = lease_until
-            return [
-                {
-                    "jobId": r.id,
-                    "workflowId": r.workflow_id,
-                    "kind": r.kind,
-                    "payload": r.payload,
-                    "idempotencyKey": r.idempotency_key,
-                    "attempts": r.attempts,
-                    "deadlineAt": r.deadline_at,
-                    "extensionCount": r.extension_count,
-                }
-                for r in jobs
-            ]
 
-    async def delivered(self, message_id: str) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(OutboxRow, message_id, with_for_update=True)
-            if row:
-                row.state = "DELIVERED"
+    async def list_by_status(self, status: str, limit: int = 100) -> list[Workflow]:
+        async with self._lock:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT body
+                    FROM workflows
+                    WHERE status = ?
+                    ORDER BY rowid
+                    LIMIT ?
+                    """,
+                    (status, limit),
+                ).fetchall()
+        return [_deserialize_workflow(json.loads(row["body"])) for row in rows]
 
-    async def failed(self, message_id: str, next_attempt_at: datetime, error_code: str) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(OutboxRow, message_id, with_for_update=True)
-            if row:
-                row.attempts += 1
-                row.next_attempt_at = next_attempt_at
-                row.last_error_code = error_code
-
-    async def schedule(
+    async def save_with_outbox(
         self,
-        workflow_id: str,
-        kind: str,
-        payload: Mapping[str, Any],
-        idempotency_key: str,
-        deadline: datetime | None = None,
+        workflow: Workflow,
+        messages: list[OutboxMessage],
     ) -> None:
-        async with self.database.sessions.begin() as session:
-            existing = await session.scalar(
-                select(ReconciliationRow)
-                .where(
-                    ReconciliationRow.workflow_id == workflow_id,
-                    ReconciliationRow.kind == kind,
-                    ReconciliationRow.idempotency_key == idempotency_key,
+        payload = _serialize_workflow(workflow)
+        workflow_body = json.dumps(payload, separators=(",", ":"))
+        async with self._lock:
+            with self._connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO workflows(
+                        workflow_id,
+                        idempotency_key,
+                        correlation_id,
+                        status,
+                        body
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(workflow_id) DO UPDATE SET
+                        correlation_id = excluded.correlation_id,
+                        status = excluded.status,
+                        body = excluded.body
+                    """,
+                    (
+                        workflow.workflow_id,
+                        workflow.idempotency_key,
+                        workflow.evidence.get("correlationId"),
+                        workflow.status.value,
+                        workflow_body,
+                    ),
                 )
-                .with_for_update()
-            )
-            if existing is not None:
-                if existing.state != "COMPLETED":
-                    existing.payload = dict(payload)
-                return
-            session.add(
-                ReconciliationRow(
-                    id=str(uuid4()),
-                    workflow_id=workflow_id,
-                    kind=kind,
-                    payload=dict(payload),
-                    idempotency_key=idempotency_key,
-                    deadline_at=deadline,
+                for message in messages:
+                    message_body = json.dumps(asdict(message), separators=(",", ":"))
+                    connection.execute(
+                        """
+                        INSERT INTO outbox(message_id, state, next_attempt_at, body)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(message_id) DO UPDATE SET
+                            state = excluded.state,
+                            next_attempt_at = excluded.next_attempt_at,
+                            body = excluded.body
+                        """,
+                        (
+                            message.message_id,
+                            message.state,
+                            message.next_attempt_at,
+                            message_body,
+                        ),
+                    )
+
+    async def add(self, message: OutboxMessage) -> None:
+        await self.save_message(message)
+
+    async def due(self, limit: int) -> list[OutboxMessage]:
+        async with self._lock:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT body
+                    FROM outbox
+                    WHERE state = 'PENDING' AND next_attempt_at <= ?
+                    ORDER BY next_attempt_at
+                    LIMIT ?
+                    """,
+                    (time.time(), limit),
+                ).fetchall()
+        return [OutboxMessage(**json.loads(row["body"])) for row in rows]
+
+    async def save_message(self, message: OutboxMessage) -> None:
+        body = json.dumps(asdict(message), separators=(",", ":"))
+        async with self._lock:
+            with self._connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO outbox(message_id, state, next_attempt_at, body)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(message_id) DO UPDATE SET
+                        state = excluded.state,
+                        next_attempt_at = excluded.next_attempt_at,
+                        body = excluded.body
+                    """,
+                    (
+                        message.message_id,
+                        message.state,
+                        message.next_attempt_at,
+                        body,
+                    ),
                 )
+
+    async def get_ws_ticket(self, key: str) -> dict[str, Any] | None:
+        async with self._lock:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT expires_at, body FROM ws_tickets WHERE cache_key = ?",
+                    (key,),
+                ).fetchone()
+        if row is None or int(row["expires_at"]) <= int(time.time()):
+            return None
+        return json.loads(row["body"])
+
+    async def save_ws_ticket(
+        self,
+        key: str,
+        expires_at: int,
+        body: dict[str, Any],
+    ) -> None:
+        async with self._lock:
+            with self._connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO ws_tickets(cache_key, expires_at, body)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(cache_key) DO UPDATE SET
+                        expires_at = excluded.expires_at,
+                        body = excluded.body
+                    """,
+                    (key, expires_at, json.dumps(body, separators=(",", ":"))),
+                )
+
+
+class PostgresRepository:
+    """Multi-replica repository for production PostgreSQL deployments."""
+
+    def __init__(self, database_url: str) -> None:
+        try:
+            from sqlalchemy.ext.asyncio import create_async_engine
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError("SQLAlchemy is required for PostgreSQL persistence") from exc
+
+        self._engine = create_async_engine(database_url, pool_pre_ping=True)
+        self._metadata = self._build_metadata()
+
+    @staticmethod
+    def _build_metadata():
+        from sqlalchemy import JSON, BigInteger, Column, Float, MetaData, String, Table
+
+        metadata = MetaData()
+        Table(
+            "esb_workflows_v2",
+            metadata,
+            Column("workflow_id", String(64), primary_key=True),
+            Column("idempotency_key", String(128), unique=True, nullable=False),
+            Column("correlation_id", String(128), index=True),
+            Column("status", String(40), index=True, nullable=False),
+            Column("body", JSON, nullable=False),
+        )
+        Table(
+            "esb_outbox_v2",
+            metadata,
+            Column("message_id", String(64), primary_key=True),
+            Column("state", String(32), index=True, nullable=False),
+            Column("next_attempt_at", Float, index=True, nullable=False),
+            Column("body", JSON, nullable=False),
+        )
+        Table(
+            "esb_ws_ticket_v2",
+            metadata,
+            Column("cache_key", String(256), primary_key=True),
+            Column("expires_at", BigInteger, index=True, nullable=False),
+            Column("body", JSON, nullable=False),
+        )
+        return metadata
+
+    @property
+    def workflows(self):
+        return self._metadata.tables["esb_workflows_v2"]
+
+    @property
+    def outbox(self):
+        return self._metadata.tables["esb_outbox_v2"]
+
+    @property
+    def ws_tickets(self):
+        return self._metadata.tables["esb_ws_ticket_v2"]
+
+    async def initialize(self) -> None:
+        """Fail fast when the migration-managed production schema is missing."""
+        from sqlalchemy import text
+
+        required = {
+            "esb_workflows_v2",
+            "esb_outbox_v2",
+            "esb_ws_ticket_v2",
+        }
+        async with self._engine.connect() as connection:
+            rows = (
+                await connection.execute(
+                    text(
+                        """
+                        SELECT table_name
+                        FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name IN (
+                            'esb_workflows_v2',
+                            'esb_outbox_v2',
+                            'esb_ws_ticket_v2'
+                          )
+                        """
+                    )
+                )
+            ).all()
+        present = {str(row[0]) for row in rows}
+        missing = sorted(required - present)
+        if missing:
+            raise RuntimeError(
+                "ESB database schema is not migrated; missing tables: "
+                + ", ".join(missing)
             )
 
-    async def complete_job(self, job_id: str) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(ReconciliationRow, job_id, with_for_update=True)
-            if row:
-                row.state = "COMPLETED"
-                row.locked_until = None
+    async def dispose(self) -> None:
+        await self._engine.dispose()
 
-    async def reschedule_job(self, job_id: str, next_attempt_at: datetime, evidence: Mapping[str, Any]) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(ReconciliationRow, job_id, with_for_update=True)
-            if row:
-                row.attempts += 1
-                row.next_attempt_at = next_attempt_at
-                row.last_evidence = dict(evidence)
-                row.locked_until = None
-                if "extensionCount" in evidence:
-                    row.extension_count = int(str(evidence["extensionCount"]))
+    async def find_by_idempotency(self, key: str) -> Workflow | None:
+        from sqlalchemy import select
 
-    async def abandon_job(self, job_id: str, evidence: Mapping[str, Any]) -> None:
-        async with self.database.sessions.begin() as session:
-            row = await session.get(ReconciliationRow, job_id, with_for_update=True)
-            if row:
-                row.state = "ABANDONED"
-                row.locked_until = None
-                row.last_evidence = dict(evidence)
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(self.workflows.c.body).where(
+                        self.workflows.c.idempotency_key == key
+                    )
+                )
+            ).first()
+        return _deserialize_workflow(row[0]) if row else None
 
-    @staticmethod
-    def _to_row(value: WorkflowEvidence) -> WorkflowRow:
-        row = WorkflowRow(
-            id=value.workflow_id,
-            public_operation=value.operation,
-            authenticated_subject=value.subject,
-            request_hash=value.request_hash,
-            correlation_id=value.correlation_id,
-            phase=value.phase.value,
+    async def get(self, workflow_id: str) -> Workflow | None:
+        from sqlalchemy import select
+
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(self.workflows.c.body).where(
+                        self.workflows.c.workflow_id == workflow_id
+                    )
+                )
+            ).first()
+        return _deserialize_workflow(row[0]) if row else None
+
+    async def find_by_correlation(self, correlation_id: str) -> Workflow | None:
+        from sqlalchemy import select
+
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(self.workflows.c.body)
+                    .where(self.workflows.c.correlation_id == correlation_id)
+                    .limit(1)
+                )
+            ).first()
+        return _deserialize_workflow(row[0]) if row else None
+
+    async def save(self, workflow: Workflow) -> None:
+        from sqlalchemy.dialects.postgresql import insert
+
+        payload = _serialize_workflow(workflow)
+        statement = insert(self.workflows).values(
+            workflow_id=workflow.workflow_id,
+            idempotency_key=workflow.idempotency_key,
+            correlation_id=workflow.evidence.get("correlationId"),
+            status=workflow.status.value,
+            body=payload,
         )
-        SqlRepositories._update_row(row, value)
-        return row
-
-    @staticmethod
-    def _update_row(row: WorkflowRow, value: WorkflowEvidence) -> None:
-        row.phase = value.phase.value
-        row.booking_id = value.booking_id
-        row.customer_id = value.customer_id
-        row.reservation_id = value.reservation_id
-        row.reservation_version = value.reservation_version
-        row.payment_id = value.payment_id
-        row.payment_status = value.payment_status.value if value.payment_status else None
-        row.ticket_ids = list(value.ticket_ids)
-        row.total = value.total.as_wire() if value.total else None
-        row.evidence = dict(value.evidence)
-
-    @staticmethod
-    def _from_row(row: WorkflowRow) -> WorkflowEvidence:
-        total = Money(int(row.total["amountMinor"]), str(row.total["currency"])) if row.total else None
-        return WorkflowEvidence(
-            row.id,
-            row.public_operation,
-            row.authenticated_subject,
-            row.request_hash,
-            row.correlation_id,
-            WorkflowPhase(row.phase),
-            row.booking_id,
-            row.customer_id,
-            row.reservation_id,
-            row.reservation_version,
-            row.payment_id,
-            PaymentOutcome(row.payment_status) if row.payment_status else None,
-            list(row.ticket_ids or []),
-            total,
-            dict(row.evidence or {}),
-            row.version,
+        statement = statement.on_conflict_do_update(
+            index_elements=[self.workflows.c.workflow_id],
+            set_={
+                "correlation_id": statement.excluded.correlation_id,
+                "status": statement.excluded.status,
+                "body": statement.excluded.body,
+            },
         )
+        async with self._engine.begin() as connection:
+            await connection.execute(statement)
+
+    async def list_by_status(self, status: str, limit: int = 100) -> list[Workflow]:
+        from sqlalchemy import select
+
+        async with self._engine.connect() as connection:
+            rows = (
+                await connection.execute(
+                    select(self.workflows.c.body)
+                    .where(self.workflows.c.status == status)
+                    .limit(limit)
+                )
+            ).all()
+        return [_deserialize_workflow(row[0]) for row in rows]
+
+    async def save_with_outbox(
+        self,
+        workflow: Workflow,
+        messages: list[OutboxMessage],
+    ) -> None:
+        from sqlalchemy.dialects.postgresql import insert
+
+        workflow_payload = _serialize_workflow(workflow)
+        workflow_statement = insert(self.workflows).values(
+            workflow_id=workflow.workflow_id,
+            idempotency_key=workflow.idempotency_key,
+            correlation_id=workflow.evidence.get("correlationId"),
+            status=workflow.status.value,
+            body=workflow_payload,
+        )
+        workflow_statement = workflow_statement.on_conflict_do_update(
+            index_elements=[self.workflows.c.workflow_id],
+            set_={
+                "correlation_id": workflow_statement.excluded.correlation_id,
+                "status": workflow_statement.excluded.status,
+                "body": workflow_statement.excluded.body,
+            },
+        )
+        async with self._engine.begin() as connection:
+            await connection.execute(workflow_statement)
+            for message in messages:
+                message_statement = insert(self.outbox).values(
+                    message_id=message.message_id,
+                    state=message.state,
+                    next_attempt_at=message.next_attempt_at,
+                    body=asdict(message),
+                )
+                message_statement = message_statement.on_conflict_do_update(
+                    index_elements=[self.outbox.c.message_id],
+                    set_={
+                        "state": message_statement.excluded.state,
+                        "next_attempt_at": message_statement.excluded.next_attempt_at,
+                        "body": message_statement.excluded.body,
+                    },
+                )
+                await connection.execute(message_statement)
+
+    async def add(self, message: OutboxMessage) -> None:
+        await self.save_message(message)
+
+    async def due(self, limit: int) -> list[OutboxMessage]:
+        from sqlalchemy import select
+
+        async with self._engine.connect() as connection:
+            rows = (
+                await connection.execute(
+                    select(self.outbox.c.body)
+                    .where(
+                        self.outbox.c.state == "PENDING",
+                        self.outbox.c.next_attempt_at <= time.time(),
+                    )
+                    .order_by(self.outbox.c.next_attempt_at)
+                    .limit(limit)
+                )
+            ).all()
+        return [OutboxMessage(**row[0]) for row in rows]
+
+    async def save_message(self, message: OutboxMessage) -> None:
+        from sqlalchemy.dialects.postgresql import insert
+
+        payload = asdict(message)
+        statement = insert(self.outbox).values(
+            message_id=message.message_id,
+            state=message.state,
+            next_attempt_at=message.next_attempt_at,
+            body=payload,
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=[self.outbox.c.message_id],
+            set_={
+                "state": statement.excluded.state,
+                "next_attempt_at": statement.excluded.next_attempt_at,
+                "body": statement.excluded.body,
+            },
+        )
+        async with self._engine.begin() as connection:
+            await connection.execute(statement)
+
+    async def get_ws_ticket(self, key: str) -> dict[str, Any] | None:
+        from sqlalchemy import select
+
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(self.ws_tickets.c.expires_at, self.ws_tickets.c.body).where(
+                        self.ws_tickets.c.cache_key == key
+                    )
+                )
+            ).first()
+        if row is None or int(row[0]) <= int(time.time()):
+            return None
+        return row[1]
+
+    async def save_ws_ticket(
+        self,
+        key: str,
+        expires_at: int,
+        body: dict[str, Any],
+    ) -> None:
+        from sqlalchemy.dialects.postgresql import insert
+
+        statement = insert(self.ws_tickets).values(
+            cache_key=key,
+            expires_at=expires_at,
+            body=body,
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=[self.ws_tickets.c.cache_key],
+            set_={
+                "expires_at": statement.excluded.expires_at,
+                "body": statement.excluded.body,
+            },
+        )
+        async with self._engine.begin() as connection:
+            await connection.execute(statement)
+
+
+class InMemoryRepository:
+    def __init__(self) -> None:
+        self.workflows: dict[str, Workflow] = {}
+        self.keys: dict[str, str] = {}
+        self.messages: dict[str, OutboxMessage] = {}
+        self.ws_tickets: dict[str, tuple[int, dict[str, Any]]] = {}
+
+    async def initialize(self) -> None:
+        return None
+
+    async def dispose(self) -> None:
+        return None
+
+    async def find_by_idempotency(self, key: str) -> Workflow | None:
+        return self.workflows.get(self.keys.get(key, ""))
+
+    async def get(self, workflow_id: str) -> Workflow | None:
+        return self.workflows.get(workflow_id)
+
+    async def find_by_correlation(self, correlation_id: str) -> Workflow | None:
+        return next(
+            (
+                workflow
+                for workflow in self.workflows.values()
+                if workflow.evidence.get("correlationId") == correlation_id
+            ),
+            None,
+        )
+
+    async def save(self, workflow: Workflow) -> None:
+        workflow.updated_at = datetime.now(timezone.utc)
+        self.workflows[workflow.workflow_id] = workflow
+        self.keys[workflow.idempotency_key] = workflow.workflow_id
+
+    async def list_by_status(self, status: str, limit: int = 100) -> list[Workflow]:
+        return [
+            workflow
+            for workflow in self.workflows.values()
+            if workflow.status.value == status
+        ][:limit]
+
+    async def save_with_outbox(
+        self,
+        workflow: Workflow,
+        messages: list[OutboxMessage],
+    ) -> None:
+        await self.save(workflow)
+        for message in messages:
+            self.messages[message.message_id] = message
+
+    async def add(self, message: OutboxMessage) -> None:
+        self.messages[message.message_id] = message
+
+    async def due(self, limit: int) -> list[OutboxMessage]:
+        return [
+            message
+            for message in self.messages.values()
+            if message.state == "PENDING" and message.next_attempt_at <= time.time()
+        ][:limit]
+
+    async def save_message(self, message: OutboxMessage) -> None:
+        self.messages[message.message_id] = message
+
+    async def get_ws_ticket(self, key: str) -> dict[str, Any] | None:
+        item = self.ws_tickets.get(key)
+        if item is None or item[0] <= int(time.time()):
+            return None
+        return item[1]
+
+    async def save_ws_ticket(
+        self,
+        key: str,
+        expires_at: int,
+        body: dict[str, Any],
+    ) -> None:
+        self.ws_tickets[key] = (expires_at, body)
+
+
+def repository_from_url(database_url: str):
+    if database_url.startswith("postgresql+"):
+        return PostgresRepository(database_url)
+    return SqliteRepository(database_url)

@@ -11,7 +11,8 @@
     "./identity-contract": "./src/generated/identity-service.ts",
     "./realtime-contract": "./src/generated/realtime-service.ts",
     "./realtime-messages": "./src/generated/realtime-messages.ts",
-    "./styles.css": "./src/styles/tokens.css"
+    "./styles.css": "./src/styles/tokens.css",
+    "./frontend-esb-contract": "./src/frontend-esb-contract.ts"
   },
   "peerDependencies": {
     "lucide-react": ">=0.400.0",

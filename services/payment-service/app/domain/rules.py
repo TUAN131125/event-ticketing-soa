@@ -1,4 +1,4 @@
-"""Pure payment invariants and deterministic request hashing."""
+"""Pure payment invariants, money conversion and deterministic hashing."""
 
 from __future__ import annotations
 
@@ -9,29 +9,57 @@ from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.domain.enums import PaymentStatus
+from app.domain.enums import MockProviderScenario, PaymentStatus
 from app.domain.exceptions import InvalidRequest, InvalidStateTransition
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 CURRENCY = re.compile(r"^[A-Z]{3}$")
+
+# The project baseline demonstrates VND with exponent zero. Other currencies keep
+# the legacy two-decimal behavior so existing API consumers are not broken.
+CURRENCY_EXPONENTS: dict[str, int] = {"VND": 0}
 
 ALLOWED_TRANSITIONS: dict[PaymentStatus, frozenset[PaymentStatus]] = {
     PaymentStatus.PENDING: frozenset(
         {
             PaymentStatus.AUTHORIZED,
             PaymentStatus.CAPTURED,
+            PaymentStatus.UNKNOWN,
             PaymentStatus.FAILED,
             PaymentStatus.CANCELLED,
         }
     ),
     PaymentStatus.AUTHORIZED: frozenset(
-        {PaymentStatus.CAPTURED, PaymentStatus.FAILED, PaymentStatus.CANCELLED}
+        {
+            PaymentStatus.CAPTURED,
+            PaymentStatus.UNKNOWN,
+            PaymentStatus.FAILED,
+            PaymentStatus.CANCELLED,
+        }
     ),
     PaymentStatus.CAPTURED: frozenset(
-        {PaymentStatus.PARTIALLY_REFUNDED, PaymentStatus.REFUNDED}
+        {
+            PaymentStatus.UNKNOWN,
+            PaymentStatus.PARTIALLY_REFUNDED,
+            PaymentStatus.REFUNDED,
+        }
+    ),
+    PaymentStatus.UNKNOWN: frozenset(
+        {
+            PaymentStatus.AUTHORIZED,
+            PaymentStatus.CAPTURED,
+            PaymentStatus.FAILED,
+            PaymentStatus.CANCELLED,
+            PaymentStatus.PARTIALLY_REFUNDED,
+            PaymentStatus.REFUNDED,
+        }
     ),
     PaymentStatus.PARTIALLY_REFUNDED: frozenset(
-        {PaymentStatus.PARTIALLY_REFUNDED, PaymentStatus.REFUNDED}
+        {
+            PaymentStatus.UNKNOWN,
+            PaymentStatus.PARTIALLY_REFUNDED,
+            PaymentStatus.REFUNDED,
+        }
     ),
     PaymentStatus.FAILED: frozenset(),
     PaymentStatus.CANCELLED: frozenset(),
@@ -58,13 +86,11 @@ def validate_optional_identifier(
 
 
 def validate_payment_method(value: str) -> str:
-    normalized = value.strip()
-    if re.fullmatch(r"\d{13,19}", normalized):
-        raise InvalidRequest("methodToken must not contain raw card data")
-    if not 6 <= len(normalized) <= 200 or any(
-        character.isspace() for character in normalized
-    ):
-        raise InvalidRequest("methodToken must be an opaque 6-200 character token")
+    normalized = validate_identifier(value, "paymentMethod", max_length=40)
+    if not any(character.isalpha() for character in normalized):
+        raise InvalidRequest(
+            "paymentMethod must be a non-sensitive method category, not card data"
+        )
     return normalized
 
 
@@ -73,6 +99,31 @@ def validate_currency(value: str) -> str:
     if not CURRENCY.fullmatch(normalized):
         raise InvalidRequest("currency must be a three-letter ISO code")
     return normalized
+
+
+def currency_exponent(currency: str) -> int:
+    return CURRENCY_EXPONENTS.get(validate_currency(currency), 2)
+
+
+def amount_from_minor(amount_minor: int, currency: str) -> Decimal:
+    if amount_minor <= 0:
+        raise InvalidRequest("amountMinor must be positive")
+    exponent = currency_exponent(currency)
+    return validate_money(
+        Decimal(amount_minor) / (Decimal(10) ** exponent),
+        "amountMinor",
+    )
+
+
+def amount_to_minor(amount: Decimal, currency: str) -> int:
+    normalized = validate_money(amount, "amount")
+    exponent = currency_exponent(currency)
+    scaled = normalized * (Decimal(10) ** exponent)
+    if scaled != scaled.to_integral_value():
+        raise InvalidRequest(
+            f"amount is not representable in minor units for {currency}"
+        )
+    return int(scaled)
 
 
 def validate_money(
@@ -115,6 +166,30 @@ def ensure_transition_allowed(current: PaymentStatus, target: PaymentStatus) -> 
         raise InvalidStateTransition(current.value, target.value)
 
 
+def payment_token_fingerprint(value: str | None) -> str | None:
+    if value is None:
+        return None
+    token = value.strip()
+    if not 8 <= len(token) <= 256:
+        raise InvalidRequest("methodToken must be between 8 and 256 characters")
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def mock_scenario_from_token(value: str | None) -> MockProviderScenario:
+    if value is None:
+        return MockProviderScenario.MANUAL
+    normalized = value.strip().lower()
+    known = {
+        "tok_demo_success": MockProviderScenario.SUCCESS,
+        "sim-ok": MockProviderScenario.SUCCESS,
+        "tok_demo_decline": MockProviderScenario.DECLINE,
+        "sim-decline": MockProviderScenario.DECLINE,
+        "tok_demo_timeout": MockProviderScenario.TIMEOUT,
+        "sim-timeout": MockProviderScenario.TIMEOUT,
+    }
+    return known.get(normalized, MockProviderScenario.MANUAL)
+
+
 def canonical_request_hash(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(
         payload,
@@ -133,4 +208,4 @@ def advisory_lock_id(scope: str, key: str) -> int:
 def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
         return format(value.normalize(), "f")
-    raise TypeError(f"Unsupported value in canonical payload: {type(value)!r}")
+    raise TypeError(f"Unsupported value for request hashing: {type(value)!r}")

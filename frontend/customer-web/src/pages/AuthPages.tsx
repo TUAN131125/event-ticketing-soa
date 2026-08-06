@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, Card, FormField, Input, PasswordInput } from '@event-ticketing/shared-ui';
+import { Button, Card, FormField, Input, PasswordInput, Alert } from '@event-ticketing/shared-ui';
 import { useAuth } from '../app/auth';
 import { ApiError } from '../api/auth-client';
+import { ClipboardList, Tickets } from 'lucide-react';
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
   password: z.string().min(12, 'Use at least 12 characters'),
@@ -152,30 +153,52 @@ export function AccountPage() {
         <p className="eyebrow">Account</p>
         <h1>Your profile</h1>
       </div>
-      <Card padded>
-        <dl className="facts">
-          <div>
-            <dt>Email</dt>
-            <dd>{user.email}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{user.status}</dd>
-          </div>
-          <div>
-            <dt>Roles</dt>
-            <dd>{user.roles.join(', ')}</dd>
-          </div>
-          <div>
-            <dt>Member since</dt>
-            <dd>
-              {new Intl.DateTimeFormat(undefined, {
-                dateStyle: 'medium',
-              }).format(new Date(user.createdAt))}
-            </dd>
-          </div>
-        </dl>
-      </Card>
+      <div className="account-layout">
+        <Card padded>
+          <dl className="facts">
+            <div>
+              <dt>Email</dt>
+              <dd>{user.email}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{user.status}</dd>
+            </div>
+            <div>
+              <dt>Roles</dt>
+              <dd>{user.roles.join(', ')}</dd>
+            </div>
+            <div>
+              <dt>Member since</dt>
+              <dd>
+                {new Intl.DateTimeFormat(undefined, {
+                  dateStyle: 'medium',
+                }).format(new Date(user.createdAt))}
+              </dd>
+            </div>
+          </dl>
+        </Card>
+        <Alert tone="info" title="Customer details are collected during checkout">
+          This page shows Identity data only. UI-04 collects the customer name, email and phone as a
+          validated checkout draft; the backend remains responsible for Customer mapping.
+        </Alert>
+        <div className="account-actions-grid">
+          <Link className="account-action-card" to="/bookings">
+            <ClipboardList size={24} />
+            <span>
+              <strong>My bookings</strong>
+              <small>Review authoritative booking status and cancellation results.</small>
+            </span>
+          </Link>
+          <Link className="account-action-card" to="/tickets">
+            <Tickets size={24} />
+            <span>
+              <strong>Ticket wallet</strong>
+              <small>Open tickets from confirmed recent bookings.</small>
+            </span>
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }

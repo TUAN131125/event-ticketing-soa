@@ -1,46 +1,53 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from time import monotonic
-
-from app.domain.models import Principal, RequestContext
-from app.ports.providers import NotificationPort, RealtimePort
-from app.ports.repositories import Clock, OutboxRepository
+import asyncio
+import time
+from typing import Any
 
 
-class OutboxDispatcher:
+class OutboxWorker:
+    """Dispatches durable outbox messages with bounded retry and dead-lettering."""
+
     def __init__(
         self,
-        repository: OutboxRepository,
-        notification: NotificationPort,
-        realtime: RealtimePort,
-        clock: Clock,
+        repo: Any,
+        publisher: Any,
+        max_attempts: int = 8,
+        batch_size: int = 50,
     ) -> None:
-        self.repository, self.notification, self.realtime, self.clock = (
-            repository,
-            notification,
-            realtime,
-            clock,
-        )
+        self.repo = repo
+        self.publisher = publisher
+        self.max_attempts = max_attempts
+        self.batch_size = batch_size
 
-    async def run_once(self, limit: int = 50) -> int:
-        messages = await self.repository.due_outbox(self.clock.now(), limit)
+    async def run_once(self) -> int:
+        messages = await self.repo.due(self.batch_size)
         for message in messages:
-            context = RequestContext(
-                str(message["correlationId"]),
-                None,
-                monotonic() + 10,
-                Principal("booking-orchestrator", ("SERVICE",)),
-            )
             try:
-                adapter = self.notification if message["destination"] == "notification" else self.realtime
-                await adapter.publish(message["payload"], str(message["messageId"]), context)
-                await self.repository.delivered(str(message["messageId"]))
-            except Exception:  # noqa: BLE001 -- durable retry records every delivery failure
-                attempts = int(message.get("attempts", 0)) + 1
-                await self.repository.failed(
-                    str(message["messageId"]),
-                    self.clock.now() + timedelta(seconds=min(300, 2**attempts)),
-                    "SIDE_EFFECT_DELIVERY_FAILED",
+                await self.publisher.publish(
+                    message.topic,
+                    message.payload,
+                    message.message_id,
                 )
+                message.state = "SENT"
+                message.last_error = None
+            except Exception as exc:
+                message.attempts += 1
+                message.last_error = str(exc)[:1000]
+                if message.attempts >= self.max_attempts:
+                    message.state = "DEAD_LETTER"
+                else:
+                    message.next_attempt_at = time.time() + min(
+                        300,
+                        2 ** message.attempts,
+                    )
+            await self.repo.save_message(message)
         return len(messages)
+
+    async def run_forever(self, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            await self.run_once()
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue

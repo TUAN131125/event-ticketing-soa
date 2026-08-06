@@ -1,0 +1,16 @@
+Payment Service refactor validation
+Date: 2026-08-06
+
+PASS  pytest: 46 passed
+SKIP  PostgreSQL integration/concurrency: 9 skipped (PAYMENT_TEST_DATABASE_URL absent)
+PASS  Python compileall: app, tests, migrations, scripts
+PASS  OpenAPI runtime/static exact equality
+PASS  Legacy API operations preserved: 11/11
+PASS  Total API operations: 14
+PASS  Alembic offline SQL generation: 0001 -> 0002
+PASS  YAML parse: OpenAPI and Docker Compose files
+PASS  Python line-length check against 88 characters (migration versions excluded per Ruff config)
+INFO  Coverage: 66%
+NOT_RUN Ruff: tool unavailable in runtime
+NOT_RUN Mypy: tool unavailable in runtime
+NOT_RUN Docker/PostgreSQL runtime: Docker executable unavailable

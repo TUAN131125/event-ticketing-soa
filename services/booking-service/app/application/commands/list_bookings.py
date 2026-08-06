@@ -8,10 +8,8 @@ from app.domain.enums import BookingStatus
 from app.domain.exceptions import InvalidRequest
 from app.domain.rules import validate_identifier
 from app.domain.value_objects import BookingPage
-from app.infrastructure.database.repositories import (
-    list_booking_models,
-    model_to_entity,
-)
+from app.infrastructure.database.mappers import model_to_entity
+from app.infrastructure.database.repositories import list_booking_models
 
 
 def list_bookings(

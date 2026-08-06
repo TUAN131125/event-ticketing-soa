@@ -3,6 +3,7 @@ import { CalendarDays, Clock3, MapPin, Share2, Ticket } from 'lucide-react';
 import { Badge, Button, Card, Skeleton } from '@event-ticketing/shared-ui';
 import { useEvent } from '../app/hooks';
 import { QueryState } from './PageState';
+
 function formatDate(value?: string) {
   if (!value) return 'Date to be announced';
   const date = new Date(value);
@@ -10,6 +11,11 @@ function formatDate(value?: string) {
     ? value
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(date);
 }
+
+function formatMoney(amountMinor: number, currency: string) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amountMinor);
+}
+
 export function EventDetailPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -40,16 +46,40 @@ export function EventDetailPage() {
       <div className="detail-layout">
         <div className="detail-main">
           <div className="detail-cover">
-            {event.imageUrl ? <img src={event.imageUrl} alt="" /> : <Ticket size={54} />}
+            <Ticket size={54} />
           </div>
           <div className="event-card-meta">
-            <Badge tone="information">{event.category || 'Live event'}</Badge>
-            {event.status && <Badge>{event.status}</Badge>}
+            <Badge tone="information">{event.status || 'Status unavailable'}</Badge>
           </div>
           <h1>{event.name}</h1>
           <p className="lede">
-            {event.description || 'Event details will be published by the organiser.'}
+            Review the published schedule, venue and ticket prices before choosing seats.
           </p>
+
+          <section className="ticket-types-section" aria-labelledby="ticket-types-heading">
+            <div className="section-toolbar">
+              <h2 id="ticket-types-heading">Ticket types and published prices</h2>
+            </div>
+            {event.ticketTypes.length ? (
+              <div className="ticket-type-list">
+                {event.ticketTypes.map((ticketType, index) => (
+                  <Card padded key={ticketType.ticketTypeId ?? index}>
+                    <div>
+                      <strong>{ticketType.name ?? `Ticket type ${index + 1}`}</strong>
+                      <p className="muted">{ticketType.ticketTypeId ?? 'Type identifier pending'}</p>
+                    </div>
+                    <strong>
+                      {ticketType.price
+                        ? formatMoney(ticketType.price.amountMinor, ticketType.price.currency)
+                        : 'Price from server at checkout'}
+                    </strong>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">Ticket types have not been published yet.</p>
+            )}
+          </section>
         </div>
         <Card padded className="booking-panel">
           <h2>Ready to go?</h2>
@@ -70,7 +100,7 @@ export function EventDetailPage() {
               <dt>
                 <Clock3 size={16} /> Availability
               </dt>
-              <dd>Live inventory</dd>
+              <dd>Loaded on seat-selection screen</dd>
             </div>
           </dl>
           <Button fullWidth onClick={() => navigate(`/events/${event.eventId}/seats`)}>

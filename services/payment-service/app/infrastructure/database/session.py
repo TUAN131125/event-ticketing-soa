@@ -82,6 +82,7 @@ def database_ready(settings: Settings | None = None) -> bool:
                 text(
                     "SELECT to_regclass('payment.payments'), "
                     "to_regclass('payment.refunds'), "
+                    "to_regclass('payment.provider_events'), "
                     "to_regclass('payment.idempotency_records'), "
                     "to_regclass('payment.payment_audit'), "
                     "to_regclass('payment.outbox_events'), "

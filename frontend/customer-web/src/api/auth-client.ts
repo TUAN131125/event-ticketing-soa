@@ -1,6 +1,6 @@
-import type { components } from '@event-ticketing/shared-ui/identity-contract';
+import type { components } from '@event-ticketing/shared-ui/esb-contract';
 
-export type Role = components['schemas']['Role'];
+export type Role = components['schemas']['AuthRole'];
 export type User = components['schemas']['User'];
 export type TokenResponse = components['schemas']['TokenResponse'];
 export type UserStatus = User['status'];
@@ -41,7 +41,7 @@ export class ApiError extends Error {
 }
 
 export interface AuthClientOptions {
-  identityApiUrl?: string;
+  esbApiUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -52,9 +52,8 @@ function readJson(value: unknown): AuthErrorPayload | undefined {
 }
 
 /**
- * Identity Service client. The browser talks to Identity only for authentication; every
- * business operation goes through the ESB. Paths, headers and payloads follow
- * contracts/identity-service.yaml.
+ * ESB authentication façade client. The browser only calls the ESB; the ESB proxies
+ * these operations to Identity while preserving refresh/CSRF cookie semantics.
  */
 export class AuthClient {
   private readonly baseUrl: string;
@@ -63,7 +62,7 @@ export class AuthClient {
   private refreshPromise: Promise<TokenResponse> | null = null;
 
   constructor(options: AuthClientOptions = {}) {
-    this.baseUrl = (options.identityApiUrl ?? import.meta.env.VITE_IDENTITY_API_URL ?? '').replace(
+    this.baseUrl = (options.esbApiUrl ?? String(import.meta.env.VITE_ESB_API_URL ?? '')).replace(
       /\/$/,
       '',
     );
@@ -92,7 +91,7 @@ export class AuthClient {
       throw new ApiError(0, {
         error: {
           code: 'CONFIGURATION_ERROR',
-          message: 'This build has no Identity URL configured.',
+          message: 'This build has no ESB URL configured.',
           retryable: false,
         },
       });
@@ -102,14 +101,31 @@ export class AuthClient {
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     if (this.accessToken && !headers.has('Authorization'))
       headers.set('Authorization', `Bearer ${this.accessToken}`);
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), 15_000);
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         ...init,
         headers,
         credentials: 'include',
+        signal: init.signal ?? controller.signal,
       });
     } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') {
+        throw new ApiError(
+          504,
+          {
+            error: {
+              code: 'SERVICE_TIMEOUT',
+              message: 'Authentication service did not respond before the request deadline.',
+              retryable: true,
+            },
+          },
+          'Authentication service did not respond before the request deadline.',
+          { cause },
+        );
+      }
       throw new ApiError(
         503,
         {
@@ -122,6 +138,8 @@ export class AuthClient {
         'Authentication service is temporarily unavailable.',
         { cause },
       );
+    } finally {
+      globalThis.clearTimeout(timer);
     }
     if (
       response.status === 401 &&
@@ -168,10 +186,10 @@ export class AuthClient {
     }
   }
 
-  /** POST /auth/register — the contract declares Idempotency-Key as required. */
+  /** POST /api/auth/register — the contract declares Idempotency-Key as required. */
   async register(email: string, password: string): Promise<User> {
     return this.request<User>(
-      '/auth/register',
+      '/api/auth/register',
       {
         method: 'POST',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -181,18 +199,18 @@ export class AuthClient {
     );
   }
 
-  /** POST /auth/login — sets the refresh and CSRF cookies and returns the access token. */
+  /** POST /api/auth/login — sets the refresh and CSRF cookies and returns the access token. */
   async login(email: string, password: string): Promise<TokenResponse> {
     return this.storeSession(
       await this.request<TokenResponse>(
-        '/auth/login',
+        '/api/auth/login',
         { method: 'POST', body: JSON.stringify({ email: email.trim().toLowerCase(), password }) },
         false,
       ),
     );
   }
 
-  /** POST /auth/refresh — double-submit CSRF header plus the HttpOnly refresh cookie. */
+  /** POST /api/auth/refresh — double-submit CSRF header plus the HttpOnly refresh cookie. */
   async refresh(): Promise<TokenResponse> {
     if (this.refreshPromise) return this.refreshPromise;
     const csrf = this.csrfToken();
@@ -204,7 +222,7 @@ export class AuthClient {
       );
     }
     this.refreshPromise = this.request<TokenResponse>(
-      '/auth/refresh',
+      '/api/auth/refresh',
       { method: 'POST', headers: { 'X-CSRF-Token': csrf } },
       false,
     )
@@ -225,18 +243,18 @@ export class AuthClient {
     }
   }
 
-  /** GET /auth/me */
+  /** GET /api/auth/me */
   async me(): Promise<User> {
-    return this.request<User>('/auth/me');
+    return this.request<User>('/api/auth/me');
   }
 
-  /** POST /auth/logout — 204, clears the refresh and CSRF cookies. */
+  /** POST /api/auth/logout — 204, clears the refresh and CSRF cookies. */
   async logout(): Promise<void> {
     const csrf = this.csrfToken();
     try {
       if (csrf) {
         await this.request<void>(
-          '/auth/logout',
+          '/api/auth/logout',
           { method: 'POST', headers: { 'X-CSRF-Token': csrf } },
           false,
         );

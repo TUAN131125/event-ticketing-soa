@@ -11,12 +11,8 @@ RUN npm ci
 COPY shared-ui ./shared-ui
 COPY customer-web ./customer-web
 
-ARG VITE_IDENTITY_API_URL
 ARG VITE_ESB_API_URL
-ARG VITE_REALTIME_WS_URL
-ENV VITE_IDENTITY_API_URL=$VITE_IDENTITY_API_URL \
-    VITE_ESB_API_URL=$VITE_ESB_API_URL \
-    VITE_REALTIME_WS_URL=$VITE_REALTIME_WS_URL
+ENV VITE_ESB_API_URL=$VITE_ESB_API_URL
 RUN npm run build --workspace @event-ticketing/customer-web
 
 FROM nginx:1.27-alpine

@@ -66,12 +66,12 @@ describe('customer registration', () => {
     vi.restoreAllMocks();
   });
 
-  it('submits the form and calls Identity exactly once', async () => {
+  it('submits the form and calls the ESB auth facade exactly once', async () => {
     await renderRegister();
     await fillAndSubmit();
     await waitFor(() => expect(registerCalls(fetchSpy)).toHaveLength(1));
     const [url, init] = registerCalls(fetchSpy)[0] as [string, RequestInit];
-    expect(url).toBe('http://identity.test/auth/register');
+    expect(url).toBe('http://esb.test/api/auth/register');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({
       email: VALID_EMAIL,
