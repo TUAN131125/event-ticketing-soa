@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+
+from libs.platform_security import ServiceJwtValidationSettings
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -57,6 +59,9 @@ class Settings:
     idempotency_ttl_seconds: int
     log_level: str
     docs_enabled: bool
+    # Optional so existing test factories keep working; from_environment always
+    # supplies it and main.py requires it at startup.
+    service_jwt: ServiceJwtValidationSettings | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -95,6 +100,11 @@ class Settings:
             log_level=os.getenv("BOOKING_LOG_LEVEL", "INFO").upper(),
             docs_enabled=_boolean(
                 "BOOKING_DOCS_ENABLED", default=app_env != "production"
+            ),
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "BOOKING",
+                audience="booking-service",
+                default_allowed_subjects="booking-orchestrator",
             ),
         )
 

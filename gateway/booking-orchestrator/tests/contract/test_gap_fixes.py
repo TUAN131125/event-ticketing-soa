@@ -6,6 +6,7 @@ import yaml
 from lxml import etree
 
 from app.main import create_app
+from scripts.openapi_parity import compare
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
@@ -21,7 +22,12 @@ def test_fastapi_runtime_is_the_openapi_source_not_a_yaml_override():
     canonical = yaml.safe_load(
         (REPOSITORY_ROOT / "contracts/esb-public-api.yaml").read_text(encoding="utf-8")
     )
-    assert served == generated == canonical
+    # What is served is built from the FastAPI decorators, never loaded from a YAML file.
+    assert served == generated
+    assert served is not canonical
+    assert "servers" not in served and "servers" in canonical
+    # The canonical document is curated, so it agrees semantically rather than literally.
+    assert compare(generated, canonical) == []
     assert app.openapi.__self__ is app
     assert app.state.generated_openapi.__self__ is app
     assert app.openapi.__func__ is app.state.generated_openapi.__func__
@@ -58,7 +64,7 @@ def test_booking_runtime_contract_declares_models_and_protocol_headers():
 
 
 def test_seat_xsd_separates_booking_selection_from_full_map():
-    xsd_path = REPOSITORY_ROOT / "contracts/providers/seat-inventory.xsd"
+    xsd_path = REPOSITORY_ROOT / "contracts/seat-inventory.xsd"
     tree = etree.parse(str(xsd_path))
     etree.XMLSchema(tree)
 
@@ -86,7 +92,7 @@ def test_seat_xsd_separates_booking_selection_from_full_map():
 
 
 def test_seat_wsdl_imports_xsd_and_publishes_all_canonical_operations():
-    wsdl_path = REPOSITORY_ROOT / "contracts/providers/seat-inventory.wsdl"
+    wsdl_path = REPOSITORY_ROOT / "contracts/seat-inventory.wsdl"
     tree = etree.parse(str(wsdl_path))
     imports = tree.xpath("//xsd:import", namespaces=WSDL_NS)
     assert any(item.get("schemaLocation") == "seat-inventory.xsd" for item in imports)
@@ -114,24 +120,27 @@ def test_provider_contract_bundle_contains_notification_realtime_and_identity_so
         "notification-service.yaml",
         "realtime-status-service.yaml",
         "realtime-status.asyncapi.yaml",
-        "seat-inventory.wsdl",
-        "seat-inventory.xsd",
     }
     assert required <= {path.name for path in provider_root.iterdir()}
-    for name in required - {"seat-inventory.wsdl", "seat-inventory.xsd"}:
+    # The Seat contract is no longer staged here: contracts/seat-inventory.{wsdl,xsd} is
+    # the single canonical source and both service images copy it directly.
+    assert not list(provider_root.glob("seat-inventory.*"))
+    for name in required:
         document = yaml.safe_load((provider_root / name).read_text(encoding="utf-8"))
         assert isinstance(document, dict)
         assert document.get("info", {}).get("title")
 
 
 def test_postgres_migration_manages_the_same_tables_as_runtime_repository():
-    migration = (SERVICE_ROOT / "migrations/versions/0002_esb_refactor.sql").read_text(
-        encoding="utf-8"
-    )
+    # The raw SQL file was promoted into the Alembic chain, which is the only migration
+    # mechanism the orchestrator-migrate job runs.
+    migration = (
+        SERVICE_ROOT / "alembic/versions/0003_esb_refactor.py"
+    ).read_text(encoding="utf-8")
     repository = (SERVICE_ROOT / "app/persistence/repositories.py").read_text(
         encoding="utf-8"
     )
     for table in ("esb_workflows_v2", "esb_outbox_v2", "esb_ws_ticket_v2"):
-        assert f"CREATE TABLE IF NOT EXISTS {table}" in migration
+        assert f'"{table}"' in migration
         assert table in repository
     assert "create_all(" not in repository

@@ -16,6 +16,24 @@ paths:
           minLength: 8
           maxLength: 128
           title: Idempotency-Key
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: &id001
+          type: string
+          minLength: 1
+          maxLength: 128
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: &id002
+          type: string
+          pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -167,6 +185,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/auth/refresh:
     post:
       summary: Auth Refresh
@@ -241,6 +273,20 @@ paths:
       - RefreshCookie: []
         CsrfCookie: []
         CsrfHeader: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/auth/logout:
     post:
       summary: Auth Logout
@@ -305,6 +351,20 @@ paths:
       - RefreshCookie: []
         CsrfCookie: []
         CsrfHeader: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/auth/me:
     get:
       summary: Auth Me
@@ -359,7 +419,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/events:
     get:
       summary: List Events
@@ -399,6 +473,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/events/{eventId}:
     get:
       summary: Get Event
@@ -410,6 +498,19 @@ paths:
         schema:
           type: string
           title: Eventid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -465,6 +566,19 @@ paths:
         schema:
           type: string
           title: Eventid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -516,6 +630,19 @@ paths:
           minLength: 8
           maxLength: 128
           title: Idempotency-Key
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -603,7 +730,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
     get:
       summary: List Bookings
       operationId: publicListBookings
@@ -633,6 +760,19 @@ paths:
           minimum: 1
           default: 20
           title: Pagesize
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -677,7 +817,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}:
     get:
       summary: Get Booking
@@ -689,6 +829,19 @@ paths:
         schema:
           type: string
           title: Bookingid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -745,7 +898,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}/cancel:
     post:
       summary: Cancel Booking
@@ -770,7 +923,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         content:
           application/json:
@@ -850,7 +1016,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}/tickets:
     get:
       summary: Booking Tickets
@@ -862,6 +1028,19 @@ paths:
         schema:
           type: string
           title: Bookingid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -915,7 +1094,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/tickets:
     get:
       summary: Tickets
@@ -938,6 +1117,19 @@ paths:
           minimum: 1
           default: 20
           title: Pagesize
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -982,7 +1174,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/tickets/{ticketId}:
     get:
       summary: Ticket
@@ -994,6 +1186,19 @@ paths:
         schema:
           type: string
           title: Ticketid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1050,7 +1255,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/me/customer:
     get:
       summary: Get My Customer
@@ -1105,7 +1310,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
     put:
       summary: Upsert My Customer
       operationId: upsertMyCustomerProfile
@@ -1122,10 +1341,21 @@ paths:
         in: header
         required: false
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: If-Match
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -1206,7 +1436,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/me/customer/consents:
     post:
       summary: Update My Customer Consent
@@ -1224,10 +1454,21 @@ paths:
         in: header
         required: false
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: If-Match
+          type: string
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -1302,7 +1543,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events:
     post:
       summary: Admin Create Event
@@ -1316,6 +1557,19 @@ paths:
           minLength: 8
           maxLength: 128
           title: Idempotency-Key
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -1384,7 +1638,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}:
     put:
       summary: Admin Replace Event
@@ -1409,7 +1663,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -1490,7 +1757,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/publish:
     post:
       summary: Admin Publish Event
@@ -1515,7 +1782,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1590,7 +1870,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/pause:
     post:
       summary: Admin Pause Event
@@ -1615,7 +1895,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1690,7 +1983,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/close:
     post:
       summary: Admin Close Event
@@ -1715,7 +2008,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1790,7 +2096,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/cancel:
     post:
       summary: Admin Cancel Event
@@ -1815,7 +2121,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1890,7 +2209,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/seat-inventory:
     get:
       summary: Admin Get Seat Inventory
@@ -1902,6 +2221,19 @@ paths:
         schema:
           type: string
           title: Eventid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -1952,7 +2284,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
     put:
       summary: Admin Configure Seat Inventory
       operationId: adminConfigureSeatInventory
@@ -1971,6 +2303,19 @@ paths:
           minLength: 8
           maxLength: 128
           title: Idempotency-Key
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -2039,7 +2384,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/check-in/validate:
     post:
       summary: Validate Ticket
@@ -2118,11 +2463,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /api/check-in/tickets/{ticketId}:
     post:
       summary: Checkin
-      operationId: checkInTicket
+      operationId: checkInTicketViaEsb
       parameters:
       - name: ticketId
         in: path
@@ -2143,7 +2502,20 @@ paths:
         required: true
         schema:
           type: string
-          title: If-Match
+          pattern: ^"[1-9][0-9]*"$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -2230,7 +2602,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/realtime/ws-tickets:
     post:
       summary: Realtime Ticket
@@ -2244,6 +2616,19 @@ paths:
           minLength: 8
           maxLength: 128
           title: Idempotency-Key
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       requestBody:
         required: true
         content:
@@ -2318,7 +2703,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/traces/{correlationId}:
     get:
       summary: Trace
@@ -2330,6 +2715,19 @@ paths:
         schema:
           type: string
           title: Correlationid
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
       responses:
         '200':
           description: Successful Response
@@ -2377,7 +2775,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/health:
     get:
       summary: Health
@@ -2396,6 +2794,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/AggregateHealth'
       security: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /health/live:
     get:
       summary: Live
@@ -2408,6 +2820,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
       security: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
   /health/ready:
     get:
       summary: Ready
@@ -2426,6 +2852,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
       security: []
+      parameters:
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        description: Caller-supplied correlation id, echoed on the response. The gateway
+          generates one when the header is absent.
+        schema: *id001
+        example: corr-1234567890abcdef
+      - name: traceparent
+        in: header
+        required: false
+        description: W3C trace context. A new trace id is created when absent or malformed.
+        schema: *id002
+        example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 components:
   schemas:
     AdminSeatDefinition:
@@ -3522,7 +3962,7 @@ components:
       - expiresAt
       title: WsTicketResponse
   securitySchemes:
-    BearerAuth:
+    UserJwt:
       type: http
       scheme: bearer
       bearerFormat: JWT

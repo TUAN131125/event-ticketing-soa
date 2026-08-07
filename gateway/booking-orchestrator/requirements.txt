@@ -1,6 +1,9 @@
+alembic==1.16.5
 fastapi==0.128.2
 uvicorn[standard]==0.48.0
-pydantic==2.13.4
+# The [email] extra pulls in email-validator, which app.api.schemas needs for EmailStr.
+# Without it create_app() raises at import time and the container never starts.
+pydantic[email]==2.13.4
 httpx==0.28.1
 lxml==6.1.1
 PyYAML==6.0.3

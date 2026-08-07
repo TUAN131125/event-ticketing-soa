@@ -39,3 +39,4 @@ local-secrets/*
 **/playwright-report/
 **/.cache/
 /dist/
+.db-backups/

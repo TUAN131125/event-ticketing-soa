@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[4]
 
 def load(name: str) -> dict:
     return yaml.safe_load(
-        (ROOT / "contracts" / "providers" / name).read_text(encoding="utf-8")
+        (ROOT / "contracts" / name).read_text(encoding="utf-8")
     )
 
 
@@ -81,7 +81,7 @@ async def test_booking_saga_outgoing_json_matches_refactored_provider_contracts(
     )
     assert status == 201
 
-    booking_contract = load("booking-service-v2.yaml")
+    booking_contract = load("booking-service.yaml")
     booking_paths = {
         "create": "/bookings",
         "reservation": "/bookings/{booking_id}/reservation",
@@ -98,7 +98,7 @@ async def test_booking_saga_outgoing_json_matches_refactored_provider_contracts(
             booking.payloads[key],
         )
 
-    payment_contract = load("payment-service-refactored.yaml")
+    payment_contract = load("payment-service.yaml")
     payment_paths = {
         "create": "/payments",
         "authorize": "/payments/{payment_id}/authorize",
@@ -135,7 +135,7 @@ async def test_cancellation_payloads_match_booking_and_payment_contracts():
         context(),
     )
 
-    booking_contract = load("booking-service-v2.yaml")
+    booking_contract = load("booking-service.yaml")
     assert_valid(
         booking_contract,
         request_schema(booking_contract, "/bookings/{booking_id}/cancel"),
@@ -150,7 +150,7 @@ async def test_cancellation_payloads_match_booking_and_payment_contracts():
         booking.payloads["compensation-result"],
     )
 
-    payment_contract = load("payment-service-refactored.yaml")
+    payment_contract = load("payment-service.yaml")
     assert_valid(
         payment_contract,
         request_schema(payment_contract, "/payments/{payment_id}/refunds"),
@@ -198,7 +198,7 @@ async def test_payment_decline_fail_payload_matches_booking_contract():
     )
     assert status == 402
 
-    booking_contract = load("booking-service-v2.yaml")
+    booking_contract = load("booking-service.yaml")
     assert_valid(
         booking_contract,
         request_schema(booking_contract, "/bookings/{booking_id}/fail"),

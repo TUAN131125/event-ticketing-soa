@@ -3,6 +3,19 @@
 Revision ID: 0003
 Revises: 0002
 Create Date: 2026-08-06
+
+Compatibility note
+------------------
+Revision 0002 was rewritten (commit 8b53f0f) after some databases had already applied its
+earlier edition. Those databases are stamped 0002 but lack what the current 0002 adds, so
+this revision's first ALTERs used to fail on them with
+``column "reservation_status" ... does not exist``. Because 0003 is where the failure
+surfaced and no database had yet applied 0003 or 0004, the compatibility preamble below
+lives here rather than in a later repair revision, which could never have been reached.
+
+The preamble is additive and idempotent: on a database created by the current 0002 it does
+nothing at all, and on an older one it creates exactly what the current 0002 would have. It
+never drops or rewrites data.
 """
 
 from collections.abc import Sequence
@@ -17,8 +30,183 @@ depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "booking"
 
+# What the current revision 0002 adds relative to its earlier edition. Measured by diffing a
+# database built from the current 0002 against a database that applied the earlier one.
+LEGACY_0002_COLUMNS: tuple[tuple[str, sa.Column], ...] = (
+    (
+        "reservation_status",
+        sa.Column(
+            "reservation_status",
+            sa.String(20),
+            nullable=False,
+            server_default="RESERVED",
+        ),
+    ),
+    (
+        "reservation_confirmed_at",
+        sa.Column("reservation_confirmed_at", sa.DateTime(timezone=True)),
+    ),
+    ("tickets_attached_at", sa.Column("tickets_attached_at", sa.DateTime(timezone=True))),
+)
+
+
+def _inspector() -> sa.Inspector:
+    return sa.inspect(op.get_bind())
+
+
+def _booking_columns() -> dict[str, dict]:
+    return {
+        column["name"]: column
+        for column in _inspector().get_columns("bookings", schema=SCHEMA)
+    }
+
+
+def _check_constraint_names(table: str) -> set[str]:
+    return {
+        constraint["name"]
+        for constraint in _inspector().get_check_constraints(table, schema=SCHEMA)
+    }
+
+
+def _drop_check_constraints_if_present(names: Sequence[str]) -> None:
+    """Drop only the v1 checks a given database actually has.
+
+    Which of these exist depends on which edition of 0002 ran, so an unconditional drop
+    fails on the older schema. This is not masking a wrong schema: every name here is
+    recreated in its v2 form further down, and any that is absent is one the older 0002
+    never created.
+    """
+    present = _check_constraint_names("bookings")
+    for name in names:
+        if name in present:
+            op.drop_constraint(name, "bookings", schema=SCHEMA, type_="check")
+
+
+LEGACY_FAILURE_REASON = "Migrated from v1: original failure reason was not recorded"
+
+# Booking v1 stored the *Payment* service's vocabulary in payment_status. Booking v2 has its
+# own enumeration, so legacy values are translated with the same mapping the orchestrator
+# uses (contracts/payment-service.yaml -> contracts/booking-service.yaml).
+LEGACY_PAYMENT_STATUS: dict[str, str] = {
+    "CAPTURED": "SUCCEEDED",
+    "AUTHORIZED": "PROCESSING",
+    "CANCELLED": "FAILED",
+    "PARTIALLY_REFUNDED": "REFUND_PENDING",
+}
+V2_PAYMENT_STATUSES = (
+    "PENDING",
+    "PROCESSING",
+    "SUCCEEDED",
+    "FAILED",
+    "UNKNOWN",
+    "REFUND_PENDING",
+    "REFUNDED",
+)
+
+
+def _backfill_legacy_v1_rows() -> None:
+    """Translate v1 rows into the v2 vocabulary using only evidence already stored.
+
+    Nothing is promoted to a better outcome than the row already recorded: a payment is
+    only called SUCCEEDED where v1 had already captured it, and a booking is never moved
+    into CONFIRMED or SUCCEEDED without its own evidence columns saying so.
+
+    Runs after the v1 checks are dropped and before the v2 checks are created. On a database
+    built by the current 0002 there are no v1 rows, so every statement matches nothing.
+    """
+    bind = op.get_bind()
+
+    # 1. payment_status: Payment vocabulary -> Booking vocabulary.
+    for legacy, v2 in LEGACY_PAYMENT_STATUS.items():
+        bind.execute(
+            sa.text(
+                "UPDATE booking.bookings SET payment_status = :v2 "
+                "WHERE payment_status = :legacy"
+            ),
+            {"v2": v2, "legacy": legacy},
+        )
+
+    # 2. A booking mid-payment must not still read PENDING; it holds a payment_id, so
+    #    PROCESSING is what that evidence supports. It is deliberately not SUCCEEDED.
+    bind.execute(
+        sa.text(
+            "UPDATE booking.bookings SET payment_status = 'PROCESSING' "
+            "WHERE status = 'PAYMENT_PROCESSING' AND payment_id IS NOT NULL "
+            "AND payment_status = 'PENDING'"
+        )
+    )
+
+    # 3. A CONFIRMED booking's reservation is confirmed by definition; v1 had no column to
+    #    say so. Only rows that already carry a reservation_id are touched.
+    bind.execute(
+        sa.text(
+            "UPDATE booking.bookings SET reservation_status = 'CONFIRMED' "
+            "WHERE status = 'CONFIRMED' AND reservation_id IS NOT NULL"
+        )
+    )
+    bind.execute(
+        sa.text(
+            "UPDATE booking.bookings SET reservation_status = 'RELEASED' "
+            "WHERE status = 'CANCELLED' AND reservation_id IS NOT NULL"
+        )
+    )
+
+    # 4. v2 requires a failure reason next to a failure code. v1 never stored one, so the
+    #    row is marked as such rather than given an invented reason.
+    bind.execute(
+        sa.text(
+            "UPDATE booking.bookings SET failure_reason = :reason "
+            "WHERE status = 'FAILED' AND failure_reason IS NULL"
+        ),
+        {"reason": LEGACY_FAILURE_REASON},
+    )
+
+    # Fail loudly rather than let a constraint creation produce an opaque error.
+    leftover = bind.execute(
+        sa.text(
+            "SELECT payment_status, count(*) FROM booking.bookings "
+            "WHERE payment_status <> ALL(:allowed) GROUP BY payment_status"
+        ),
+        {"allowed": list(V2_PAYMENT_STATUSES)},
+    ).all()
+    if leftover:
+        raise RuntimeError(
+            "Booking rows still hold payment_status values outside the v2 enumeration: "
+            + ", ".join(f"{value}={count}" for value, count in leftover)
+        )
+
+
+def _apply_legacy_0002_compatibility() -> None:
+    """Bring a pre-refactor 0002 database up to what the current 0002 produces."""
+    existing = _booking_columns()
+
+    for name, column in LEGACY_0002_COLUMNS:
+        if name not in existing:
+            op.add_column("bookings", column, schema=SCHEMA)
+
+    # reservation_status is NOT NULL with a server default, so existing rows are filled by
+    # PostgreSQL as the column is added. 'RESERVED' matches what the current 0002 gives a
+    # freshly created row, and the state-machine backfill further down immediately
+    # re-derives it from real evidence: rows with no reservation_id become 'PENDING'.
+    # Nothing is inferred as paid or confirmed.
+    if "reservation_status" not in existing:
+        remaining = op.get_bind().execute(
+            sa.text(
+                "SELECT count(*) FROM booking.bookings WHERE reservation_status IS NULL"
+            )
+        ).scalar_one()
+        if remaining:
+            raise RuntimeError(
+                f"{remaining} booking rows still have a NULL reservation_status after "
+                "backfill; refusing to continue."
+            )
+
 
 def upgrade() -> None:
+    # Databases that applied the earlier edition of 0002 are brought up to the current 0002
+    # first; on an up-to-date database this is a no-op.
+    _apply_legacy_0002_compatibility()
+
     # Existing clients created bookings with reservation/payment metadata at
     # creation time.  The canonical v2 contract attaches those references
     # later, therefore both columns become nullable without dropping them.
@@ -91,13 +279,17 @@ def upgrade() -> None:
     # Remove the v1 checks before converting legacy PENDING rows to the
     # explicit v2 intermediate states.  No downstream outcome is fabricated:
     # the conversion uses only reservation/payment evidence already persisted.
-    for name in (
-        "ck_booking_state_consistency",
-        "ck_booking_status",
-        "ck_booking_payment_status",
-        "ck_booking_reservation_status",
-    ):
-        op.drop_constraint(name, "bookings", schema=SCHEMA, type_="check")
+    _drop_check_constraints_if_present(
+        (
+            "ck_booking_state_consistency",
+            "ck_booking_status",
+            "ck_booking_payment_status",
+            "ck_booking_reservation_status",
+        )
+    )
+
+    # Legacy rows speak the v1 vocabulary; translate before the v2 checks exist.
+    _backfill_legacy_v1_rows()
 
     op.execute(
         "UPDATE booking.bookings SET reservation_status = 'PENDING' "

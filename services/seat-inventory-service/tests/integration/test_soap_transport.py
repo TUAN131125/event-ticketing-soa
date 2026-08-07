@@ -106,3 +106,82 @@ def test_soap_requires_service_authentication(
     assert response.status_code == 500
     assert "AUTHENTICATION_FAILED" in response.text
     assert "retryable>false" in response.text
+
+
+@pytest.mark.integration
+def test_seat_map_over_the_booking_selection_limit_validates_end_to_end(
+    clean_database: None, test_settings: Settings
+) -> None:
+    """A real event has far more than the ten seats one booking may select.
+
+    The previous canonical schema reused SeatRefList (maxOccurs=10) for the whole map, so
+    any realistic inventory failed validation at the ESB.
+    """
+    seat_count = 40
+    create_inventory(test_settings, event_id="EVT-DEMO", seat_count=seat_count)
+    app = create_app(test_settings)
+    with TestClient(app) as client:
+        response = client.post(
+            "/soap",
+            content=request("get-seat-map"),
+            headers=headers(SOAPAction="GetSeatMap"),
+        )
+
+    assert response.status_code == 200, response.text
+    operation = body_operation(response.content)
+    get_schema().assertValid(operation)
+
+    seat_ns = "urn:event-ticketing:seat:v1"
+    seats = operation.findall(f"{{{seat_ns}}}seats/{{{seat_ns}}}seat")
+    assert len(seats) == seat_count
+    statuses = {seat.findtext(f"{{{seat_ns}}}status") for seat in seats}
+    assert statuses == {"AVAILABLE"}
+    first = seats[0]
+    assert [etree.QName(child).localname for child in first] == [
+        "seatId",
+        "section",
+        "rowLabel",
+        "seatNumber",
+        "ticketTypeCode",
+        "status",
+    ]
+
+
+@pytest.mark.integration
+def test_seat_map_reports_a_held_seat_as_held_not_available(
+    clean_database: None, test_settings: Settings
+) -> None:
+    from conftest import context
+    from app.application.reserve_seats import reserve_seats
+    from app.infrastructure.database.session import session_scope
+
+    create_inventory(test_settings, event_id="EVT-DEMO", seat_count=3)
+    with session_scope(test_settings) as session:
+        reserve_seats(
+            session,
+            test_settings,
+            context("map-hold", idempotency_key="map-hold"),
+            booking_id="BKG-MAP",
+            event_id="EVT-DEMO",
+            seat_ids=("A-001",),
+            hold_seconds=10,
+        )
+
+    app = create_app(test_settings)
+    with TestClient(app) as client:
+        response = client.post(
+            "/soap",
+            content=request("get-seat-map"),
+            headers=headers(SOAPAction="GetSeatMap"),
+        )
+
+    assert response.status_code == 200, response.text
+    operation = body_operation(response.content)
+    get_schema().assertValid(operation)
+    seat_ns = "urn:event-ticketing:seat:v1"
+    by_id = {
+        seat.findtext(f"{{{seat_ns}}}seatId"): seat.findtext(f"{{{seat_ns}}}status")
+        for seat in operation.findall(f"{{{seat_ns}}}seats/{{{seat_ns}}}seat")
+    }
+    assert by_id["A-001"] == "HELD"
+    assert by_id["A-002"] == "AVAILABLE"

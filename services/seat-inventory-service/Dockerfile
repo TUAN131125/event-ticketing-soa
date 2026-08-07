@@ -19,8 +19,11 @@ COPY --chown=seat:seat services/seat-inventory-service/migrations ./migrations
 COPY --chown=seat:seat services/seat-inventory-service/app ./app
 COPY --chown=seat:seat libs ./libs
 COPY --chown=seat:seat services/seat-inventory-service/docker-entrypoint.sh ./docker-entrypoint.sh
-COPY --chown=seat:seat dist/contracts/seat-inventory.wsdl ./contracts/seat-inventory.wsdl
-COPY --chown=seat:seat dist/contracts/seat-inventory.xsd ./contracts/seat-inventory.xsd
+# Straight from the canonical source, not from dist/: dist is a generated artifact that a
+# local build has no reason to have refreshed, and a stale copy here would silently give
+# Seat and the ESB two different schemas.
+COPY --chown=seat:seat contracts/seat-inventory.wsdl ./contracts/seat-inventory.wsdl
+COPY --chown=seat:seat contracts/seat-inventory.xsd ./contracts/seat-inventory.xsd
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh \
     && chmod 0555 docker-entrypoint.sh

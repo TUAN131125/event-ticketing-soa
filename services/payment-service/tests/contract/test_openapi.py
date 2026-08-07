@@ -39,13 +39,10 @@ def test_openapi_has_unique_operation_ids_and_closed_request_models() -> None:
                 operation_ids.append(operation["operationId"])
     assert len(operation_ids) == len(set(operation_ids))
     assert EXPECTED_OPERATIONS.issubset(operation_ids)
-    service_token = schema["components"]["securitySchemes"]["serviceToken"]
-    assert service_token == {
-        "type": "apiKey",
-        "description": "Internal shared secret. Never send payment credentials here.",
-        "in": "header",
-        "name": "X-Service-Token",
-    }
+    schemes = schema["components"]["securitySchemes"]
+    # Internal callers authenticate with the shared Service JWT, not a shared secret.
+    assert schemes["ServiceJwt"] == {"type": "http", "scheme": "bearer"}
+    assert "serviceToken" not in schemes
     assert (
         schema["components"]["schemas"]["CreatePaymentRequest"]["additionalProperties"]
         is False

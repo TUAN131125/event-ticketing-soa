@@ -2,20 +2,23 @@ openapi: 3.1.0
 info:
   title: ESB / Booking Orchestrator
   version: 2.2.0
+  description: Canonical public contract for the ESB / Booking Orchestrator. This is the only HTTP surface
+    browsers may call; Identity, Booking, Payment, Ticket, Customer, Event, Seat Inventory and Realtime
+    are reached through it.
+servers:
+- url: http://localhost:8000
+  description: Local contract endpoint; deployment host is supplied by configuration.
+security:
+- UserJwt: []
 paths:
   /api/auth/register:
     post:
       summary: Auth Register
       operationId: registerIdentityAccountViaEsb
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -30,58 +33,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '413':
-          description: Request payload is too large.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Unexpected gateway failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalError'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security: []
   /api/auth/login:
     post:
       summary: Auth Login
       operationId: loginIdentityAccountViaEsb
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         content:
           application/json:
@@ -93,9 +67,9 @@ paths:
           description: Successful Response
           headers:
             Set-Cookie:
-              description: Identity refresh and CSRF cookies. Multiple Set-Cookie
-                header fields may be returned; the ESB preserves HttpOnly, Secure
-                and SameSite attributes and rewrites Path to /api/auth.
+              description: Identity refresh and CSRF cookies. Multiple Set-Cookie header fields may be
+                returned; the ESB preserves HttpOnly, Secure and SameSite attributes and rewrites Path
+                to /api/auth.
               schema:
                 type: string
             Cache-Control:
@@ -113,72 +87,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '423':
-          description: Identity account is temporarily locked.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/AccountLocked'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '429':
-          description: Rate limit exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/RateLimited'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Unexpected gateway failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalError'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security: []
   /api/auth/refresh:
     post:
       summary: Auth Refresh
       operationId: refreshIdentitySessionViaEsb
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
           headers:
             Set-Cookie:
-              description: Identity refresh and CSRF cookies. Multiple Set-Cookie
-                header fields may be returned; the ESB preserves HttpOnly, Secure
-                and SameSite attributes and rewrites Path to /api/auth.
+              description: Identity refresh and CSRF cookies. Multiple Set-Cookie header fields may be
+                returned; the ESB preserves HttpOnly, Secure and SameSite attributes and rewrites Path
+                to /api/auth.
               schema:
                 type: string
             Cache-Control:
@@ -196,47 +137,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Unexpected gateway failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalError'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
       - RefreshCookie: []
         CsrfCookie: []
@@ -245,14 +158,17 @@ paths:
     post:
       summary: Auth Logout
       operationId: logoutIdentitySessionViaEsb
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '204':
           description: Successful Response
           headers:
             Set-Cookie:
-              description: Identity refresh and CSRF cookies. Multiple Set-Cookie
-                header fields may be returned; the ESB preserves HttpOnly, Secure
-                and SameSite attributes and rewrites Path to /api/auth.
+              description: Identity refresh and CSRF cookies. Multiple Set-Cookie header fields may be
+                returned; the ESB preserves HttpOnly, Secure and SameSite attributes and rewrites Path
+                to /api/auth.
               schema:
                 type: string
             Cache-Control:
@@ -266,41 +182,17 @@ paths:
                 type: string
                 example: no-cache
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Unexpected gateway failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalError'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
       - RefreshCookie: []
         CsrfCookie: []
@@ -309,6 +201,9 @@ paths:
     get:
       summary: Auth Me
       operationId: getCurrentIdentityPrincipalViaEsb
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -317,53 +212,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Unexpected gateway failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalError'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/events:
     get:
       summary: List Events
       operationId: publicListEvents
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -375,35 +245,21 @@ paths:
                 type: array
                 title: Response Publiclistevents
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security: []
   /api/events/{eventId}:
     get:
       summary: Get Event
       operationId: publicGetEvent
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
@@ -419,46 +275,25 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security: []
   /api/events/{eventId}/seat-map:
     get:
       summary: Seat Map
       operationId: publicGetEventSeatMap
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
@@ -473,49 +308,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/SeatMapProjection'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security: []
   /api/bookings:
     post:
       summary: Place Booking
       operationId: placeBooking
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -531,18 +341,12 @@ paths:
                 $ref: '#/components/schemas/BookingResult'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '202':
           description: Booking is reconciling.
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
             Location:
               schema:
                 type: string
@@ -555,59 +359,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookingResult'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '402':
-          description: Payment was declined.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PaymentDeclined'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
     get:
       summary: List Bookings
       operationId: publicListBookings
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: status
         in: query
         required: false
@@ -641,48 +415,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookingListProjection'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}:
     get:
       summary: Get Booking
       operationId: publicGetBooking
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: bookingId
         in: path
         required: true
@@ -698,79 +450,38 @@ paths:
                 $ref: '#/components/schemas/BookingResult'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}/cancel:
     post:
       summary: Cancel Booking
       operationId: publicCancelBooking
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: bookingId
         in: path
         required: true
         schema:
           type: string
           title: Bookingid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       requestBody:
         content:
           application/json:
@@ -785,77 +496,36 @@ paths:
                 $ref: '#/components/schemas/BookingResult'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/bookings/{bookingId}/tickets:
     get:
       summary: Booking Tickets
       operationId: publicListBookingTickets
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: bookingId
         in: path
         required: true
@@ -873,54 +543,28 @@ paths:
                   $ref: '#/components/schemas/TicketProjection'
                 title: Response Publiclistbookingtickets
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/tickets:
     get:
       summary: Tickets
       operationId: publicListTickets
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: page
         in: query
         required: false
@@ -946,48 +590,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/TicketListProjection'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/tickets/{ticketId}:
     get:
       summary: Ticket
       operationId: publicGetTicket
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: ticketId
         in: path
         required: true
@@ -1003,58 +625,30 @@ paths:
                 $ref: '#/components/schemas/TicketProjection'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/me/customer:
     get:
       summary: Get My Customer
       operationId: getMyCustomerProfile
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -1064,68 +658,29 @@ paths:
                 $ref: '#/components/schemas/CustomerProfileProjection'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
     put:
       summary: Upsert My Customer
       operationId: upsertMyCustomerProfile
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: If-Match
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/OptionalIfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -1141,93 +696,43 @@ paths:
                 $ref: '#/components/schemas/CustomerProfileProjection'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '201':
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CustomerProfileProjection'
           description: Created
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/me/customer/consents:
     post:
       summary: Update My Customer Consent
       operationId: updateMyCustomerConsent
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: If-Match
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/OptionalIfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -1243,79 +748,35 @@ paths:
                 $ref: '#/components/schemas/ConsentUpdateResult'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events:
     post:
       summary: Admin Create Event
       operationId: adminCreateEvent
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -1331,85 +792,40 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}:
     put:
       summary: Admin Replace Event
       operationId: adminReplaceEvent
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       requestBody:
         required: true
         content:
@@ -1425,97 +841,44 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/publish:
     post:
       summary: Admin Publish Event
       operationId: adminPublishEvent
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       responses:
         '200':
           description: Successful Response
@@ -1525,97 +888,44 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/pause:
     post:
       summary: Admin Pause Event
       operationId: adminPauseEvent
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       responses:
         '200':
           description: Successful Response
@@ -1625,97 +935,44 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/close:
     post:
       summary: Admin Close Event
       operationId: adminCloseEvent
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       responses:
         '200':
           description: Successful Response
@@ -1725,97 +982,44 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/cancel:
     post:
       summary: Admin Cancel Event
       operationId: adminCancelEvent
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       responses:
         '200':
           description: Successful Response
@@ -1825,77 +1029,36 @@ paths:
                 $ref: '#/components/schemas/PublicEvent'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/admin/events/{eventId}/seat-inventory:
     get:
       summary: Admin Get Seat Inventory
       operationId: adminGetSeatInventory
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
@@ -1910,67 +1073,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminSeatInventoryProjection'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
     put:
       summary: Admin Configure Seat Inventory
       operationId: adminConfigureSeatInventory
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: eventId
         in: path
         required: true
         schema:
           type: string
           title: Eventid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
       requestBody:
         required: true
         content:
@@ -1985,65 +1115,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConfigureSeatInventoryResult'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/check-in/validate:
     post:
       summary: Validate Ticket
       operationId: validateTicketForCheckIn
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         content:
           application/json:
@@ -2055,95 +1152,46 @@ paths:
           description: Successful Response
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TicketValidationResult'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '429':
-          description: Rate limit exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/RateLimited'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/check-in/tickets/{ticketId}:
     post:
       summary: Checkin
-      operationId: checkInTicket
+      operationId: checkInTicketViaEsb
       parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: ticketId
         in: path
         required: true
         schema:
           type: string
           title: Ticketid
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-          title: If-Match
       requestBody:
         required: true
         content:
@@ -2159,91 +1207,39 @@ paths:
                 $ref: '#/components/schemas/CheckInResult'
           headers:
             ETag:
-              description: Strong resource-version validator used by If-Match.
-              schema:
-                type: string
-                pattern: ^"[1-9][0-9]*"$
+              $ref: '#/components/headers/ETag'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '412':
-          description: If-Match does not match the resource version.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '429':
-          description: Rate limit exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/RateLimited'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/realtime/ws-tickets:
     post:
       summary: Realtime Ticket
       operationId: issueRealtimeWebSocketTicket
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          minLength: 8
-          maxLength: 128
-          title: Idempotency-Key
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -2258,72 +1254,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/WsTicketResponse'
         '400':
-          description: Malformed request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: State, uniqueness or idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '429':
-          description: Rate limit exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/RateLimited'
         '502':
-          description: Provider returned an invalid response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadGateway'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/traces/{correlationId}:
     get:
       summary: Trace
       operationId: getWorkflowTrace
       parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       - name: correlationId
         in: path
         required: true
@@ -2341,47 +1299,26 @@ paths:
                   $ref: '#/components/schemas/TraceStep'
                 title: Response Getworkflowtrace
         '401':
-          description: Authentication failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not authorized.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation or domain-rule rejection.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unprocessable'
         '503':
-          description: Required dependency is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '504':
-          description: Request deadline exceeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/GatewayTimeout'
       security:
-      - BearerAuth: []
+      - UserJwt: []
   /api/health:
     get:
       summary: Health
       operationId: aggregateHealth
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -2400,6 +1337,9 @@ paths:
     get:
       summary: Live
       operationId: esbLiveness
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -2412,6 +1352,9 @@ paths:
     get:
       summary: Ready
       operationId: esbReadiness
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
       responses:
         '200':
           description: Successful Response
@@ -2480,6 +1423,7 @@ components:
           type: string
           format: date-time
           title: Generatedat
+          pattern: (?:Z|\+00:00)$
         seats:
           items:
             $ref: '#/components/schemas/SeatProjection'
@@ -2526,6 +1470,7 @@ components:
           type: string
           format: date-time
           title: Checkedat
+          pattern: (?:Z|\+00:00)$
         dependencies:
           items:
             $ref: '#/components/schemas/DependencyHealth'
@@ -2637,12 +1582,14 @@ components:
           anyOf:
           - type: string
             format: date-time
+            pattern: (?:Z|\+00:00)$
           - type: 'null'
           title: Createdat
         updatedAt:
           anyOf:
           - type: string
             format: date-time
+            pattern: (?:Z|\+00:00)$
           - type: 'null'
           title: Updatedat
       additionalProperties: false
@@ -2860,10 +1807,12 @@ components:
           type: string
           format: date-time
           title: Createdat
+          pattern: (?:Z|\+00:00)$
         updatedAt:
           type: string
           format: date-time
           title: Updatedat
+          pattern: (?:Z|\+00:00)$
       additionalProperties: false
       type: object
       required:
@@ -2911,33 +1860,6 @@ components:
       - critical
       - status
       title: DependencyHealth
-    ErrorBody:
-      properties:
-        code:
-          type: string
-          pattern: ^[A-Z][A-Z0-9_]{1,63}$
-          title: Code
-        message:
-          type: string
-          maxLength: 500
-          minLength: 1
-          title: Message
-        retryable:
-          type: boolean
-          title: Retryable
-        details:
-          anyOf:
-          - additionalProperties: true
-            type: object
-          - type: 'null'
-          title: Details
-      additionalProperties: false
-      type: object
-      required:
-      - code
-      - message
-      - retryable
-      title: ErrorBody
     ErrorResponse:
       properties:
         correlationId:
@@ -2952,13 +1874,47 @@ components:
           - type: 'null'
           title: Traceid
         error:
-          $ref: '#/components/schemas/ErrorBody'
+          properties:
+            code:
+              type: string
+              pattern: ^[A-Z][A-Z0-9_]{1,63}$
+              title: Code
+            message:
+              type: string
+              maxLength: 500
+              minLength: 1
+              title: Message
+            retryable:
+              type: boolean
+              title: Retryable
+            details:
+              anyOf:
+              - additionalProperties: true
+                type: object
+              - type: 'null'
+              title: Details
+          additionalProperties: false
+          type: object
+          required:
+          - code
+          - message
+          - retryable
+          title: ErrorBody
       additionalProperties: false
       type: object
       required:
       - correlationId
       - error
       title: ErrorResponse
+      example:
+        correlationId: corr-1234567890abcdef
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        error:
+          code: RESOURCE_CONFLICT
+          message: The resource changed; reload and retry.
+          retryable: false
+          details:
+            currentVersion: 3
     EventAdminRequest:
       properties:
         name:
@@ -3031,6 +1987,10 @@ components:
       required:
       - status
       title: HealthStatus
+      example:
+        status: READY
+        service: booking-orchestrator
+        version: 2.2.0
     LoginRequest:
       properties:
         email:
@@ -3065,6 +2025,9 @@ components:
       - amountMinor
       - currency
       title: Money
+      example:
+        amountMinor: 250000
+        currency: VND
     MoneyRequest:
       properties:
         amountMinor:
@@ -3088,8 +2051,7 @@ components:
           - type: string
           - type: 'null'
           title: Customerid
-          description: Compatibility only. ESB resolves ownership from the authenticated
-            identity.
+          description: Compatibility only. ESB resolves ownership from the authenticated identity.
           deprecated: true
         eventId:
           type: string
@@ -3130,16 +2092,19 @@ components:
           type: string
           format: date-time
           title: Startsat
+          pattern: (?:Z|\+00:00)$
         saleStartsAt:
           anyOf:
           - type: string
             format: date-time
+            pattern: (?:Z|\+00:00)$
           - type: 'null'
           title: Salestartsat
         saleEndsAt:
           anyOf:
           - type: string
             format: date-time
+            pattern: (?:Z|\+00:00)$
           - type: 'null'
           title: Saleendsat
         status:
@@ -3197,6 +2162,7 @@ components:
           type: string
           format: date-time
           title: Generatedat
+          pattern: (?:Z|\+00:00)$
         seats:
           items:
             $ref: '#/components/schemas/SeatProjection'
@@ -3476,6 +2442,7 @@ components:
           type: string
           format: date-time
           title: Createdat
+          pattern: (?:Z|\+00:00)$
       additionalProperties: false
       type: object
       required:
@@ -3514,6 +2481,7 @@ components:
           type: string
           format: date-time
           title: Expiresat
+          pattern: (?:Z|\+00:00)$
       additionalProperties: false
       type: object
       required:
@@ -3521,13 +2489,177 @@ components:
       - bookingId
       - expiresAt
       title: WsTicketResponse
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Caller-supplied correlation id, echoed on the response. The gateway generates one when
+        the header is absent.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: corr-1234567890abcdef
+    RequiredCorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: true
+      description: Correlation id that the caller must supply.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      description: W3C trace context. A new trace id is created when absent or malformed.
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated key that makes a retried command safe to replay.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: idem-booking-12345678
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Resource version the command expects, taken from the last ETag.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+    OptionalIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: Resource version the command expects. Optional because the operation also creates the
+        resource when it does not exist yet; when omitted the gateway uses the version it just read.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PaymentDeclined:
+      description: Payment was declined.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Not authorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: State, uniqueness or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: If-Match does not match the resource version.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Request payload is too large.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Validation or domain-rule rejection.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    AccountLocked:
+      description: Identity account is temporarily locked.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected gateway failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: Provider returned an invalid response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    GatewayTimeout:
+      description: Request deadline exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   securitySchemes:
-    BearerAuth:
+    UserJwt:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Short-lived Identity user JWT. The ESB verifies signature, issuer,
-        audience, expiry, subject and roles.
+      description: Short-lived Identity user JWT. The ESB verifies signature, issuer, audience, expiry,
+        subject and roles.
+    ServiceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Shared internal service JWT. Published so the catalogue vocabulary is identical across
+        contracts; no public gateway operation accepts it — the ESB mints service JWTs for downstream
+        calls instead of verifying them.
+    WebhookHmac:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+      description: HMAC-SHA256 over X-Webhook-Timestamp + '.' + the exact request body. Published for
+        catalogue consistency; the gateway signs outbound notification webhooks with it and exposes no
+        inbound webhook endpoint.
     RefreshCookie:
       type: apiKey
       in: cookie
@@ -3543,3 +2675,10 @@ components:
       in: header
       name: X-CSRF-Token
       description: Must equal the identity_csrf cookie for refresh and logout.
+  headers:
+    ETag:
+      description: Strong resource-version validator used by If-Match.
+      schema:
+        type: string
+        pattern: ^"[1-9][0-9]*"$
+      example: '"3"'

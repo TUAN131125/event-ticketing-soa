@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from lxml import etree
 
 from app.domain.reservation import ReservationView
@@ -25,10 +27,41 @@ def append(parent: etree._Element, name: str, value: str | int | bool) -> None:
 
 
 def append_seat(parent: etree._Element, seat: SeatView) -> None:
+    """Serialise one SeatMapSeat in canonical xs:sequence order.
+
+    section, rowLabel and seatNumber are minOccurs="0", so they are written only when the
+    domain actually carries them. status is required: it comes straight from the seat's own
+    status enum and is never inferred from the current hold owner or defaulted.
+    """
     node = element("seat")
     append(node, "seatId", seat.seat_id)
+    for name, value in (
+        ("section", seat.section),
+        ("rowLabel", seat.row_label),
+        ("seatNumber", seat.seat_number),
+    ):
+        if value:
+            append(node, name, value)
     append(node, "ticketTypeCode", seat.ticket_type)
+    append(node, "status", seat.status.value)
     parent.append(node)
+
+
+def seat_map_response(
+    event_id: str, seats: Iterable[SeatView]
+) -> etree._Element:
+    """Build a complete GetSeatMapResponse.
+
+    Kept next to append_seat and free of any session so the canonical-XSD conformance of a
+    seat map can be tested directly from domain values.
+    """
+    response = element("GetSeatMapResponse")
+    append(response, "eventId", event_id)
+    seats_node = element("seats")
+    for seat in seats:
+        append_seat(seats_node, seat)
+    response.append(seats_node)
+    return response
 
 
 def append_reservation(parent: etree._Element, value: ReservationView) -> None:

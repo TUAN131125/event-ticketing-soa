@@ -849,7 +849,10 @@ async def validate_ticket(body: CheckInValidateRequest, request: Request):
 
 @router.post(
     "/api/check-in/tickets/{ticketId}",
-    operation_id="checkInTicket",
+    # Ticket Service owns the `checkInTicket` operation id in its own canonical
+    # contract; the gateway façade is namespaced like the other ViaEsb operations so
+    # operation ids stay unique across the whole catalogue.
+    operation_id="checkInTicketViaEsb",
     response_model=CheckInResult,
     responses={**response_docs(400, 401, 403, 404, 409, 412, 422, 429, 502, 503, 504), 200: {"headers": ETAG_HEADER}},
 )

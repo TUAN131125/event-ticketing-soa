@@ -1,35 +1,44 @@
-"""FastAPI dependency for service-to-service authentication."""
+"""Service JWT authentication for internal Booking API calls.
 
-from fastapi import Header, Request, Security
-from fastapi.security import APIKeyHeader
+The caller's identity comes from the signed `sub` claim, never from a header the caller
+controls. X-Actor-ID remains a non-authoritative audit hint only.
+"""
 
-from app.domain.exceptions import InvalidRequest
+from typing import Annotated, cast
+
+from fastapi import Header, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from libs.platform_security import ServiceAuthenticationError, ServicePrincipal
+
 from app.domain.rules import validate_identifier
 from app.domain.value_objects import RequestContext
-from app.security.authorization import authenticate_service
 from app.security.input_validation import safe_identifier
 
-SERVICE_TOKEN_HEADER = APIKeyHeader(
-    name="X-Service-Token",
-    scheme_name="serviceToken",
-    description="Internal shared secret. Never forward a customer token here.",
-    auto_error=False,
-)
+SERVICE_JWT = HTTPBearer(auto_error=False, scheme_name="ServiceJwt")
 
 
 def require_internal_caller(
     request: Request,
-    x_service_token: str | None = Security(SERVICE_TOKEN_HEADER),
-    x_caller_service: str | None = Header(default=None, alias="X-Caller-Service"),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(SERVICE_JWT)],
     x_actor_id: str | None = Header(default=None, alias="X-Actor-ID"),
 ) -> RequestContext:
-    settings = request.app.state.settings
-    authenticate_service(x_service_token, settings.service_token)
-    if not x_caller_service:
-        raise InvalidRequest("X-Caller-Service header is required")
+    authorization = (
+        f"Bearer {credentials.credentials}" if credentials is not None else None
+    )
+    try:
+        principal = cast(
+            ServicePrincipal,
+            request.app.state.service_jwt_verifier.verify_authorization(authorization),
+        )
+    except ServiceAuthenticationError as exc:
+        # No cryptographic detail and no token material reaches the response or the log.
+        raise HTTPException(
+            status_code=401, detail="Service authentication failed"
+        ) from exc
+
     correlation_id = safe_identifier(getattr(request.state, "correlation_id", None))
     return RequestContext(
         correlation_id=correlation_id,
-        caller_service=validate_identifier(x_caller_service, "callerService"),
+        caller_service=validate_identifier(principal.subject, "callerService"),
         actor_id=(validate_identifier(x_actor_id, "actorId") if x_actor_id else None),
     )

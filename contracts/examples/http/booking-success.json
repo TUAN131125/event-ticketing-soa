@@ -1,21 +1,30 @@
 {
+  "id": "BKG-001",
   "bookingId": "BKG-001",
   "customerId": "CUS-001",
   "eventId": "EV-001",
-  "status": "COMPENSATION_PENDING",
   "items": [
     {
       "seatId": "A12",
-      "ticketTypeCode": "VIP"
+      "ticketType": "VIP",
+      "ticketTypeCode": "VIP",
+      "unitPrice": "100000.00"
     }
   ],
-  "total": {
-    "amountMinor": 100000,
-    "currency": "VND"
-  },
+  "seats": [
+    "A12"
+  ],
+  "total": "100000.00",
+  "totalAmount": "100000.00",
+  "currency": "VND",
+  "status": "COMPENSATION_PENDING",
+  "paymentStatus": "UNKNOWN",
+  "reservationStatus": "RESERVED",
   "reservationId": "RES-001",
   "paymentId": "PAY-001",
   "ticketIds": [],
+  "compensationStatus": "PENDING",
+  "compensationAction": "RECONCILE_PAYMENT",
   "resourceVersion": 5,
   "createdAt": "2026-08-03T03:00:00Z",
   "updatedAt": "2026-08-03T03:00:00Z"

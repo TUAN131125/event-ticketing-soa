@@ -17,26 +17,47 @@ services:
     volumes:
       - payment-postgres-data:/var/lib/postgresql/data
 
+  # The image is built from the repository root because that is the canonical build
+  # context used by the root compose file and by CI.
+  payment-migrate:
+    build:
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
+    restart: "no"
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    environment:
+      PAYMENT_APP_ENV: local
+      PAYMENT_DATABASE_URL: postgresql+psycopg://payment:payment@postgres:5432/payment
+      PAYMENT_SERVICE_TOKEN: local-development-token
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   payment-service:
     build:
-      context: .
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
     environment:
       PAYMENT_APP_ENV: local
       PAYMENT_DATABASE_URL: postgresql+psycopg://payment:payment@postgres:5432/payment
       PAYMENT_SERVICE_TOKEN: local-development-token
       PAYMENT_WEB_WORKERS: "1"
     ports:
-      - "8005:8000"
+      - "8005:8005"
     depends_on:
       postgres:
         condition: service_healthy
+      payment-migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # PAY-08 worker. It only reconciles due UNKNOWN payments and never blindly
   # submits a new financial operation.
   payment-reconciliation-worker:
     build:
-      context: .
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
     entrypoint: ["python", "-m", "app.workers.reconciliation_worker"]
     environment:
       PAYMENT_APP_ENV: local
@@ -57,7 +78,8 @@ services:
   # image and starts only after the API has applied migrations.
   payment-outbox-relay:
     build:
-      context: .
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
     entrypoint: ["python", "-m", "app.workers.outbox_relay"]
     environment:
       PAYMENT_APP_ENV: local

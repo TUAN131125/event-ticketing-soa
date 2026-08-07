@@ -1,15 +1,19 @@
+"""CI gate: the ESB implementation and its published contract must not drift.
+
+The canonical document is curated (servers, a reusable parameter/response vocabulary,
+UTC constraints, prose), so this compares meaning rather than bytes — see
+`scripts/openapi_parity` for exactly which properties are held identical. The runtime
+snapshot under `contracts/generated/` is a plain export and is still compared literally.
+"""
+
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import yaml
 
 from app.main import create_app
-
-
-def normalized(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+from scripts.openapi_parity import compare
 
 
 def main() -> None:
@@ -23,18 +27,22 @@ def main() -> None:
     snapshot = yaml.safe_load(snapshot_path.read_text(encoding="utf-8"))
     mirror = yaml.safe_load(mirror_path.read_text(encoding="utf-8"))
 
-    expected = normalized(runtime)
-    mismatches = [
-        str(path)
-        for path, document in (
-            (canonical_path, canonical),
-            (snapshot_path, snapshot),
-            (mirror_path, mirror),
-        )
-        if normalized(document) != expected
-    ]
-    if mismatches:
-        raise SystemExit("OpenAPI parity failed: " + ", ".join(mismatches))
+    failures: list[str] = []
+
+    drift = compare(runtime, canonical)
+    if drift:
+        failures.append(f"{canonical_path} has drifted from the runtime:\n  " + "\n  ".join(drift))
+
+    # The snapshot is a verbatim export, so run `scripts/export_openapi.py` to refresh it.
+    if snapshot != runtime:
+        failures.append(f"{snapshot_path} is not the current runtime export")
+
+    # The gateway-local mirror must stay a copy of the canonical document.
+    if mirror != canonical:
+        failures.append(f"{mirror_path} is not a copy of {canonical_path}")
+
+    if failures:
+        raise SystemExit("OpenAPI parity failed:\n" + "\n".join(failures))
 
     operations = sum(
         1
@@ -43,8 +51,8 @@ def main() -> None:
         if method in {"get", "post", "put", "patch", "delete"}
     )
     print(
-        f"OpenAPI parity PASS: {len(runtime.get('paths', {}))} paths, "
-        f"{operations} operations, runtime == canonical == snapshot == mirror"
+        f"OpenAPI parity PASS: {len(runtime.get('paths', {}))} paths, {operations} operations; "
+        "runtime == canonical (semantic), snapshot == runtime, mirror == canonical"
     )
 
 

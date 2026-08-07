@@ -1,5 +1,8 @@
 -r requirements.txt
 httpx==0.28.1
+# tests/contract/test_openapi.py validates the published event schemas with
+# Draft202012Validator; without this the contract suite fails at collection in CI.
+jsonschema==4.23.0
 mypy==1.17.1
 pytest==8.4.1
 pytest-cov==6.2.1

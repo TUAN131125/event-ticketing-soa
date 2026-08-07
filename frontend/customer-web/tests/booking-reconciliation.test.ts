@@ -80,7 +80,7 @@ describe('booking submission outcomes', () => {
         jsonResponse(bookingBody('CANCELLED'), { status: 200, headers: { ETag: '"5"' } }),
       );
     const client = new EsbClient({ baseUrl: 'https://esb.example', fetchImpl });
-    await client.cancelBooking('BK-1', 'idem-cancel-1234');
+    await client.cancelBooking('BK-1', 'customer-requested', 'idem-cancel-1234');
     const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit];
     expect(url).toBe('https://esb.example/api/bookings/BK-1/cancel');
     expect((init.headers as Headers).get('If-Match')).toBe('"4"');
@@ -91,7 +91,7 @@ describe('booking submission outcomes', () => {
       .fn()
       .mockResolvedValue(jsonResponse(bookingBody('SEAT_RESERVED'), { status: 200 }));
     const client = new EsbClient({ baseUrl: 'https://esb.example', fetchImpl });
-    await expect(client.cancelBooking('BK-1')).rejects.toMatchObject({
+    await expect(client.cancelBooking('BK-1', 'customer-requested')).rejects.toMatchObject({
       code: 'PRECONDITION_REQUIRED',
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);

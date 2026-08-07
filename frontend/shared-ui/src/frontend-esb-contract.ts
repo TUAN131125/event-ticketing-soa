@@ -32,9 +32,9 @@ export type TicketValidationRequest =
 export type TicketValidationResult =
   operations['validateTicketForCheckIn']['responses'][200]['content']['application/json'];
 export type CheckInRequest =
-  operations['checkInTicket']['requestBody']['content']['application/json'];
+  operations['checkInTicketViaEsb']['requestBody']['content']['application/json'];
 export type CheckInResult =
-  operations['checkInTicket']['responses'][200]['content']['application/json'];
+  operations['checkInTicketViaEsb']['responses'][200]['content']['application/json'];
 export type RealtimeWsTicketRequest =
   operations['issueRealtimeWebSocketTicket']['requestBody']['content']['application/json'];
 export type RealtimeWsTicket =

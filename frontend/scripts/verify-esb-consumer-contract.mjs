@@ -35,7 +35,7 @@ const expectedOperations = new Map([
   ['GET /api/admin/events/{eventId}/seat-inventory', 'adminGetSeatInventory'],
   ['PUT /api/admin/events/{eventId}/seat-inventory', 'adminConfigureSeatInventory'],
   ['POST /api/check-in/validate', 'validateTicketForCheckIn'],
-  ['POST /api/check-in/tickets/{ticketId}', 'checkInTicket'],
+  ['POST /api/check-in/tickets/{ticketId}', 'checkInTicketViaEsb'],
   ['POST /api/realtime/ws-tickets', 'issueRealtimeWebSocketTicket'],
   ['GET /api/traces/{correlationId}', 'getWorkflowTrace'],
   ['GET /api/health', 'aggregateHealth'],
@@ -90,8 +90,8 @@ for (const field of ['description', 'imageUrl']) {
 
 
 const securitySchemes = document.components?.securitySchemes ?? {};
-if (securitySchemes.BearerAuth?.scheme !== 'bearer') {
-  throw new Error('ESB OpenAPI does not declare BearerAuth');
+if (securitySchemes.UserJwt?.scheme !== 'bearer') {
+  throw new Error('ESB OpenAPI does not declare UserJwt');
 }
 for (const [method, path] of [
   ['get', '/api/auth/me'],
@@ -100,8 +100,8 @@ for (const [method, path] of [
   ['post', '/api/check-in/validate'],
 ]) {
   const security = document.paths?.[path]?.[method]?.security ?? [];
-  if (!security.some((entry) => Object.hasOwn(entry, 'BearerAuth'))) {
-    throw new Error(`${method.toUpperCase()} ${path} is missing BearerAuth`);
+  if (!security.some((entry) => Object.hasOwn(entry, 'UserJwt'))) {
+    throw new Error(`${method.toUpperCase()} ${path} is missing UserJwt`);
   }
 }
 for (const path of ['/api/auth/refresh', '/api/auth/logout']) {

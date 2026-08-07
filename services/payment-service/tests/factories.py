@@ -7,6 +7,7 @@ configuration field does not mean editing four constructors.
 from typing import Any
 
 from app.config import Settings
+from tests.service_jwt import validation_settings
 
 TEST_SERVICE_TOKEN = "test-service-token"  # noqa: S105 - test fixture, not a secret
 
@@ -41,5 +42,6 @@ def build_settings(**overrides: Any) -> Settings:
         "provider_reconciliation_max_delay_seconds": 300,
         "provider_reconciliation_batch_size": 20,
         "provider_reconciliation_poll_seconds": 5,
+        "service_jwt": validation_settings(),
     }
     return Settings(**{**defaults, **overrides})

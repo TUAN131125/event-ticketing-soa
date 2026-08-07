@@ -1,13 +1,24 @@
 {
+  "id": "PAY-001",
   "paymentId": "PAY-001",
   "bookingId": "BKG-001",
-  "amount": {
-    "amountMinor": 100000,
-    "currency": "VND"
-  },
+  "customerId": "CUS-001",
+  "amount": "100000.00",
+  "amountMinor": 100000,
+  "currency": "VND",
+  "paymentMethod": "CARD",
+  "provider": "mock",
   "status": "UNKNOWN",
+  "capturedAmount": "0.00",
+  "capturedAmountMinor": 0,
+  "refundedAmount": "0.00",
+  "refundedAmountMinor": 0,
   "providerReference": "PROV-001",
   "resourceVersion": 3,
+  "bookingEvidenceVerified": true,
+  "providerScenario": "SUCCESS",
+  "reconciliationStatus": "PENDING",
+  "reconciliationAttempts": 0,
   "createdAt": "2026-08-03T03:00:00Z",
   "updatedAt": "2026-08-03T03:00:00Z"
 }

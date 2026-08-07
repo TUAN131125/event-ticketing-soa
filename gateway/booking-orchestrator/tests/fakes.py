@@ -42,10 +42,13 @@ class Event:
 
 
 class Seat:
-    def __init__(self, log):
+    def __init__(self, log, reserve_status: str | None = "ACTIVE"):
         self.log = log
         self.last_ttl = None
         self.last_seat_references = None
+        # Tests override this to drive the ESB's reservation-status guard. None omits the
+        # field entirely, which is what a contract-violating provider would do.
+        self.reserve_status = reserve_status
 
     async def get_seat_map(self, event_id: str, ctx):
         return {
@@ -71,11 +74,12 @@ class Seat:
         self.last_ttl = ttl_seconds
         self.last_seat_references = seat_references
         self.log.append("reserve")
-        return {
-            "reservationId": "r1",
-            "resourceVersion": 1,
-            "status": "RESERVED",
-        }
+        # tns:ReservationStatus only admits ACTIVE/CONFIRMED/RELEASED/EXPIRED; a live hold
+        # is ACTIVE. "RESERVED" was never a value Seat Inventory can return.
+        response = {"reservationId": "r1", "resourceVersion": 1}
+        if self.reserve_status is not None:
+            response["status"] = self.reserve_status
+        return response
 
     async def confirm(
         self,

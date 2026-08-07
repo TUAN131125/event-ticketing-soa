@@ -6,6 +6,8 @@ from pathlib import Path
 
 import yaml
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 from app.config import Settings
 from app.main import create_app
 
@@ -25,6 +27,12 @@ def export(destination: Path) -> None:
         idempotency_ttl_seconds=86_400,
         log_level="WARNING",
         docs_enabled=True,
+        # Only shapes the published security scheme; no key is used to verify anything here.
+        service_jwt=ServiceJwtValidationSettings.from_environment(
+            "BOOKING",
+            audience="booking-service",
+            default_allowed_subjects="booking-orchestrator",
+        ),
     )
     schema = create_app(settings).openapi()
     destination.parent.mkdir(parents=True, exist_ok=True)
