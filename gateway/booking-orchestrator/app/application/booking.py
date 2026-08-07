@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.application.evidence import booking_evidence
@@ -260,17 +261,21 @@ class BookingSaga:
             WorkflowStatus.FAILED if complete else WorkflowStatus.COMPENSATION_PENDING
         )
         workflow.response_status = 409 if complete else 202
-        workflow.response_body = self._workflow_failure_response(
-            workflow,
-            code="BOOKING_WORKFLOW_FAILED",
-            message=(
-                "Booking workflow failed and compensation completed"
-                if complete
-                else "Booking workflow failed and compensation is still pending"
-            ),
-            retryable=not complete,
-            details={"compensationStatus": "COMPLETED" if complete else "PENDING"},
-        )
+        if complete:
+            workflow.response_body = self._workflow_failure_response(
+                workflow,
+                code="BOOKING_WORKFLOW_FAILED",
+                message="Booking workflow failed and compensation completed",
+                retryable=False,
+                details={"compensationStatus": "COMPLETED"},
+            )
+        else:
+            # 202 is typed as a BookingResult by the canonical contract, and a booking
+            # whose compensation is still running is exactly what that projection is for:
+            # it carries the bookingId, paymentId and reservationId a caller needs to
+            # poll. Answering 202 with an ErrorResponse instead made the replay of this
+            # workflow fail response validation and turn into a 500.
+            workflow.response_body = self._response(workflow)
         await self.workflows.save(workflow)
         return workflow.response_status, workflow.response_body
 
@@ -364,14 +369,27 @@ class BookingSaga:
             amount = booking.get("totalAmount", total)
             currency = booking.get("currency")
         try:
-            amount_minor = int(amount)
-        except (TypeError, ValueError) as exc:
+            # Booking Service publishes `total`/`totalAmount` as a decimal string (its
+            # canonical contract types both as `string`), carrying the same minor-unit
+            # value the ESB sent as `unitPrice` — "100000.00" for 100000 minor units.
+            # int() cannot read that, so parse as a decimal and require a whole number
+            # rather than truncating a fractional minor unit into a wrong charge.
+            quantity = Decimal(str(amount).strip())
+        except (AttributeError, InvalidOperation, TypeError, ValueError) as exc:
             raise EsbError(
                 "BOOKING_PROTOCOL_ERROR",
                 "Booking Service did not return an authoritative totalAmount",
                 502,
                 True,
             ) from exc
+        if quantity != quantity.to_integral_value():
+            raise EsbError(
+                "BOOKING_PROTOCOL_ERROR",
+                "Booking Service returned a fractional minor-unit totalAmount",
+                502,
+                True,
+            )
+        amount_minor = int(quantity)
         currency_code = str(currency or "").upper()
         if amount_minor < 0 or len(currency_code) != 3:
             raise EsbError(
@@ -539,6 +557,9 @@ class BookingSaga:
             if exc.retryable:
                 workflow.payment_status = PaymentStatus.UNKNOWN
                 raise PaymentUnknown("Payment authorization outcome is unknown") from exc
+            declined = await self._declined_payment(workflow, exc, ctx)
+            if declined is not None:
+                return await self._payment_failed(workflow, declined, ctx)
             raise
         # A status outside the canonical enum raises PAYMENT_PROTOCOL_ERROR rather than
         # being guessed at; see app.domain.payment_status.
@@ -560,6 +581,9 @@ class BookingSaga:
             if exc.retryable:
                 workflow.payment_status = PaymentStatus.UNKNOWN
                 raise PaymentUnknown("Payment capture outcome is unknown") from exc
+            declined = await self._declined_payment(workflow, exc, ctx)
+            if declined is not None:
+                return await self._payment_failed(workflow, declined, ctx)
             raise
         captured_status = parse_payment_status(captured)
         if is_pending(captured_status):
@@ -792,6 +816,35 @@ class BookingSaga:
             for message in messages:
                 await self.outbox.add(message)
         return 201, body
+
+    async def _declined_payment(
+        self,
+        workflow: Workflow,
+        exc: EsbError,
+        ctx: RequestContext,
+    ) -> dict[str, Any] | None:
+        """Return the authoritative payment when Payment reports a hard decline.
+
+        Payment Service answers a declined authorization or capture with 402 rather than
+        a 200 carrying a FAILED status, so the saga would otherwise never reach
+        `_payment_failed` and would try to fail the booking while Booking still believed
+        the payment was PROCESSING — which Booking correctly refuses with
+        COMPENSATION_EVIDENCE_REQUIRED, stranding the booking and the seat.
+
+        The decline is re-read from Payment instead of being inferred from the error, so
+        the status recorded on Booking is the provider's own, and a payment that turns
+        out not to be terminally failed falls through to the generic handler untouched.
+        """
+        if exc.status_code != 402 or not workflow.payment_id:
+            return None
+        try:
+            payment = await self.payment.get(workflow.payment_id, ctx)
+        except EsbError:
+            return None
+        if not is_failed(parse_payment_status(payment)):
+            return None
+        payment.setdefault("failureCode", exc.code)
+        return payment
 
     async def _payment_failed(
         self,

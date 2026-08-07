@@ -436,6 +436,12 @@ async def place_booking(
         await request_context(request),
     )
     headers: dict[str, str] = {}
+    if status >= 400:
+        # A saga that completes its own compensation — a declined payment, for one —
+        # answers with the canonical ErrorResponse the contract documents for that
+        # status, not a BookingResult. Validating it as a booking would raise here and
+        # turn an orderly 402 into a 500 after the compensation had already run.
+        return json_response(ErrorResponse, payload, status_code=status)
     if status == 202:
         if payload.get("bookingId"):
             headers["Location"] = f"/api/bookings/{payload['bookingId']}"
