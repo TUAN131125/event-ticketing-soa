@@ -35,8 +35,25 @@ MUTATION_EXCLUSIONS = {
     "/webhooks/events",
     "/internal/status-events",
     "/internal/bookings/{bookingId}/access-decisions",
+    # The ESB publishes the Identity session endpoints behind an /api prefix. A session
+    # is established, not replayed, so the same exclusion applies to the façade.
+    "/api/auth/login",
+    "/api/auth/refresh",
+    "/api/auth/logout",
+    # Safe lookup expressed as POST so the QR token never appears in a URL, a path or a
+    # log line. It creates nothing, so there is no command for a key to make repeatable.
+    "/api/check-in/validate",
 }
+# A precondition operation must declare If-Match, but may declare it optional where the
+# same operation can also create the resource and so has no prior version to match.
 CORRELATION_PARAMETERS = ("CorrelationId", "RequiredCorrelationId")
+PRECONDITION_PARAMETERS = ("IfMatch", "OptionalIfMatch")
+# Operations whose concurrency token is not an HTTP header. Seat inventory is fronted by
+# the SOAP Seat service: the expected version travels in the body as `inventoryVersion`
+# and no ETag is ever issued for the resource, so an If-Match header would carry nothing.
+PRECONDITION_EXCLUSIONS = {
+    "/api/admin/events/{eventId}/seat-inventory",
+}
 
 
 @dataclass
@@ -333,10 +350,13 @@ def validate_openapi_operations(
                     "openapi.idempotency",
                     f"{method} {route} missing Idempotency-Key",
                 )
-        precondition = method in {"PUT", "PATCH", "DELETE"} or (
-            method == "POST" and "{" in route and route not in MUTATION_EXCLUSIONS
-        )
-        if precondition and "#/components/parameters/IfMatch" not in refs:
+        precondition = (
+            method in {"PUT", "PATCH", "DELETE"}
+            or (method == "POST" and "{" in route and route not in MUTATION_EXCLUSIONS)
+        ) and route not in PRECONDITION_EXCLUSIONS
+        if precondition and not any(
+            f"#/components/parameters/{name}" in refs for name in PRECONDITION_PARAMETERS
+        ):
             report.error(path, "openapi.if-match", f"{method} {route} missing If-Match")
         responses = operation.get("responses", {})
         if not any(str(code).startswith("2") for code in responses):

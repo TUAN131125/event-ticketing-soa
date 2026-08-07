@@ -107,12 +107,14 @@ class QueryService:
         customer_id = await self.customer_id(ctx)
         page = max(1, int(params.get("page") or 1))
         page_size = max(1, min(100, int(params.get("pageSize") or 20)))
+        # listCustomerBookings accepts page and pageSize only. The broad admin list is the
+        # only operation with a status filter, and it is not an owner-scoped surface, so a
+        # status filter is not pushed down here. Filtering client-side would break paging,
+        # so the parameter is deliberately not honoured rather than silently mis-paged.
         provider_params = {
             "page": page,
             "pageSize": page_size,
         }
-        if params.get("status"):
-            provider_params["status"] = params["status"]
         raw = await self.booking.list_customer(customer_id, provider_params, ctx)
         return booking_page_projection(raw, ctx, page=page, page_size=page_size)
 

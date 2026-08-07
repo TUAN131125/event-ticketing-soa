@@ -15,19 +15,22 @@ from app.domain.models import (
     Workflow,
     WorkflowStatus,
 )
+from app.domain.payment_status import (
+    is_captured,
+    is_failed,
+    is_pending,
+    parse_payment_status,
+    to_booking_payment_status,
+)
 
 TERMINAL_WORKFLOW_STATUSES = {
     WorkflowStatus.CONFIRMED,
     WorkflowStatus.FAILED,
     WorkflowStatus.CANCELLED,
 }
-PAYMENT_PENDING_STATUSES = {
-    "PENDING",
-    "PROCESSING",
-    "UNKNOWN",
-    "PENDING_RECONCILIATION",
-}
-PAYMENT_FAILED_STATUSES = {"FAILED", "DECLINED", "CANCELLED"}
+# tns:ReservationStatus in contracts/seat-inventory.xsd. Only ACTIVE means the seats are
+# still held for this booking.
+RESERVATION_STATUSES = {"ACTIVE", "CONFIRMED", "RELEASED", "EXPIRED"}
 
 
 class BookingSaga:
@@ -135,17 +138,19 @@ class BookingSaga:
             )
 
         payment = await self.payment.get(workflow.payment_id, ctx)
-        payment_status = str(payment.get("status", "")).upper()
-        if payment_status in PAYMENT_PENDING_STATUSES:
+        payment_status = parse_payment_status(payment)
+        if is_pending(payment_status):
             workflow.payment_status = PaymentStatus.UNKNOWN
             await self._persist_payment_unknown(workflow, ctx)
             return 202, workflow.response_body or self._response(workflow)
-        if payment_status in PAYMENT_FAILED_STATUSES:
+        if is_failed(payment_status):
             return await self._payment_failed(workflow, payment, ctx)
-        if payment_status != "CAPTURED":
+        if not is_captured(payment_status):
+            # A refunded or partially refunded payment is a real state, but not one this
+            # saga can drive forward; it belongs to compensation, not reconciliation.
             raise EsbError(
                 "PAYMENT_STATE_UNSUPPORTED",
-                f"Cannot reconcile payment state {payment_status}",
+                f"Cannot reconcile payment state {payment_status.value}",
                 409,
             )
 
@@ -450,6 +455,16 @@ class BookingSaga:
                 502,
                 True,
             )
+        reservation_status = _reservation_status(reservation)
+        workflow.evidence["reservationStatus"] = reservation_status
+        if reservation_status != "ACTIVE":
+            # The seats are not held for this booking, so the saga must not reach Payment,
+            # Ticket or CONFIRMED. Any hold Seat Inventory did create is left to the
+            # existing reservation expiry and reconciliation paths.
+            raise Conflict(
+                "SEAT_RESERVATION_NOT_ACTIVE",
+                "The seat reservation is not active, so the booking cannot continue",
+            )
         workflow.status = WorkflowStatus.SEAT_RESERVED
 
         booking = await self.booking.attach_reservation(
@@ -463,16 +478,14 @@ class BookingSaga:
                     reservation_expires_at=reservation.get("expiresAt"),
                     details={
                         "source": "SeatInventory",
-                        "status": reservation.get("status", "ACTIVE"),
+                        "status": reservation_status,
                     },
                 ),
             },
             workflow.idempotency_key + ":booking-reservation",
             ctx,
         )
-        workflow.booking_version = _int_or_none(
-            booking.get("resourceVersion") or workflow.booking_version
-        )
+        workflow.booking_version = _require_booking_version(booking)
         await self.workflows.save(workflow)
 
         payment = await self.payment.create(
@@ -511,9 +524,7 @@ class BookingSaga:
             workflow.idempotency_key + ":booking-payment-start",
             ctx,
         )
-        workflow.booking_version = _int_or_none(
-            booking.get("resourceVersion") or workflow.booking_version
-        )
+        workflow.booking_version = _require_booking_version(booking)
         workflow.status = WorkflowStatus.PAYMENT_PROCESSING
         await self.workflows.save(workflow)
 
@@ -529,10 +540,12 @@ class BookingSaga:
                 workflow.payment_status = PaymentStatus.UNKNOWN
                 raise PaymentUnknown("Payment authorization outcome is unknown") from exc
             raise
-        authorization_status = str(authorization.get("status", "")).upper()
-        if authorization_status in PAYMENT_FAILED_STATUSES:
+        # A status outside the canonical enum raises PAYMENT_PROTOCOL_ERROR rather than
+        # being guessed at; see app.domain.payment_status.
+        authorization_status = parse_payment_status(authorization)
+        if is_failed(authorization_status):
             return await self._payment_failed(workflow, authorization, ctx)
-        if authorization_status in PAYMENT_PENDING_STATUSES:
+        if is_pending(authorization_status):
             workflow.payment_status = PaymentStatus.UNKNOWN
             raise PaymentUnknown()
 
@@ -548,12 +561,26 @@ class BookingSaga:
                 workflow.payment_status = PaymentStatus.UNKNOWN
                 raise PaymentUnknown("Payment capture outcome is unknown") from exc
             raise
-        captured_status = str(captured.get("status", "")).upper()
-        if captured_status in PAYMENT_PENDING_STATUSES:
+        captured_status = parse_payment_status(captured)
+        if is_pending(captured_status):
             workflow.payment_status = PaymentStatus.UNKNOWN
             raise PaymentUnknown()
-        if captured_status != "CAPTURED":
+        if is_failed(captured_status):
             return await self._payment_failed(workflow, captured, ctx)
+        if not is_captured(captured_status):
+            # AUTHORIZED, PARTIALLY_REFUNDED or REFUNDED here means capture did not settle
+            # the way the saga assumes. Previously any non-CAPTURED value fell through to
+            # the failure path, which would release seats against possibly-captured money.
+            # The outcome is indeterminate, so the workflow is marked UNKNOWN before the
+            # protocol error propagates and compensation — not seat release — takes over.
+            workflow.payment_status = PaymentStatus.UNKNOWN
+            await self.workflows.save(workflow)
+            raise EsbError(
+                "PAYMENT_PROTOCOL_ERROR",
+                "Payment Service returned an unexpected status for a capture",
+                502,
+                False,
+            )
 
         workflow.payment_status = PaymentStatus.CAPTURED
         await self.workflows.save(workflow)
@@ -614,9 +641,7 @@ class BookingSaga:
                 workflow.idempotency_key + ":booking-payment-result",
                 ctx,
             )
-            workflow.booking_version = _int_or_none(
-                booking.get("resourceVersion") or workflow.booking_version
-            )
+            workflow.booking_version = _require_booking_version(booking)
             steps["paymentRecorded"] = True
             await self.workflows.save(workflow)
 
@@ -658,9 +683,7 @@ class BookingSaga:
                 workflow.idempotency_key + ":booking-seat-confirmed",
                 ctx,
             )
-            workflow.booking_version = _int_or_none(
-                booking.get("resourceVersion") or workflow.booking_version
-            )
+            workflow.booking_version = _require_booking_version(booking)
             steps["reservationEvidenceConfirmed"] = True
             await self.workflows.save(workflow)
 
@@ -718,9 +741,7 @@ class BookingSaga:
                 workflow.idempotency_key + ":booking-tickets",
                 ctx,
             )
-            workflow.booking_version = _int_or_none(
-                booking.get("resourceVersion") or workflow.booking_version
-            )
+            workflow.booking_version = _require_booking_version(booking)
             steps["ticketsAttached"] = True
             await self.workflows.save(workflow)
 
@@ -744,9 +765,7 @@ class BookingSaga:
                 workflow.idempotency_key + ":booking-confirm",
                 ctx,
             )
-            workflow.booking_version = _int_or_none(
-                booking.get("resourceVersion") or workflow.booking_version
-            )
+            workflow.booking_version = _require_booking_version(booking)
             steps["bookingConfirmed"] = True
 
         workflow.status = WorkflowStatus.CONFIRMED
@@ -803,9 +822,7 @@ class BookingSaga:
             workflow.idempotency_key + ":booking-payment-failed",
             ctx,
         )
-        workflow.booking_version = _int_or_none(
-            booking.get("resourceVersion") or workflow.booking_version
-        )
+        workflow.booking_version = _require_booking_version(booking)
 
         compensation = "NOT_REQUIRED"
         if workflow.reservation_id:
@@ -906,7 +923,10 @@ class BookingSaga:
     ) -> None:
         workflow.evidence["lastErrorCode"] = self._safe_error_code(exc)
         workflow.evidence["lastFailedStepStatus"] = workflow.status.value
-        if workflow.payment_status == PaymentStatus.CAPTURED:
+        # UNKNOWN counts as "money may already have moved". Releasing seats and failing the
+        # booking is only safe when the payment is authoritatively not captured; an
+        # indeterminate outcome goes to compensation so reconciliation can settle it.
+        if workflow.payment_status in {PaymentStatus.CAPTURED, PaymentStatus.UNKNOWN}:
             workflow.status = WorkflowStatus.COMPENSATION_PENDING
             await self._mark_booking_compensation_pending(workflow, exc, ctx)
         elif workflow.status not in TERMINAL_WORKFLOW_STATUSES:
@@ -1109,9 +1129,7 @@ class BookingSaga:
         if not workflow.booking_id:
             return
         booking = await self.booking.get(workflow.booking_id, ctx)
-        workflow.booking_version = _int_or_none(
-            booking.get("resourceVersion") or workflow.booking_version
-        )
+        workflow.booking_version = _require_booking_version(booking)
         steps = workflow.evidence.setdefault("completedSteps", {})
         payment_status = str(booking.get("paymentStatus") or "").upper()
         reservation_status = str(booking.get("reservationStatus") or "").upper()
@@ -1187,17 +1205,8 @@ class BookingSaga:
 
     @staticmethod
     def _public_payment_status(status: PaymentStatus) -> str:
-        mapping = {
-            PaymentStatus.PENDING: "PENDING",
-            PaymentStatus.AUTHORIZED: "PROCESSING",
-            PaymentStatus.CAPTURED: "SUCCEEDED",
-            PaymentStatus.UNKNOWN: "UNKNOWN",
-            PaymentStatus.FAILED: "FAILED",
-            PaymentStatus.CANCELLED: "FAILED",
-            PaymentStatus.PARTIALLY_REFUNDED: "REFUND_PENDING",
-            PaymentStatus.REFUNDED: "REFUNDED",
-        }
-        return mapping[status]
+        # One mapping table, shared with everything that talks to Booking Service.
+        return to_booking_payment_status(status)
 
     @staticmethod
     def _response(workflow: Workflow) -> dict[str, Any]:
@@ -1225,3 +1234,42 @@ def _int_or_none(value: Any) -> int | None:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _require_booking_version(booking: dict[str, Any]) -> int:
+    """Read the resourceVersion a Booking transition response must carry.
+
+    Falling back to the version already held would send the *previous* version as the next
+    command's expectedVersion. Booking Service uses optimistic concurrency, so that either
+    conflicts or — worse, if the version happens to still match — applies a transition
+    against state the orchestrator has not actually seen. A response without a usable
+    version is a protocol error and the saga stops there.
+    """
+    version = _int_or_none(booking.get("resourceVersion"))
+    if version is None:
+        raise EsbError(
+            "BOOKING_PROTOCOL_ERROR",
+            "Booking Service returned a transition without resourceVersion",
+            502,
+            False,
+        )
+    return version
+
+
+def _reservation_status(reservation: dict[str, Any]) -> str:
+    """Read the reservation status a Seat response is required to carry.
+
+    There is deliberately no default. A missing status, or one outside the canonical
+    ReservationStatus enumeration, means the provider broke its own contract, which is a
+    protocol error rather than a transient failure worth retrying — the same response would
+    be just as invalid the second time.
+    """
+    raw = reservation.get("status")
+    if not isinstance(raw, str) or raw.strip().upper() not in RESERVATION_STATUSES:
+        raise EsbError(
+            "SEAT_PROTOCOL_ERROR",
+            "Seat Inventory returned a reservation without a valid status",
+            502,
+            False,
+        )
+    return raw.strip().upper()

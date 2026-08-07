@@ -25,7 +25,7 @@ def canonical() -> dict:
 
 
 def provider(name: str) -> dict:
-    return load_yaml(ROOT / "contracts" / "providers" / name)
+    return load_yaml(ROOT / "contracts" / name)
 
 
 def schema(document: dict, name: str) -> dict:
@@ -100,7 +100,7 @@ def test_new_public_requests_match_runtime_validation_and_do_not_expose_provider
 def test_projection_fields_are_backed_by_provider_contracts():
     document = canonical()
     event = provider("event-service.yaml")["components"]["schemas"]["Event"]
-    booking = provider("booking-service-v2.yaml")["components"]["schemas"]["BookingResponse"]
+    booking = provider("booking-service.yaml")["components"]["schemas"]["BookingResponse"]
     ticket = provider("ticket-service.yaml")["components"]["schemas"]["Ticket"]
 
     event_fields = set(event["properties"])
@@ -293,6 +293,6 @@ def test_event_projection_accepts_provider_optional_sale_dates():
 
 def test_public_booking_enums_match_booking_service_contract():
     public = canonical()["components"]["schemas"]
-    booking = provider("booking-service-v2.yaml")["components"]["schemas"]
+    booking = provider("booking-service.yaml")["components"]["schemas"]
     assert public["BookingStatus"]["enum"] == booking["BookingStatus"]["enum"]
     assert public["BookingPaymentStatus"]["enum"] == booking["PaymentStatus"]["enum"]

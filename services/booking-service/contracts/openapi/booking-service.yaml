@@ -38,7 +38,7 @@ paths:
       summary: Create
       operationId: createBooking
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: Idempotency-Key
         in: header
@@ -48,14 +48,6 @@ paths:
           minLength: 1
           maxLength: 128
           title: Idempotency-Key
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -95,7 +87,7 @@ paths:
       summary: List All
       operationId: listBookings
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: page
         in: query
@@ -148,14 +140,6 @@ paths:
             maxLength: 128
           - type: 'null'
           title: Search
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -184,7 +168,7 @@ paths:
       summary: Reconcile
       operationId: reconcileBookings
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: olderThanSeconds
         in: query
@@ -211,14 +195,6 @@ paths:
           minimum: 1
           default: 20
           title: Pagesize
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -247,7 +223,7 @@ paths:
       summary: History
       operationId: getBookingHistory
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -255,14 +231,6 @@ paths:
         schema:
           type: string
           title: Booking Id
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -291,7 +259,7 @@ paths:
       summary: Get
       operationId: getBooking
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -299,14 +267,6 @@ paths:
         schema:
           type: string
           title: Booking Id
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -341,7 +301,7 @@ paths:
       summary: List For Customer
       operationId: listCustomerBookings
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: customer_id
         in: path
@@ -366,14 +326,6 @@ paths:
           minimum: 1
           default: 20
           title: Pagesize
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -402,7 +354,7 @@ paths:
       summary: Attach Reservation
       operationId: attachReservation
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -426,14 +378,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -474,7 +418,7 @@ paths:
       summary: Confirm Reservation Evidence
       operationId: confirmReservationEvidence
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -498,14 +442,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -546,7 +482,7 @@ paths:
       summary: Start Payment
       operationId: startPayment
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -570,14 +506,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -618,7 +546,7 @@ paths:
       summary: Record Payment
       operationId: recordPayment
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -642,14 +570,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -690,7 +610,7 @@ paths:
       summary: Attach Tickets
       operationId: attachTickets
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -714,14 +634,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -762,7 +674,7 @@ paths:
       summary: Confirm
       operationId: confirmBooking
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -786,14 +698,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -834,7 +738,7 @@ paths:
       summary: Fail
       operationId: failBooking
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -858,14 +762,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -906,7 +802,7 @@ paths:
       summary: Cancel
       operationId: cancelBooking
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -930,14 +826,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -978,7 +866,7 @@ paths:
       summary: Compensation Result
       operationId: recordCompensationResult
       security:
-      - serviceToken: []
+      - ServiceJwt: []
       parameters:
       - name: booking_id
         in: path
@@ -1002,14 +890,6 @@ paths:
           - type: string
           - type: 'null'
           title: If-Match
-      - name: X-Caller-Service
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Caller-Service
       - name: X-Actor-ID
         in: header
         required: false
@@ -1192,7 +1072,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,19}0*$)\d*\.\d*0*$)
           title: Unitprice
         priceCurrency:
           anyOf:
@@ -1221,7 +1100,6 @@ components:
           title: Tickettypecode
         unitPrice:
           type: string
-          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Unitprice
       additionalProperties: false
       type: object
@@ -1295,11 +1173,9 @@ components:
           title: Seats
         total:
           type: string
-          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Total
         totalAmount:
           type: string
-          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Totalamount
         currency:
           type: string
@@ -1642,7 +1518,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,19}0*$)\d*\.\d*0*$)
           - type: 'null'
           title: Totalamount
         currency:
@@ -1918,11 +1793,6 @@ components:
         type:
           type: string
           title: Error Type
-        input:
-          title: Input
-        ctx:
-          type: object
-          title: Context
       type: object
       required:
       - loc
@@ -1930,8 +1800,6 @@ components:
       - type
       title: ValidationError
   securitySchemes:
-    serviceToken:
-      type: apiKey
-      description: Internal shared secret. Never forward a customer token here.
-      in: header
-      name: X-Service-Token
+    ServiceJwt:
+      type: http
+      scheme: bearer

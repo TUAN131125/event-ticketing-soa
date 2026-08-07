@@ -192,11 +192,14 @@ class BookingAdapter:
         params: dict[str, Any],
         ctx: RequestContext,
     ) -> Any:
+        # listCustomerBookings, the owner-scoped operation. GET /bookings is the broad
+        # admin list; using it for an owner query relied on a customerId filter rather than
+        # on the endpoint's own scoping.
         return await self.client.request(
             "GET",
-            "/bookings",
+            f"/customers/{customer_id}/bookings",
             ctx,
-            params={"customerId": customer_id, **params},
+            params=params,
             idempotent=True,
         )
 

@@ -46,7 +46,7 @@ EXPECTED = {
     ("get", "/api/admin/events/{eventId}/seat-inventory"): "adminGetSeatInventory",
     ("put", "/api/admin/events/{eventId}/seat-inventory"): "adminConfigureSeatInventory",
     ("post", "/api/check-in/validate"): "validateTicketForCheckIn",
-    ("post", "/api/check-in/tickets/{ticketId}"): "checkInTicket",
+    ("post", "/api/check-in/tickets/{ticketId}"): "checkInTicketViaEsb",
     ("post", "/api/realtime/ws-tickets"): "issueRealtimeWebSocketTicket",
     ("get", "/api/traces/{correlationId}"): "getWorkflowTrace",
     ("get", "/api/health"): "aggregateHealth",
@@ -62,12 +62,12 @@ def main() -> None:
             raise SystemExit(f"Contract mismatch: {method.upper()} {path} -> {operation_id}")
 
     schemes = document.get("components", {}).get("securitySchemes", {})
-    if schemes.get("BearerAuth", {}).get("scheme") != "bearer":
-        raise SystemExit("ESB OpenAPI is missing BearerAuth")
+    if schemes.get("UserJwt", {}).get("scheme") != "bearer":
+        raise SystemExit("ESB OpenAPI is missing UserJwt")
     for method, path in (("get", "/api/auth/me"), ("post", "/api/bookings"), ("get", "/api/tickets"), ("post", "/api/check-in/validate")):
         security = document["paths"][path][method].get("security", [])
-        if not any("BearerAuth" in entry for entry in security):
-            raise SystemExit(f"Missing BearerAuth: {method.upper()} {path}")
+        if not any("UserJwt" in entry for entry in security):
+            raise SystemExit(f"Missing UserJwt: {method.upper()} {path}")
     for path in ("/api/auth/refresh", "/api/auth/logout"):
         security = document["paths"][path]["post"].get("security", [])
         if not any(

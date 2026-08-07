@@ -50,8 +50,17 @@ class SeatSoapAdapter:
 
     @staticmethod
     def _load_schema(xsd_path: Path | None) -> etree.XMLSchema | None:
-        if xsd_path is None or not xsd_path.exists():
+        # A configured path that is not there is a deployment fault, not a reason to run
+        # unvalidated: silently dropping validation is how a schema mismatch reaches
+        # production. Only an explicitly unset path disables it, which is what the unit
+        # tests that exercise transport behaviour alone rely on.
+        if xsd_path is None:
             return None
+        if not xsd_path.is_file():
+            raise RuntimeError(
+                f"Seat Inventory XSD not found at {xsd_path}; "
+                "set ESB_SEAT_PROVIDER_XSD_PATH to the canonical seat-inventory.xsd"
+            )
         return etree.XMLSchema(etree.parse(str(xsd_path)))
 
     def _request_context(

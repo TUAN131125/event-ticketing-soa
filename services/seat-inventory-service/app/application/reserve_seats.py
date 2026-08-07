@@ -16,7 +16,14 @@ from app.application.common import (
     save_replay,
 )
 from app.config import Settings
-from app.domain.exceptions import InventoryConflict, SeatNotFound, SeatUnavailable
+from app.domain.exceptions import (
+    InventoryConflict,
+    InvalidReservationState,
+    ReservationExpired,
+    ReservationNotFound,
+    SeatNotFound,
+    SeatUnavailable,
+)
 from app.domain.reservation import ReservationStatus, ReservationView
 from app.domain.rules import (
     canonical_request_hash,
@@ -32,6 +39,7 @@ from app.infrastructure.database.models import (
 from app.infrastructure.database.repositories import (
     append_audit,
     database_now,
+    get_reservation,
     get_reservation_by_booking,
     lock_seats,
     reservation_to_view,
@@ -39,6 +47,25 @@ from app.infrastructure.database.repositories import (
 from app.observability.metrics import RESERVE_CONFLICT_TOTAL
 
 SCOPE = "ReserveSeats"
+
+
+def _require_active_hold(
+    reservation_id: str,
+    status: ReservationStatus,
+    expires_at,
+    now,
+) -> None:
+    """Only a live ACTIVE hold may be returned as a successful ReserveSeats result.
+
+    CONFIRMED, RELEASED and EXPIRED are terminal for this operation: they are reported as a
+    deterministic, non-retryable business fault rather than replayed as a successful
+    reservation, because the seats they describe are no longer held for this booking. The
+    checks mirror ConfirmSeats so a caller sees the same code for the same situation.
+    """
+    if status != ReservationStatus.ACTIVE:
+        raise InvalidReservationState(reservation_id, status)
+    if expires_at <= now:
+        raise ReservationExpired(reservation_id)
 
 
 def reserve_seats(
@@ -79,7 +106,19 @@ def reserve_seats(
             request_hash=request_hash,
         )
         if replay is not None:
-            return reservation_from_payload(replay)
+            replayed = reservation_from_payload(replay)
+            # The stored response is a snapshot. It is only still a successful reservation
+            # while the hold it names is live, so the row is re-read rather than trusted.
+            live = get_reservation(session, replayed.reservation_id, for_update=True)
+            if live is None:
+                raise ReservationNotFound(replayed.reservation_id)
+            _require_active_hold(
+                replayed.reservation_id,
+                ReservationStatus(live.status),
+                live.expires_at,
+                database_now(session),
+            )
+            return replayed
 
         existing = get_reservation_by_booking(session, booking_id, for_update=True)
         if existing is not None:
@@ -92,6 +131,15 @@ def reserve_seats(
                     f"Booking {booking_id} already owns a different reservation"
                 )
             now = database_now(session)
+            # UNIQUE(booking_id) means this is the only reservation this booking can own.
+            # Returning it is correct only while it is still an ACTIVE hold; otherwise the
+            # caller must be told, not handed a reservation that holds no seats.
+            _require_active_hold(
+                existing_view.reservation_id,
+                existing_view.status,
+                existing_view.expires_at,
+                now,
+            )
             payload = reservation_to_payload(existing_view)
             save_replay(
                 session,

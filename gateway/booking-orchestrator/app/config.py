@@ -7,7 +7,23 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SEAT_XSD = PROJECT_ROOT / "contracts" / "seat-inventory.xsd"
+
+
+def _canonical_seat_xsd() -> Path:
+    """Locate the one canonical Seat Inventory XSD.
+
+    In the image the build copies contracts/seat-inventory.xsd to /app/contracts, so the
+    packaged path exists and is used. From a source checkout that directory does not exist
+    and the repository's canonical file is read directly. Both resolve to the same document
+    — there is no second, hand-maintained schema to fall back to.
+    """
+    packaged = PROJECT_ROOT / "contracts" / "seat-inventory.xsd"
+    if packaged.is_file():
+        return packaged
+    return PROJECT_ROOT.parents[1] / "contracts" / "seat-inventory.xsd"
+
+
+DEFAULT_SEAT_XSD = _canonical_seat_xsd()
 
 
 class Settings(BaseModel):
@@ -19,7 +35,7 @@ class Settings(BaseModel):
     allowed_origins: str = ""
 
     # Existing gateway environment names are preserved.
-    identity_service_url: str = "http://identity-service:8009"
+    identity_service_url: str = "http://identity:8009"
     customer_service_url: str = "http://customer-service:8001"
     event_service_url: str = "http://event-service:8002"
     seat_service_url: str = "http://seat-inventory-service:8003/soap"

@@ -24,8 +24,8 @@ from app.domain.seat import SeatStatus
 from app.soap.envelope import (
     append,
     append_reservation,
-    append_seat,
     element,
+    seat_map_response,
 )
 from app.soap.types import (
     child_int,
@@ -75,13 +75,7 @@ def _get_seat_map(operation: etree._Element, settings: Settings) -> etree._Eleme
 
     def run(session: Session) -> etree._Element:
         result = get_seat_map(session, context, event_id)
-        response = _response("GetSeatMap")
-        append(response, "eventId", result.event_id)
-        seats_node = element("seats")
-        for seat in result.seats:
-            append_seat(seats_node, seat)
-        response.append(seats_node)
-        return response
+        return seat_map_response(result.event_id, result.seats)
 
     return _execute(settings, run, retries=0)
 

@@ -130,11 +130,11 @@ def test_me_forwards_browser_bearer_token_without_service_token_substitution():
 
 def test_esb_openapi_declares_auth_facade_and_security_boundary():
     document = create_app().openapi()
-    assert document["components"]["securitySchemes"]["BearerAuth"]["scheme"] == "bearer"
+    assert document["components"]["securitySchemes"]["UserJwt"]["scheme"] == "bearer"
     assert document["paths"]["/api/auth/register"]["post"]["security"] == []
     assert document["paths"]["/api/auth/login"]["post"]["security"] == []
     assert document["paths"]["/api/auth/me"]["get"]["security"] == [
-        {"BearerAuth": []}
+        {"UserJwt": []}
     ]
     expected_cookie_security = [{"RefreshCookie": [], "CsrfCookie": [], "CsrfHeader": []}]
     assert document["paths"]["/api/auth/refresh"]["post"]["security"] == expected_cookie_security

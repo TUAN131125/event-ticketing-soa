@@ -12,12 +12,12 @@
   {
     "file": "booking-success.json",
     "openapi": "booking-service.yaml",
-    "schema": "Booking"
+    "schema": "BookingResponse"
   },
   {
     "file": "payment-success.json",
     "openapi": "payment-service.yaml",
-    "schema": "Payment"
+    "schema": "PaymentResponse"
   },
   {
     "file": "ticket-success.json",
@@ -58,26 +58,6 @@
     "file": "identity-resolve-inactive.json",
     "openapi": "customer-service.yaml",
     "schema": "IdentityMapping"
-  },
-  {
-    "file": "booking-access-owner.json",
-    "openapi": "booking-service.yaml",
-    "schema": "BookingAccessDecision"
-  },
-  {
-    "file": "booking-access-admin-override.json",
-    "openapi": "booking-service.yaml",
-    "schema": "BookingAccessDecision"
-  },
-  {
-    "file": "booking-access-not-owner.json",
-    "openapi": "booking-service.yaml",
-    "schema": "BookingAccessDecision"
-  },
-  {
-    "file": "booking-access-dependency-failure.json",
-    "openapi": "booking-service.yaml",
-    "schema": "BookingAccessDecision"
   },
   {
     "file": "ws-ticket-success.json",
@@ -162,7 +142,7 @@
   {
     "file": "idempotency-replay.json",
     "openapi": "booking-service.yaml",
-    "schema": "Booking"
+    "schema": "BookingResponse"
   },
   {
     "file": "internal-status-event-valid.json",

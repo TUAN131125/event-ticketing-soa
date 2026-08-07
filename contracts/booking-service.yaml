@@ -1,10 +1,8 @@
 openapi: 3.1.0
 info:
   title: Booking Service API
-  version: 1.0.0
-  x-contract-status: canonical-v1
-  x-designed-baseline-version: 1.0.0
-  description: Baseline Giai đoạn 5 — hệ thống đặt vé sự kiện SOA/ESB.
+  version: 2.0.0
+  description: Canonical internal contract for the Booking Service.
 servers:
 - url: http://localhost:8004
   description: Local contract endpoint; deployment host is supplied by configuration.
@@ -12,496 +10,1031 @@ security:
 - ServiceJwt: []
 paths:
   /bookings:
-    post:
-      summary: Tạo booking
-      operationId: createBooking
-      responses:
-        '201':
-          description: Đã tạo
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BookingCreate'
-      parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}:
     get:
-      summary: Lấy booking
-      operationId: getBooking
-      responses:
-        '200':
-          description: Thành công
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+      summary: List All
+      operationId: listBookings
       parameters:
-      - name: bookingId
-        in: path
-        required: true
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: query
+        name: page
+        required: false
         schema:
-          type: string
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /customers/{customerId}/bookings:
-    get:
-      summary: Lịch sử booking
-      operationId: listCustomerBookings
-      responses:
-        '200':
-          description: Thành công
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-      parameters:
-      - name: customerId
-        in: path
-        required: true
+          default: 1
+          minimum: 1
+          title: Page
+          type: integer
+      - in: query
+        name: pageSize
+        required: false
         schema:
-          type: string
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /health/live:
-    get:
-      operationId: bookingLiveness
-      summary: Process liveness probe
-      security: []
-      responses:
-        '200':
-          description: Process is running.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthStatus'
-              example:
-                status: UP
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /health/ready:
-    get:
-      operationId: bookingReadiness
-      summary: Dependency readiness probe
-      security: []
-      responses:
-        '200':
-          description: Service is ready.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthStatus'
-              example:
-                status: READY
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/reservation:
-    post:
-      summary: 'Chuyển trạng thái: reservation'
-      operationId: bookingReservation
-      description: PENDING → SEAT_RESERVED. Requires reservationId and verified reservation evidence.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - reservationId
-                - evidence
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
+          default: 20
+          maximum: 100
+          minimum: 1
+          title: Pagesize
+          type: integer
+      - in: query
+        name: customerId
+        required: false
         schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/payment-started:
-    post:
-      summary: 'Chuyển trạng thái: payment-started'
-      operationId: bookingPaymentStarted
-      description: SEAT_RESERVED → PAYMENT_PROCESSING. Requires a stable paymentId.
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Customerid
+      - in: query
+        name: eventId
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Eventid
+      - in: query
+        name: status
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/BookingStatus'
+          - type: 'null'
+          title: Status
+      - in: query
+        name: search
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 128
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Search
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
       responses:
         '200':
-          description: Đã cập nhật
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - paymentId
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/payment-result:
-    post:
-      summary: 'Chuyển trạng thái: payment-result'
-      operationId: bookingPaymentResult
-      description: Records verified CAPTURED, FAILED or UNKNOWN payment evidence while the booking remains
-        PAYMENT_PROCESSING; it never confirms the booking by itself.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - paymentId
-                - paymentStatus
-                - evidence
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/tickets:
-    post:
-      summary: 'Chuyển trạng thái: tickets'
-      operationId: bookingTickets
-      description: Records issued ticket identifiers as evidence while PAYMENT_PROCESSING.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - ticketIds
-                - evidence
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/confirm:
-    post:
-      summary: 'Chuyển trạng thái: confirm'
-      operationId: bookingConfirm
-      description: PAYMENT_PROCESSING → CONFIRMED only when seat confirmation, captured payment and issued-ticket
-        evidence are all verified.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - reservationId
-                - paymentId
-                - paymentStatus
-                - ticketIds
-                - evidence
-                properties:
-                  paymentStatus:
-                    const: CAPTURED
-                  evidence:
-                    $ref: '#/components/schemas/ConfirmationEvidence'
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/fail:
-    post:
-      summary: 'Chuyển trạng thái: fail'
-      operationId: bookingFail
-      description: PENDING, SEAT_RESERVED or PAYMENT_PROCESSING → FAILED with a reason, failure evidence
-        and explicit compensation status/evidence.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - reasonCode
-                - evidence
-                - compensationStatus
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /bookings/{bookingId}/cancel:
-    post:
-      summary: 'Chuyển trạng thái: cancel'
-      operationId: bookingCancel
-      description: A cancellable booking becomes CANCELLED when compensation is complete, otherwise COMPENSATION_PENDING
-        until refund/release/ticket evidence completes.
-      responses:
-        '200':
-          description: Đã cập nhật
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-          headers:
-            ETag:
-              $ref: '#/components/headers/ETag'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/TransitionCommand'
-              - required:
-                - reasonCode
-                - evidence
-                - compensationStatus
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          type: string
-      - $ref: '#/components/parameters/IdempotencyKey'
-      - $ref: '#/components/parameters/IfMatch'
-      - $ref: '#/components/parameters/CorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-  /internal/bookings/{bookingId}/access-decisions:
-    post:
-      operationId: decideBookingResourceAccess
-      summary: Authoritatively decide whether a principal may access a booking
-      x-interface-class: internal
-      x-version: v1
-      x-allowed-callers:
-      - booking-orchestrator
-      x-end-user-context-source: verified-browser-jwt
-      x-role-assertion-policy: caller-must-not-elevate
-      x-failure-policy: deny
-      x-cache-max-age-seconds: 5
-      description: Only ESB/Booking Orchestrator may call this operation. Booking Service owns this resource
-        access decision. identitySubject and roles must come from a verified Browser JWT; the caller must
-        not synthesize or elevate roles. It resolves the identitySubject through Customer Service and
-        compares authoritative booking ownership internally; callers must not compare IDs themselves.
-        ADMIN is the only role allowed to override ownership. Missing or inactive mapping, booking absence,
-        timeout and dependency error all return allowed=false. Responses contain no customer profile or
-        internal booking details and must not be cached longer than cacheTtlSeconds.
-      security:
-      - ServiceJwt: []
-      parameters:
-      - name: bookingId
-        in: path
-        required: true
-        schema:
-          $ref: '#/components/schemas/SafeIdentifier'
-      - $ref: '#/components/parameters/RequiredCorrelationId'
-      - $ref: '#/components/parameters/Traceparent'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BookingAccessDecisionRequest'
-      responses:
-        '200':
-          description: Authoritative allow or fail-closed deny decision.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BookingAccessDecision'
-              examples:
-                owner:
-                  value:
-                    allowed: true
-                    reasonCode: OWNER
-                    cacheTtlSeconds: 5
-                dependencyFailure:
-                  value:
-                    allowed: false
-                    reasonCode: DEPENDENCY_UNAVAILABLE
-                    cacheTtlSeconds: 0
+                $ref: '#/components/schemas/BookingPageResponse'
+          description: Successful Response
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
-          description: Transport-level dependency failure. Callers must treat this as deny; no access
-            is granted without an allowed=true response.
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      summary: Create
+      operationId: createBooking
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+        required: true
+      responses:
+        '201':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/reconciliation:
+    get:
+      summary: Reconcile
+      operationId: reconcileBookings
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: query
+        name: olderThanSeconds
+        required: false
+        schema:
+          default: 900
+          minimum: 0
+          title: Olderthanseconds
+          type: integer
+      - in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          minimum: 1
+          title: Page
+          type: integer
+      - in: query
+        name: pageSize
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          title: Pagesize
+          type: integer
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationPageResponse'
+          description: Successful Response
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}:
+    get:
+      summary: Get
+      operationId: getBooking
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/cancel:
+    post:
+      summary: Cancel
+      operationId: cancelBooking
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/compensation-result:
+    post:
+      summary: Compensation Result
+      operationId: recordCompensationResult
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompensationResultRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/confirm:
+    post:
+      summary: Confirm
+      operationId: confirmBooking
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmBookingRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/fail:
+    post:
+      summary: Fail
+      operationId: failBooking
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailBookingRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/history:
+    get:
+      summary: History
+      operationId: getBookingHistory
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingHistoryResponse'
+          description: Successful Response
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/payment-result:
+    post:
+      summary: Record Payment
+      operationId: recordPayment
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordPaymentRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/payment-started:
+    post:
+      summary: Start Payment
+      operationId: startPayment
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartPaymentRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/reservation:
+    post:
+      summary: Attach Reservation
+      operationId: attachReservation
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachReservationRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/reservation-confirmed:
+    post:
+      summary: Confirm Reservation Evidence
+      operationId: confirmReservationEvidence
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmReservationRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /bookings/{booking_id}/tickets:
+    post:
+      summary: Attach Tickets
+      operationId: attachTickets
+      parameters:
+      - in: path
+        name: booking_id
+        required: true
+        schema:
+          title: Booking Id
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachTicketsRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+          description: Successful Response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /customers/{customer_id}/bookings:
+    get:
+      summary: List For Customer
+      operationId: listCustomerBookings
+      parameters:
+      - in: path
+        name: customer_id
+        required: true
+        schema:
+          title: Customer Id
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      - in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          minimum: 1
+          title: Page
+          type: integer
+      - in: query
+        name: pageSize
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          title: Pagesize
+          type: integer
+      - in: header
+        name: X-Caller-Service
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Caller-Service
+      - in: header
+        name: X-Actor-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Actor-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPageResponse'
+          description: Successful Response
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /health/live:
+    get:
+      summary: Live
+      operationId: bookingLiveness
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                title: Response Bookingliveness
+                type: object
+          description: Successful Response
+  /health/ready:
+    get:
+      summary: Ready
+      operationId: bookingReadiness
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
 components:
   schemas:
     ErrorResponse:
@@ -564,226 +1097,866 @@ components:
       example:
         amountMinor: 250000
         currency: VND
-    SafeIdentifier:
-      type: string
-      minLength: 1
-      maxLength: 128
-      pattern: ^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$
-    BookingAccessDecisionRequest:
-      type: object
+    AttachReservationRequest:
       additionalProperties: false
-      required:
-      - identitySubject
-      - roles
       properties:
-        identitySubject:
-          $ref: '#/components/schemas/SafeIdentifier'
-        roles:
-          type: array
-          minItems: 1
-          uniqueItems: true
+        confirmed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Confirmed
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        reservationExpiresAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Reservationexpiresat
+        reservationId:
+          maxLength: 128
+          minLength: 1
+          title: Reservationid
+          type: string
+        reservationVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Reservationversion
+      required:
+      - reservationId
+      title: AttachReservationRequest
+      type: object
+    AttachTicketsRequest:
+      additionalProperties: false
+      properties:
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        ticketIds:
           items:
             type: string
-            enum:
-            - CUSTOMER
-            - ADMIN
-            - CHECKIN_STAFF
-            - SERVICE
-    BookingAccessDecision:
-      type: object
-      additionalProperties: false
+          maxItems: 50
+          minItems: 1
+          title: Ticketids
+          type: array
       required:
-      - allowed
-      - reasonCode
-      - cacheTtlSeconds
+      - ticketIds
+      title: AttachTicketsRequest
+      type: object
+    BookingHistoryEntryResponse:
+      additionalProperties: false
       properties:
-        allowed:
-          type: boolean
-        reasonCode:
+        actorId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actorid
+        callerService:
+          title: Callerservice
           type: string
-          enum:
-          - OWNER
-          - ADMIN_OVERRIDE
-          - BOOKING_NOT_FOUND
-          - IDENTITY_NOT_MAPPED
-          - CUSTOMER_INACTIVE
-          - NOT_OWNER
-          - DEPENDENCY_UNAVAILABLE
-        cacheTtlSeconds:
+        correlationId:
+          title: Correlationid
+          type: string
+        details:
+          additionalProperties: true
+          title: Details
+          type: object
+        idempotencyKey:
+          title: Idempotencykey
+          type: string
+        newStatus:
+          title: Newstatus
+          type: string
+        occurredAt:
+          format: date-time
+          title: Occurredat
+          type: string
+          pattern: (?:Z|\+00:00)$
+        operation:
+          title: Operation
+          type: string
+        previousStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previousstatus
+        resourceVersion:
+          title: Resourceversion
           type: integer
-          minimum: 0
-          maximum: 5
-    BookingCreate:
-      type: object
-      additionalProperties: false
       required:
-      - customerId
-      - eventId
-      - items
+      - operation
+      - previousStatus
+      - newStatus
+      - callerService
+      - correlationId
+      - idempotencyKey
+      - resourceVersion
+      - details
+      - occurredAt
+      title: BookingHistoryEntryResponse
+      type: object
+    BookingHistoryResponse:
+      additionalProperties: false
       properties:
-        customerId:
-          type: string
-        eventId:
+        bookingId:
+          title: Bookingid
           type: string
         items:
-          type: array
-          minItems: 1
           items:
-            type: object
-            additionalProperties: false
-            required:
-            - seatId
-            - ticketTypeCode
-            - unitPrice
-            properties:
-              seatId:
-                type: string
-              ticketTypeCode:
-                type: string
-              unitPrice:
-                $ref: '#/components/schemas/Money'
-    Booking:
-      type: object
-      additionalProperties: false
+            $ref: '#/components/schemas/BookingHistoryEntryResponse'
+          title: Items
+          type: array
       required:
+      - bookingId
+      - items
+      title: BookingHistoryResponse
+      type: object
+    BookingItemRequest:
+      additionalProperties: false
+      properties:
+        priceCurrency:
+          anyOf:
+          - maxLength: 3
+            minLength: 3
+            type: string
+          - type: 'null'
+          title: Pricecurrency
+        seatId:
+          maxLength: 128
+          minLength: 1
+          title: Seatid
+          type: string
+        ticketType:
+          maxLength: 128
+          minLength: 1
+          title: Tickettype
+          type: string
+        unitPrice:
+          anyOf:
+          - minimum: 0.0
+            type: number
+          - type: string
+          title: Unitprice
+      required:
+      - seatId
+      - ticketType
+      - unitPrice
+      title: BookingItemRequest
+      type: object
+    BookingItemResponse:
+      additionalProperties: false
+      properties:
+        seatId:
+          title: Seatid
+          type: string
+        ticketType:
+          title: Tickettype
+          type: string
+        ticketTypeCode:
+          title: Tickettypecode
+          type: string
+        unitPrice:
+          title: Unitprice
+          type: string
+      required:
+      - seatId
+      - ticketType
+      - ticketTypeCode
+      - unitPrice
+      title: BookingItemResponse
+      type: object
+    BookingPageResponse:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+          title: Items
+          type: array
+        page:
+          title: Page
+          type: integer
+        pageSize:
+          title: Pagesize
+          type: integer
+        total:
+          title: Total
+          type: integer
+        totalPages:
+          title: Totalpages
+          type: integer
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+      - totalPages
+      title: BookingPageResponse
+      type: object
+    BookingResponse:
+      additionalProperties: false
+      properties:
+        bookingId:
+          title: Bookingid
+          type: string
+        cancellationReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cancellationreason
+        cancelledAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Cancelledat
+        compensationAction:
+          $ref: '#/components/schemas/CompensationAction'
+        compensationProviderReference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Compensationproviderreference
+        compensationReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Compensationreason
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        compensationUpdatedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Compensationupdatedat
+        confirmedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Confirmedat
+        createdAt:
+          format: date-time
+          title: Createdat
+          type: string
+          pattern: (?:Z|\+00:00)$
+        currency:
+          title: Currency
+          type: string
+        customerId:
+          title: Customerid
+          type: string
+        eventId:
+          title: Eventid
+          type: string
+        failureCode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failurecode
+        failureReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failurereason
+        id:
+          title: Id
+          type: string
+        intendedTerminalStatus:
+          anyOf:
+          - $ref: '#/components/schemas/BookingStatus'
+          - type: 'null'
+        items:
+          items:
+            $ref: '#/components/schemas/BookingItemResponse'
+          title: Items
+          type: array
+        paymentFailureCode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentfailurecode
+        paymentId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentid
+        paymentMethod:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentmethod
+        paymentProviderReference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentproviderreference
+        paymentRecordedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Paymentrecordedat
+        paymentRefundedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Paymentrefundedat
+        paymentStatus:
+          $ref: '#/components/schemas/PaymentStatus'
+        reservationConfirmedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Reservationconfirmedat
+        reservationExpiresAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Reservationexpiresat
+        reservationId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reservationid
+        reservationReleasedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Reservationreleasedat
+        reservationStatus:
+          $ref: '#/components/schemas/ReservationEvidenceStatus'
+        reservationVersion:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reservationversion
+        resourceVersion:
+          title: Resourceversion
+          type: integer
+        seats:
+          items:
+            type: string
+          title: Seats
+          type: array
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        ticketIds:
+          items:
+            type: string
+          title: Ticketids
+          type: array
+        ticketsAttachedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Ticketsattachedat
+        total:
+          title: Total
+          type: string
+        totalAmount:
+          title: Totalamount
+          type: string
+        updatedAt:
+          format: date-time
+          title: Updatedat
+          type: string
+          pattern: (?:Z|\+00:00)$
+      required:
+      - id
       - bookingId
       - customerId
       - eventId
-      - status
       - items
+      - seats
       - total
+      - totalAmount
+      - currency
+      - status
+      - paymentStatus
+      - reservationStatus
+      - ticketIds
+      - compensationStatus
+      - compensationAction
       - resourceVersion
       - createdAt
       - updatedAt
+      title: BookingResponse
+      type: object
+    BookingStatus:
+      enum:
+      - PENDING
+      - SEAT_RESERVED
+      - PAYMENT_PROCESSING
+      - CONFIRMED
+      - FAILED
+      - CANCELLED
+      - COMPENSATION_PENDING
+      title: BookingStatus
+      type: string
+    CancelBookingRequest:
+      additionalProperties: false
       properties:
-        bookingId:
+        compensationStatus:
+          anyOf:
+          - $ref: '#/components/schemas/CompensationStatus'
+          - type: 'null'
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        paymentStatus:
+          anyOf:
+          - $ref: '#/components/schemas/PaymentStatus'
+          - type: 'null'
+        reason:
+          maxLength: 2000
+          minLength: 1
+          title: Reason
           type: string
+      required:
+      - reason
+      title: CancelBookingRequest
+      type: object
+    CompensationAction:
+      enum:
+      - NONE
+      - RELEASE_RESERVATION
+      - REFUND_PAYMENT
+      - RELEASE_AND_REFUND
+      - RECONCILE_PAYMENT
+      title: CompensationAction
+      type: string
+    CompensationResultRequest:
+      additionalProperties: false
+      properties:
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        evidence:
+          $ref: '#/components/schemas/EvidenceRequest'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        reason:
+          anyOf:
+          - maxLength: 2000
+            type: string
+          - type: 'null'
+          title: Reason
+      required:
+      - compensationStatus
+      - evidence
+      title: CompensationResultRequest
+      type: object
+    CompensationStatus:
+      enum:
+      - NOT_REQUIRED
+      - PENDING
+      - COMPLETED
+      - FAILED
+      title: CompensationStatus
+      type: string
+    ConfirmBookingRequest:
+      additionalProperties: false
+      properties:
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        paymentId:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Paymentid
+        paymentStatus:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentstatus
+        reservationId:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Reservationid
+        ticketIds:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Ticketids
+      title: ConfirmBookingRequest
+      type: object
+    ConfirmReservationRequest:
+      additionalProperties: false
+      properties:
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        reservationId:
+          maxLength: 128
+          minLength: 1
+          title: Reservationid
+          type: string
+        reservationVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Reservationversion
+      required:
+      - reservationId
+      title: ConfirmReservationRequest
+      type: object
+    CreateBookingRequest:
+      additionalProperties: false
+      properties:
+        currency:
+          anyOf:
+          - maxLength: 3
+            minLength: 3
+            type: string
+          - type: 'null'
+          title: Currency
         customerId:
+          maxLength: 128
+          minLength: 1
+          title: Customerid
           type: string
         eventId:
+          maxLength: 128
+          minLength: 1
+          title: Eventid
           type: string
-        status:
-          enum:
-          - PENDING
-          - SEAT_RESERVED
-          - PAYMENT_PROCESSING
-          - CONFIRMED
-          - FAILED
-          - CANCELLED
-          - COMPENSATION_PENDING
         items:
-          type: array
           items:
-            type: object
-        total:
-          $ref: '#/components/schemas/Money'
-        reservationId:
-          type:
-          - string
-          - 'null'
-        paymentId:
-          type:
-          - string
-          - 'null'
-        ticketIds:
+            $ref: '#/components/schemas/BookingItemRequest'
+          maxItems: 50
+          minItems: 1
+          title: Items
           type: array
-          items:
+        paymentMethod:
+          anyOf:
+          - maxLength: 40
+            minLength: 1
             type: string
-        resourceVersion:
-          type: integer
-          minimum: 1
-        createdAt:
-          type: string
-          format: date-time
-          pattern: (?:Z|\+00:00)$
-        updatedAt:
-          type: string
-          format: date-time
-          pattern: (?:Z|\+00:00)$
-    TransitionCommand:
+          - type: 'null'
+          title: Paymentmethod
+        reservationId:
+          anyOf:
+          - maxLength: 128
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Reservationid
+        totalAmount:
+          anyOf:
+          - minimum: 0.0
+            type: number
+          - type: string
+          - type: 'null'
+          title: Totalamount
+      required:
+      - customerId
+      - eventId
+      - items
+      title: CreateBookingRequest
       type: object
+    EvidenceRequest:
       additionalProperties: false
       properties:
-        reservationId:
+        compensationCompleted:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Compensationcompleted
+        details:
+          additionalProperties: true
+          title: Details
+          type: object
+        paymentCaptured:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Paymentcaptured
+        paymentRefunded:
+          default: false
+          title: Paymentrefunded
+          type: boolean
+        providerReference:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Providerreference
+        reservationExpiresAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Reservationexpiresat
+        reservationReleased:
+          default: false
+          title: Reservationreleased
+          type: boolean
+        resolvedPaymentStatus:
+          anyOf:
+          - $ref: '#/components/schemas/PaymentStatus'
+          - type: 'null'
+        seatConfirmed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Seatconfirmed
+        ticketsIssued:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Ticketsissued
+        verifiedAt:
+          anyOf:
+          - format: date-time
+            type: string
+            pattern: (?:Z|\+00:00)$
+          - type: 'null'
+          title: Verifiedat
+      title: EvidenceRequest
+      type: object
+    FailBookingRequest:
+      additionalProperties: false
+      properties:
+        compensationStatus:
+          anyOf:
+          - $ref: '#/components/schemas/CompensationStatus'
+          - type: 'null'
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        failureCode:
+          maxLength: 128
+          minLength: 1
+          title: Failurecode
           type: string
+        reason:
+          anyOf:
+          - maxLength: 2000
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Reason
+      required:
+      - failureCode
+      title: FailBookingRequest
+      type: object
+    PaymentStatus:
+      enum:
+      - PENDING
+      - PROCESSING
+      - SUCCEEDED
+      - FAILED
+      - UNKNOWN
+      - REFUND_PENDING
+      - REFUNDED
+      title: PaymentStatus
+      type: string
+    ReconciliationCandidateResponse:
+      additionalProperties: false
+      properties:
+        bookingId:
+          title: Bookingid
+          type: string
+        compensationAction:
+          $ref: '#/components/schemas/CompensationAction'
+        compensationStatus:
+          $ref: '#/components/schemas/CompensationStatus'
+        missingEvidence:
+          items:
+            type: string
+          title: Missingevidence
+          type: array
+        recommendedAction:
+          title: Recommendedaction
+          type: string
+        resourceVersion:
+          title: Resourceversion
+          type: integer
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        updatedAt:
+          format: date-time
+          title: Updatedat
+          type: string
+          pattern: (?:Z|\+00:00)$
+      required:
+      - bookingId
+      - status
+      - missingEvidence
+      - recommendedAction
+      - compensationStatus
+      - compensationAction
+      - resourceVersion
+      - updatedAt
+      title: ReconciliationCandidateResponse
+      type: object
+    ReconciliationPageResponse:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ReconciliationCandidateResponse'
+          title: Items
+          type: array
+        page:
+          title: Page
+          type: integer
+        pageSize:
+          title: Pagesize
+          type: integer
+        total:
+          title: Total
+          type: integer
+        totalPages:
+          title: Totalpages
+          type: integer
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+      - totalPages
+      title: ReconciliationPageResponse
+      type: object
+    RecordPaymentRequest:
+      additionalProperties: false
+      properties:
+        evidence:
+          anyOf:
+          - $ref: '#/components/schemas/EvidenceRequest'
+          - type: 'null'
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        failureCode:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Failurecode
         paymentId:
+          maxLength: 128
+          minLength: 1
+          title: Paymentid
           type: string
         paymentStatus:
-          type: string
-          enum:
-          - CAPTURED
-          - FAILED
-          - UNKNOWN
-        ticketIds:
-          type: array
-          items:
-            type: string
-        reasonCode:
-          type: string
-        compensationStatus:
-          type: string
-          enum:
-          - NOT_REQUIRED
-          - COMPLETED
-          - PENDING
-        evidence:
-          $ref: '#/components/schemas/TransitionEvidence'
-    TransitionEvidence:
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        providerReference:
-          type: string
-        reservationExpiresAt:
-          type: string
-          format: date-time
-          pattern: (?:Z|\+00:00)$
-        seatConfirmed:
-          type: boolean
-        paymentCaptured:
-          type: boolean
-        ticketsIssued:
-          type: boolean
-        compensationCompleted:
-          type: boolean
-        verifiedAt:
-          type: string
-          format: date-time
-          pattern: (?:Z|\+00:00)$
-    ConfirmationEvidence:
-      allOf:
-      - $ref: '#/components/schemas/TransitionEvidence'
-      - required:
-        - seatConfirmed
-        - paymentCaptured
-        - ticketsIssued
-        - verifiedAt
-        properties:
-          seatConfirmed:
-            const: true
-          paymentCaptured:
-            const: true
-          ticketsIssued:
-            const: true
-    HealthStatus:
-      type: object
-      additionalProperties: false
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymentstatus
+        succeeded:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Succeeded
       required:
-      - status
+      - paymentId
+      title: RecordPaymentRequest
+      type: object
+    ReservationEvidenceStatus:
+      enum:
+      - PENDING
+      - RESERVED
+      - CONFIRMED
+      - RELEASE_PENDING
+      - RELEASED
+      - UNKNOWN
+      title: ReservationEvidenceStatus
+      type: string
+    StartPaymentRequest:
+      additionalProperties: false
       properties:
-        status:
+        expectedVersion:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Expectedversion
+        paymentId:
+          maxLength: 128
+          minLength: 1
+          title: Paymentid
           type: string
-          enum:
-          - UP
-          - READY
-          - NOT_READY
-        service:
-          type: string
-        version:
-          type: string
-      example:
-        status: READY
+      required:
+      - paymentId
+      title: StartPaymentRequest
+      type: object
   parameters:
     CorrelationId:
       name: X-Correlation-ID

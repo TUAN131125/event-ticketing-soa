@@ -1,5 +1,9 @@
 {
   "bookingId": "BKG-001",
+  "eventId": "EV-001",
+  "seatIds": [
+    "A12"
+  ],
   "status": "PAYMENT_PROCESSING",
   "total": {
     "amountMinor": 100000,
@@ -7,6 +11,11 @@
   },
   "reservationId": "RES-001",
   "paymentId": "PAY-001",
+  "paymentStatus": "PROCESSING",
   "ticketIds": [],
-  "correlationId": "corr-1234567890abcdef"
+  "correlationId": "corr-1234567890abcdef",
+  "workflowId": "WF-001",
+  "resourceVersion": 3,
+  "createdAt": "2026-08-03T03:00:00Z",
+  "updatedAt": "2026-08-03T03:05:00Z"
 }

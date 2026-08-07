@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from libs.platform_security import ServiceJwtValidationSettings
+
 
 def _integer(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default))
@@ -125,6 +127,9 @@ class Settings:
     provider_reconciliation_max_delay_seconds: int
     provider_reconciliation_batch_size: int
     provider_reconciliation_poll_seconds: int
+    # Optional so existing test factories keep working; from_environment always
+    # supplies it and main.py requires it at startup.
+    service_jwt: ServiceJwtValidationSettings | None = None
 
     @property
     def outbox_webhook_enabled(self) -> bool:
@@ -199,6 +204,11 @@ class Settings:
             ),
             provider_reconciliation_poll_seconds=_integer(
                 "PAYMENT_PROVIDER_RECONCILIATION_POLL_SECONDS", 5, 1, 300
+            ),
+            service_jwt=ServiceJwtValidationSettings.from_environment(
+                "PAYMENT",
+                audience="payment-service",
+                default_allowed_subjects="booking-orchestrator",
             ),
         )
 

@@ -392,10 +392,9 @@ services:
       dockerfile: customer-web/Dockerfile
       args:
         # Compose interpolation reads the shell and `.env`, not `env_file`, so the local
-        # defaults live here and stay overridable per environment.
-        VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
+        # defaults live here and stay overridable per environment. The ESB origin is the
+        # only browser-reachable URL: Identity and Realtime are behind the ESB façade.
         VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
-        VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
     profiles: [all, frontend]
     restart: unless-stopped
     ports:
@@ -420,10 +419,9 @@ services:
       dockerfile: admin-web/Dockerfile
       args:
         # Compose interpolation reads the shell and `.env`, not `env_file`, so the local
-        # defaults live here and stay overridable per environment.
-        VITE_IDENTITY_API_URL: ${VITE_IDENTITY_API_URL:-http://localhost:8009}
+        # defaults live here and stay overridable per environment. The ESB origin is the
+        # only browser-reachable URL: Identity and Realtime are behind the ESB façade.
         VITE_ESB_API_URL: ${VITE_ESB_API_URL:-http://localhost:8000}
-        VITE_REALTIME_WS_URL: ${VITE_REALTIME_WS_URL:-ws://localhost:8008}
     profiles: [all, frontend]
     restart: unless-stopped
     ports:

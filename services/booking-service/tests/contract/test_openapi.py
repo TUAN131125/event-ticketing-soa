@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 from jsonschema import Draft202012Validator
 
-from app.config import Settings
+from tests.factories import build_settings
 from app.main import create_app
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
@@ -33,22 +33,8 @@ HEALTH_OPERATIONS = {"bookingLiveness", "bookingReadiness"}
 EXPECTED_OPERATIONS = BUSINESS_OPERATIONS | HEALTH_OPERATIONS
 
 
-def settings() -> Settings:
-    return Settings(
-        app_name="booking-service",
-        app_env="test",
-        database_url="postgresql+psycopg://booking:booking@localhost:5437/booking",
-        service_token="test-service-token",
-        db_pool_size=1,
-        db_max_overflow=0,
-        db_pool_timeout_seconds=1,
-        db_connect_timeout_seconds=1,
-        db_lock_timeout_ms=1_000,
-        db_statement_timeout_ms=5_000,
-        idempotency_ttl_seconds=3_600,
-        log_level="WARNING",
-        docs_enabled=True,
-    )
+def settings():
+    return build_settings()
 
 
 def operation_ids(schema: dict[str, object]) -> list[str]:
@@ -71,13 +57,10 @@ def test_openapi_has_unique_expected_operations_and_closed_request_models() -> N
     assert set(ids) == EXPECTED_OPERATIONS
     assert BUSINESS_OPERATIONS.issubset(ids)
 
-    service_token = schema["components"]["securitySchemes"]["serviceToken"]
-    assert service_token == {
-        "type": "apiKey",
-        "description": "Internal shared secret. Never forward a customer token here.",
-        "in": "header",
-        "name": "X-Service-Token",
-    }
+    schemes = schema["components"]["securitySchemes"]
+    # Internal callers authenticate with the shared Service JWT, not a shared secret.
+    assert schemes["ServiceJwt"] == {"type": "http", "scheme": "bearer"}
+    assert "serviceToken" not in schemes
     assert (
         schema["components"]["schemas"]["CreateBookingRequest"][
             "additionalProperties"

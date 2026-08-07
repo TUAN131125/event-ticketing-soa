@@ -78,6 +78,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     install_error_handlers(application)
+    # Set outside the lifespan so the verifier exists for any request the app can serve,
+    # including in tests that build the app without running startup.
+    if current.service_jwt is None:
+        raise ValueError("BOOKING service JWT validation settings are required")
+    application.state.settings = current
+    application.state.service_jwt_verifier = current.service_jwt.verifier()
     return application
 
 

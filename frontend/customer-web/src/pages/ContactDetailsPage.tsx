@@ -24,6 +24,18 @@ const contactSchema = z.object({
 type ContactValues = z.infer<typeof contactSchema>;
 type ContactRouteState = Pick<CheckoutDraft, 'eventId' | 'eventName' | 'seatIds'>;
 
+const genericSubmitError =
+  'Customer Service rejected or could not complete the onboarding request.';
+
+/**
+ * A caught throw is `unknown` and is not renderable on its own. Narrow it to the one
+ * shape that carries a displayable message and fall back to the generic sentence for
+ * anything else, including an `ApiError` that arrived without a wire message.
+ */
+function submitErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : genericSubmitError;
+}
+
 export function ContactDetailsPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,9 +129,9 @@ export function ContactDetailsPage() {
             </FormField>
           </Card>
 
-          {submitError && (
+          {submitError != null && (
             <Alert tone="danger" title="Customer profile could not be saved">
-              Customer Service rejected or could not complete the onboarding request.
+              {submitErrorMessage(submitError)}
               <ApiErrorDetails error={submitError} />
             </Alert>
           )}
